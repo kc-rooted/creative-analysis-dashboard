@@ -34,78 +34,81 @@ export function DashboardStats({ stats }: DashboardStatsProps) {
     : 0;
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
-      <div className="bg-white rounded-lg shadow p-6">
+    <div className="w-full grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
+      <div className="card p-10">
         <div className="flex items-center justify-between">
           <div>
-            <p className="text-sm text-gray-600">Total Unique Images</p>
-            <p className="text-2xl font-bold">{formatNumber(totalImages)}</p>
-            <p className="text-xs text-gray-500 mt-1">
+            <p className="text-sm" style={{color: 'var(--text-muted)'}}>Total Unique Images</p>
+            <p className="text-2xl font-bold" style={{color: 'var(--text-primary)'}}>{formatNumber(totalImages)}</p>
+            <p className="text-xs mt-1" style={{color: 'var(--text-disabled)'}}>
               {formatNumber(totalImpact)} campaign uses
             </p>
           </div>
-          <ImageIcon className="w-8 h-8 text-gray-400" />
+          <ImageIcon className="w-8 h-8" style={{color: 'var(--text-muted)'}} />
         </div>
       </div>
 
-      <div className="bg-white rounded-lg shadow p-6">
+      <div className="card p-10">
         <div className="flex items-center justify-between">
           <div>
-            <p className="text-sm text-gray-600">Completed</p>
-            <p className="text-2xl font-bold text-green-600">
+            <p className="text-sm" style={{color: 'var(--text-muted)'}}>Completed</p>
+            <p className="text-2xl font-bold" style={{color: '#22c55e'}}>
               {formatNumber(completed.unique_images)}
             </p>
-            <p className="text-xs text-gray-500 mt-1">
+            <p className="text-xs mt-1" style={{color: 'var(--text-disabled)'}}>
               {formatNumber(completed.total_campaign_impact)} campaigns
             </p>
           </div>
-          <CheckCircle className="w-8 h-8 text-green-500" />
+          <CheckCircle className="w-8 h-8" style={{color: '#22c55e'}} />
         </div>
       </div>
 
-      <div className="bg-white rounded-lg shadow p-6">
+      <div className="card p-10">
         <div className="flex items-center justify-between">
           <div>
-            <p className="text-sm text-gray-600">Pending</p>
-            <p className="text-2xl font-bold text-yellow-600">
+            <p className="text-sm" style={{color: 'var(--text-muted)'}}>Pending</p>
+            <p className="text-2xl font-bold" style={{color: '#eab308'}}>
               {formatNumber(pending.unique_images)}
             </p>
-            <p className="text-xs text-gray-500 mt-1">
+            <p className="text-xs mt-1" style={{color: 'var(--text-disabled)'}}>
               {formatNumber(pending.total_campaign_impact)} campaigns
             </p>
           </div>
-          <Clock className="w-8 h-8 text-yellow-500" />
+          <Clock className="w-8 h-8" style={{color: '#eab308'}} />
         </div>
       </div>
 
-      <div className="bg-white rounded-lg shadow p-6">
+      <div className="card p-10">
         <div className="flex items-center justify-between">
           <div>
-            <p className="text-sm text-gray-600">Analyzing</p>
-            <p className="text-2xl font-bold text-blue-600">
+            <p className="text-sm" style={{color: 'var(--text-muted)'}}>Analyzing</p>
+            <p className="text-2xl font-bold" style={{color: 'var(--accent-primary)'}}>
               {formatNumber(analyzing.unique_images)}
             </p>
-            <p className="text-xs text-gray-500 mt-1">
+            <p className="text-xs mt-1" style={{color: 'var(--text-disabled)'}}>
               {formatNumber(analyzing.total_campaign_impact)} campaigns
             </p>
           </div>
-          <Clock className="w-8 h-8 text-blue-500 animate-spin" />
+          <Clock className="w-8 h-8 animate-spin" style={{color: 'var(--accent-primary)'}} />
         </div>
       </div>
 
-      <div className="bg-white rounded-lg shadow p-6">
+      <div className="card p-10">
         <div className="flex items-center justify-between">
           <div>
-            <p className="text-sm text-gray-600">Completion Rate</p>
-            <p className="text-2xl font-bold">{completionRate}%</p>
-            <div className="w-full bg-gray-200 rounded-full h-2 mt-2">
+            <p className="text-sm" style={{color: 'var(--text-muted)'}}>Completion Rate</p>
+            <p className="text-2xl font-bold" style={{color: 'var(--text-primary)'}}>{completionRate}%</p>
+            <div className="w-full rounded-full h-2 mt-2" style={{background: 'var(--border-muted)'}}>
               <div 
-                className="bg-green-600 h-2 rounded-full"
-                style={{ width: `${completionRate}%` }}
+                className="h-2 rounded-full transition-all duration-300"
+                style={{ 
+                  width: `${completionRate}%`,
+                  background: 'linear-gradient(90deg, #22c55e, var(--accent-primary))'
+                }}
               />
             </div>
           </div>
-          <TrendingUp className="w-8 h-8 text-green-500" />
+          <TrendingUp className="w-8 h-8" style={{color: '#22c55e'}} />
         </div>
       </div>
     </div>

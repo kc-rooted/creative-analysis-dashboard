@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { 
   Eye, 
   Play, 
@@ -19,15 +20,18 @@ interface CreativeCardProps {
   onAnalyze: (contentId: string) => void;
   onViewDetails: (creative: Creative) => void;
   onEditTags: (creative: Creative) => void;
+  isAnalyzing?: boolean;
 }
 
 export function CreativeCard({ 
   creative, 
   onAnalyze, 
   onViewDetails,
-  onEditTags 
+  onEditTags,
+  isAnalyzing = false
 }: CreativeCardProps) {
   const [imageError, setImageError] = useState(false);
+  const router = useRouter();
 
   const getStatusIcon = () => {
     switch (creative.analysis_status) {
@@ -43,26 +47,34 @@ export function CreativeCard({
   };
 
   return (
-    <div className="bg-white rounded-lg shadow-md hover:shadow-lg transition-shadow">
-      <div className="relative aspect-video bg-gray-100">
-        {!imageError && creative.primary_image_url ? (
-          <img
-            src={creative.thumbnail_url || creative.primary_image_url}
-            alt={creative.representative_creative_name}
-            className="w-full h-full object-cover rounded-t-lg"
-            onError={() => setImageError(true)}
-          />
+    <div className="card">
+      <div className="relative aspect-square" style={{background: 'var(--bg-elevated)'}}>
+        {!imageError && (creative.video_id ? creative.thumbnail_url : creative.primary_image_url) ? (
+          <div className="relative w-full h-full">
+            <img
+              src={creative.video_id ? creative.thumbnail_url : creative.primary_image_url}
+              alt={creative.representative_creative_name}
+              className="w-full h-full object-cover"
+              style={{borderTopLeftRadius: '20px', borderTopRightRadius: '20px'}}
+              onError={() => setImageError(true)}
+              referrerPolicy="no-referrer"
+            />
+            {creative.video_id && (
+              <div className="absolute inset-0 flex items-center justify-center">
+                <div className="bg-black/50 rounded-full p-3">
+                  <Play className="w-6 h-6 text-white" />
+                </div>
+              </div>
+            )}
+          </div>
         ) : (
           <div className="flex items-center justify-center h-full">
-            <ImageIcon className="w-12 h-12 text-gray-400" />
+            <ImageIcon className="w-12 h-12" style={{color: 'var(--text-muted)'}} />
           </div>
         )}
         
         <div className="absolute top-2 right-2">
-          <span className={cn(
-            "flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium",
-            getStatusColor(creative.analysis_status)
-          )}>
+          <span className="tag tag-accent flex items-center gap-1">
             {getStatusIcon()}
             {creative.analysis_status}
           </span>
@@ -72,7 +84,7 @@ export function CreativeCard({
           {creative.platforms_used?.map(platform => (
             <span 
               key={platform}
-              className="px-2 py-1 bg-black/70 text-white rounded text-xs"
+              className="tag"
             >
               {platform}
             </span>
@@ -80,14 +92,20 @@ export function CreativeCard({
         </div>
       </div>
 
-      <div className="p-4">
-        <h3 className="font-semibold text-sm mb-2 line-clamp-2">
-          {creative.representative_creative_name || `Creative ${creative.content_id}`}
+      <div className="p-8">
+        <h3 className="font-semibold text-sm mb-2 line-clamp-2" style={{color: 'var(--text-primary)'}}>
+          {creative.cleaned_creative_name || creative.representative_creative_name || `Creative ${creative.content_id}`}
         </h3>
 
-        <div className="flex items-center gap-2 text-sm text-gray-600 mb-3">
-          <Users className="w-4 h-4" />
-          <span>Used in {formatNumber(creative.total_usage_count)} campaigns</span>
+        <div className="space-y-2 mb-3">
+          <div className="flex items-center gap-2 text-sm" style={{color: 'var(--text-secondary)'}}>
+            <Users className="w-4 h-4" />
+            <span>Used in {formatNumber(creative.total_campaigns)} campaigns</span>
+          </div>
+          <div className="flex items-center gap-2 text-sm" style={{color: 'var(--text-secondary)'}}>
+            <span className="font-medium">ROAS:</span>
+            <span className="font-semibold" style={{color: '#22c55e'}}>{creative.roas?.toFixed(2) || '0.00'}x</span>
+          </div>
         </div>
 
         {creative.creative_tags && creative.creative_tags.length > 0 && (
@@ -95,13 +113,13 @@ export function CreativeCard({
             {creative.creative_tags.slice(0, 3).map(tag => (
               <span 
                 key={tag}
-                className="px-2 py-1 bg-gray-100 text-gray-700 rounded-full text-xs"
+                className="tag"
               >
                 {tag}
               </span>
             ))}
             {creative.creative_tags.length > 3 && (
-              <span className="px-2 py-1 bg-gray-100 text-gray-700 rounded-full text-xs">
+              <span className="tag">
                 +{creative.creative_tags.length - 3}
               </span>
             )}
@@ -110,27 +128,47 @@ export function CreativeCard({
 
         <div className="flex gap-2">
           <button
-            onClick={() => onViewDetails(creative)}
-            className="flex-1 px-3 py-2 bg-gray-100 hover:bg-gray-200 rounded-md text-sm font-medium flex items-center justify-center gap-1"
+            onClick={() => router.push(`/creative/${encodeURIComponent(creative.content_id)}`)}
+            className="btn-primary flex-1 px-3 py-2 text-sm font-medium flex items-center justify-center gap-1"
           >
             <Eye className="w-4 h-4" />
-            View
+            View Details
           </button>
 
-          {creative.analysis_status === 'pending' && (
+          {creative.analysis_status === 'pending' && !creative.video_id && (
             <button
               onClick={() => onAnalyze(creative.content_id)}
-              className="flex-1 px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md text-sm font-medium flex items-center justify-center gap-1"
+              disabled={isAnalyzing}
+              className="btn-secondary flex-1 px-3 py-2 text-sm font-medium flex items-center justify-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              <Play className="w-4 h-4" />
-              Analyze
+              {isAnalyzing ? (
+                <>
+                  <Clock className="w-4 h-4 animate-spin" />
+                  Analyzing
+                </>
+              ) : (
+                <>
+                  <Play className="w-4 h-4" />
+                  Analyze
+                </>
+              )}
+            </button>
+          )}
+
+          {creative.analysis_status === 'analyzing' && (
+            <button
+              disabled
+              className="btn-secondary flex-1 px-3 py-2 text-sm font-medium flex items-center justify-center gap-1 opacity-50 cursor-not-allowed"
+            >
+              <Clock className="w-4 h-4 animate-spin" />
+              Analyzing...
             </button>
           )}
 
           {creative.analysis_status === 'completed' && (
             <button
               onClick={() => onEditTags(creative)}
-              className="flex-1 px-3 py-2 bg-gray-100 hover:bg-gray-200 rounded-md text-sm font-medium flex items-center justify-center gap-1"
+              className="btn-secondary flex-1 px-3 py-2 text-sm font-medium flex items-center justify-center gap-1"
             >
               <Tag className="w-4 h-4" />
               Edit Tags
