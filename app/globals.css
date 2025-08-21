@@ -201,6 +201,7 @@ body::before {
   transition: all 0.2s ease;
   width: 100%;
   min-width: 0; /* Allow cards to shrink */
+  overflow: hidden;
 }
 
 .card:hover {
@@ -239,6 +240,20 @@ button:focus {
   ring: 2px;
   ring-color: var(--accent-border);
   border-color: var(--accent-primary);
+}
+
+/* Logo breathing animation */
+@keyframes logoBreathing {
+  0%, 100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.5);
+  }
+}
+
+.animate-logo-breathing {
+  animation: logoBreathing 2s ease-in-out infinite;
 }
 
 /* Custom scrollbar */

@@ -173,6 +173,7 @@ export async function getAnalysisStatistics(): Promise<AnalysisStats[]> {
     LEFT JOIN \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${getCurrentDatasetName()}.creative_analysis\` ca
       ON cpd.content_id = ca.content_id
     WHERE cpd.creative_type != 'NO_VISUAL' 
+      AND cpd.video_id IS NULL
       AND (ca.content_id IS NULL OR ca.analysis_status IS NULL OR ca.analysis_status = 'pending')
     
     UNION ALL
@@ -185,6 +186,7 @@ export async function getAnalysisStatistics(): Promise<AnalysisStats[]> {
     JOIN \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${getCurrentDatasetName()}.creative_performance_dashboard\` cpd
       ON ca.content_id = cpd.content_id
     WHERE cpd.creative_type != 'NO_VISUAL' 
+      AND cpd.video_id IS NULL
       AND ca.analysis_status IS NOT NULL AND ca.analysis_status != 'pending'
     GROUP BY ca.analysis_status
   `;

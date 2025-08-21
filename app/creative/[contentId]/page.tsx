@@ -157,7 +157,7 @@ export default function CreativeDetailsPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center" style={{background: 'var(--bg-primary)'}}>
+      <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 mx-auto" style={{borderColor: 'var(--accent-primary)'}}></div>
           <p className="mt-4" style={{color: 'var(--text-muted)'}}>Loading creative details...</p>
@@ -168,7 +168,7 @@ export default function CreativeDetailsPage() {
 
   if (!creative) {
     return (
-      <div className="min-h-screen flex items-center justify-center" style={{background: 'var(--bg-primary)'}}>
+      <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
           <h1 className="text-2xl font-bold mb-4" style={{color: 'var(--text-primary)'}}>Creative Not Found</h1>
           <button
@@ -203,7 +203,7 @@ export default function CreativeDetailsPage() {
 
 
   return (
-    <div className="min-h-screen" style={{background: 'var(--bg-primary)'}}>
+    <div className="min-h-screen">
       {/* Header */}
       <header className="w-full border-b" style={{background: 'var(--bg-card)', borderColor: 'var(--border-muted)'}}>
         <div className="w-full max-w-[2000px] mx-auto px-4 sm:px-6 lg:px-8 py-4">

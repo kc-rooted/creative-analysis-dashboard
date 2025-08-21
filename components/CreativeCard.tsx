@@ -48,47 +48,50 @@ export function CreativeCard({
 
   return (
     <div className="card">
-      <div className="relative aspect-square" style={{background: 'var(--bg-elevated)'}}>
-        {!imageError && (creative.video_id ? creative.thumbnail_url : creative.primary_image_url) ? (
-          <div className="relative w-full h-full">
-            <img
-              src={creative.video_id ? creative.thumbnail_url : creative.primary_image_url}
-              alt={creative.representative_creative_name}
-              className="w-full h-full object-cover"
-              style={{borderTopLeftRadius: '20px', borderTopRightRadius: '20px'}}
-              onError={() => setImageError(true)}
-              referrerPolicy="no-referrer"
-            />
-            {creative.video_id && (
-              <div className="absolute inset-0 flex items-center justify-center">
-                <div className="bg-black/50 rounded-full p-3">
-                  <Play className="w-6 h-6 text-white" />
+      <div className="p-8 pb-0">
+        <div className="relative aspect-square rounded-xl overflow-hidden" style={{background: 'var(--bg-elevated)'}}>
+          {!imageError && (creative.video_id ? creative.thumbnail_url : creative.primary_image_url) ? (
+            <div className="relative w-full h-full">
+              <img
+                src={creative.video_id ? creative.thumbnail_url : creative.primary_image_url}
+                alt={creative.representative_creative_name}
+                className="w-full h-full object-cover"
+                onError={() => setImageError(true)}
+                referrerPolicy="no-referrer"
+              />
+              {creative.video_id && (
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <div className="bg-black/50 rounded-full p-3">
+                    <Play className="w-6 h-6 text-white" />
+                  </div>
                 </div>
-              </div>
-            )}
-          </div>
-        ) : (
-          <div className="flex items-center justify-center h-full">
-            <ImageIcon className="w-12 h-12" style={{color: 'var(--text-muted)'}} />
-          </div>
-        )}
-        
-        <div className="absolute top-2 right-2">
-          <span className="tag tag-accent flex items-center gap-1">
-            {getStatusIcon()}
-            {creative.analysis_status}
-          </span>
-        </div>
+              )}
+            </div>
+          ) : (
+            <div className="flex items-center justify-center h-full">
+              <ImageIcon className="w-12 h-12" style={{color: 'var(--text-muted)'}} />
+            </div>
+          )}
+          
+          {!creative.video_id && (
+            <div className="absolute top-2 right-2">
+              <span className="tag tag-accent flex items-center gap-1">
+                {getStatusIcon()}
+                {creative.analysis_status}
+              </span>
+            </div>
+          )}
 
-        <div className="absolute top-2 left-2 flex gap-1">
-          {creative.platforms_used?.map(platform => (
-            <span 
-              key={platform}
-              className="tag"
-            >
-              {platform}
-            </span>
-          ))}
+          <div className="absolute top-2 left-2 flex gap-1">
+            {creative.platforms_used?.map(platform => (
+              <span 
+                key={platform}
+                className="tag"
+              >
+                {platform}
+              </span>
+            ))}
+          </div>
         </div>
       </div>
 
