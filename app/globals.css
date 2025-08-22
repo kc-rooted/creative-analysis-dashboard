@@ -1,5 +1,75 @@
-@import url('https://fonts.googleapis.com/css2?family=Domine:wght@400..700&display=swap');
 @import "tailwindcss";
+
+/* Nord Font Family */
+@font-face {
+  font-family: 'NORD';
+  src: url('/fonts/nord/NORD-Thin.woff2') format('woff2'),
+       url('/fonts/nord/NORD-Thin.woff') format('woff'),
+       url('/fonts/nord/NORD-Thin.eot') format('embedded-opentype');
+  font-weight: 100;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'NORD';
+  src: url('/fonts/nord/NORD-Light.woff2') format('woff2'),
+       url('/fonts/nord/NORD-Light.woff') format('woff'),
+       url('/fonts/nord/NORD-Light.eot') format('embedded-opentype');
+  font-weight: 300;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'NORD';
+  src: url('/fonts/nord/NORD-Regular.woff2') format('woff2'),
+       url('/fonts/nord/NORD-Regular.woff') format('woff'),
+       url('/fonts/nord/NORD-Regular.eot') format('embedded-opentype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'NORD';
+  src: url('/fonts/nord/NORD-Book.woff2') format('woff2'),
+       url('/fonts/nord/NORD-Book.woff') format('woff'),
+       url('/fonts/nord/NORD-Book.eot') format('embedded-opentype');
+  font-weight: 450;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'NORD';
+  src: url('/fonts/nord/NORD-Medium.woff2') format('woff2'),
+       url('/fonts/nord/NORD-Medium.woff') format('woff'),
+       url('/fonts/nord/NORD-Medium.eot') format('embedded-opentype');
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'NORD';
+  src: url('/fonts/nord/NORD-Bold.woff2') format('woff2'),
+       url('/fonts/nord/NORD-Bold.woff') format('woff'),
+       url('/fonts/nord/NORD-Bold.eot') format('embedded-opentype');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'NORD';
+  src: url('/fonts/nord/NORD-Black.woff2') format('woff2'),
+       url('/fonts/nord/NORD-Black.woff') format('woff'),
+       url('/fonts/nord/NORD-Black.eot') format('embedded-opentype');
+  font-weight: 900;
+  font-style: normal;
+  font-display: swap;
+}
 
 :root {
   /* Base Colors */
@@ -30,14 +100,14 @@
   --foreground: var(--text-primary);
   
   /* Font variables */
-  --font-domine: 'Domine', serif;
+  --font-nord: 'NORD', sans-serif;
 }
 
 @theme inline {
   --color-background: var(--bg-primary);
   --color-foreground: var(--text-primary);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-sans: var(--font-nord);
+  --font-mono: var(--font-nord);
   
   /* Custom color palette */
   --color-bg-primary: var(--bg-primary);
@@ -66,44 +136,44 @@
 
 /* Typography hierarchy */
 h1 {
-  font-family: var(--font-domine);
+  font-family: var(--font-nord);
   font-size: 2.986rem;
-  font-weight: 600;
+  font-weight: 900;
   margin: 0;
 }
 
 h2 {
-  font-family: var(--font-domine);
+  font-family: var(--font-nord);
   font-size: 2.488rem;
-  font-weight: 600;
+  font-weight: 700;
   margin: 0;
 }
 
 h3 {
-  font-family: var(--font-domine);
+  font-family: var(--font-nord);
   font-size: 2.074rem;
-  font-weight: 600;
+  font-weight: 500;
   margin: 0;
 }
 
 h4 {
-  font-family: var(--font-domine);
+  font-family: var(--font-nord);
   font-size: 1.728rem;
-  font-weight: 600;
+  font-weight: 450;
   margin: 0;
 }
 
 h5 {
-  font-family: var(--font-domine);
+  font-family: var(--font-nord);
   font-size: 1.44rem;
-  font-weight: 600;
+  font-weight: 400;
   margin: 0;
 }
 
 h6 {
-  font-family: var(--font-domine);
+  font-family: var(--font-nord);
   font-size: 1.2rem;
-  font-weight: 600;
+  font-weight: 300;
   margin: 0;
 }
 
@@ -124,9 +194,10 @@ html {
 body {
   background: var(--bg-primary);
   color: var(--foreground);
-  font-family: var(--font-sans), system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-family: var(--font-nord);
   line-height: 1.6;
   font-size: 14px;
+  font-weight: 400;
   min-height: 100vh;
   transition: all 0.2s ease;
   position: relative;
@@ -223,6 +294,11 @@ body::before {
   align-items: center;
   gap: 4px;
   transition: all 0.2s ease;
+}
+
+.tag-overlay {
+  background: rgba(255, 255, 255, 0.4);
+  border: 1px solid rgba(255, 255, 255, 0.5);
 }
 
 .tag-accent {

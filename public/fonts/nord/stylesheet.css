@@ -1,0 +1,168 @@
+@font-face {
+    font-family: 'NORD';
+    src: url('NORD-Bold.eot');
+    src: url('NORD-Bold.eot?#iefix') format('embedded-opentype'),
+        url('NORD-Bold.woff2') format('woff2'),
+        url('NORD-Bold.woff') format('woff'),
+        url('NORD-Bold.svg#NORD-Bold') format('svg');
+    font-weight: bold;
+    font-style: normal;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: 'NORD';
+    src: url('NORD-Medium.eot');
+    src: url('NORD-Medium.eot?#iefix') format('embedded-opentype'),
+        url('NORD-Medium.woff2') format('woff2'),
+        url('NORD-Medium.woff') format('woff'),
+        url('NORD-Medium.svg#NORD-Medium') format('svg');
+    font-weight: 500;
+    font-style: normal;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: 'NORD';
+    src: url('NORD-MediumItalic.eot');
+    src: url('NORD-MediumItalic.eot?#iefix') format('embedded-opentype'),
+        url('NORD-MediumItalic.woff2') format('woff2'),
+        url('NORD-MediumItalic.woff') format('woff'),
+        url('NORD-MediumItalic.svg#NORD-MediumItalic') format('svg');
+    font-weight: 500;
+    font-style: italic;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: 'NORD';
+    src: url('NORD-BoldItalic.eot');
+    src: url('NORD-BoldItalic.eot?#iefix') format('embedded-opentype'),
+        url('NORD-BoldItalic.woff2') format('woff2'),
+        url('NORD-BoldItalic.woff') format('woff'),
+        url('NORD-BoldItalic.svg#NORD-BoldItalic') format('svg');
+    font-weight: bold;
+    font-style: italic;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: 'NORD Book';
+    src: url('NORD-Book.eot');
+    src: url('NORD-Book.eot?#iefix') format('embedded-opentype'),
+        url('NORD-Book.woff2') format('woff2'),
+        url('NORD-Book.woff') format('woff'),
+        url('NORD-Book.svg#NORD-Book') format('svg');
+    font-weight: normal;
+    font-style: normal;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: 'NORD';
+    src: url('NORD-Light.eot');
+    src: url('NORD-Light.eot?#iefix') format('embedded-opentype'),
+        url('NORD-Light.woff2') format('woff2'),
+        url('NORD-Light.woff') format('woff'),
+        url('NORD-Light.svg#NORD-Light') format('svg');
+    font-weight: 300;
+    font-style: normal;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: 'NORD';
+    src: url('NORD-Italic.eot');
+    src: url('NORD-Italic.eot?#iefix') format('embedded-opentype'),
+        url('NORD-Italic.woff2') format('woff2'),
+        url('NORD-Italic.woff') format('woff'),
+        url('NORD-Italic.svg#NORD-Italic') format('svg');
+    font-weight: normal;
+    font-style: italic;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: 'NORD';
+    src: url('NORD-BlackItalic.eot');
+    src: url('NORD-BlackItalic.eot?#iefix') format('embedded-opentype'),
+        url('NORD-BlackItalic.woff2') format('woff2'),
+        url('NORD-BlackItalic.woff') format('woff'),
+        url('NORD-BlackItalic.svg#NORD-BlackItalic') format('svg');
+    font-weight: 900;
+    font-style: italic;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: 'NORD';
+    src: url('NORD-Black.eot');
+    src: url('NORD-Black.eot?#iefix') format('embedded-opentype'),
+        url('NORD-Black.woff2') format('woff2'),
+        url('NORD-Black.woff') format('woff'),
+        url('NORD-Black.svg#NORD-Black') format('svg');
+    font-weight: 900;
+    font-style: normal;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: 'NORD';
+    src: url('NORD-LightItalic.eot');
+    src: url('NORD-LightItalic.eot?#iefix') format('embedded-opentype'),
+        url('NORD-LightItalic.woff2') format('woff2'),
+        url('NORD-LightItalic.woff') format('woff'),
+        url('NORD-LightItalic.svg#NORD-LightItalic') format('svg');
+    font-weight: 300;
+    font-style: italic;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: 'NORD Book';
+    src: url('NORD-BookItalic.eot');
+    src: url('NORD-BookItalic.eot?#iefix') format('embedded-opentype'),
+        url('NORD-BookItalic.woff2') format('woff2'),
+        url('NORD-BookItalic.woff') format('woff'),
+        url('NORD-BookItalic.svg#NORD-BookItalic') format('svg');
+    font-weight: normal;
+    font-style: italic;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: 'NORD';
+    src: url('NORD-Regular.eot');
+    src: url('NORD-Regular.eot?#iefix') format('embedded-opentype'),
+        url('NORD-Regular.woff2') format('woff2'),
+        url('NORD-Regular.woff') format('woff'),
+        url('NORD-Regular.svg#NORD-Regular') format('svg');
+    font-weight: normal;
+    font-style: normal;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: 'NORD';
+    src: url('NORD-ThinItalic.eot');
+    src: url('NORD-ThinItalic.eot?#iefix') format('embedded-opentype'),
+        url('NORD-ThinItalic.woff2') format('woff2'),
+        url('NORD-ThinItalic.woff') format('woff'),
+        url('NORD-ThinItalic.svg#NORD-ThinItalic') format('svg');
+    font-weight: 100;
+    font-style: italic;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: 'NORD';
+    src: url('NORD-Thin.eot');
+    src: url('NORD-Thin.eot?#iefix') format('embedded-opentype'),
+        url('NORD-Thin.woff2') format('woff2'),
+        url('NORD-Thin.woff') format('woff'),
+        url('NORD-Thin.svg#NORD-Thin') format('svg');
+    font-weight: 100;
+    font-style: normal;
+    font-display: swap;
+}
+

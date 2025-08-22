@@ -1,0 +1,72 @@
+@font-face {
+    font-family: 'Cord';
+    src: url('Cord-Bold.eot');
+    src: url('Cord-Bold.eot?#iefix') format('embedded-opentype'),
+        url('Cord-Bold.woff2') format('woff2'),
+        url('Cord-Bold.woff') format('woff'),
+        url('Cord-Bold.svg#Cord-Bold') format('svg');
+    font-weight: bold;
+    font-style: normal;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: 'Cord';
+    src: url('Cord-Regular.eot');
+    src: url('Cord-Regular.eot?#iefix') format('embedded-opentype'),
+        url('Cord-Regular.woff2') format('woff2'),
+        url('Cord-Regular.woff') format('woff'),
+        url('Cord-Regular.svg#Cord-Regular') format('svg');
+    font-weight: normal;
+    font-style: normal;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: 'Cord';
+    src: url('Cord-BoldItalic.eot');
+    src: url('Cord-BoldItalic.eot?#iefix') format('embedded-opentype'),
+        url('Cord-BoldItalic.woff2') format('woff2'),
+        url('Cord-BoldItalic.woff') format('woff'),
+        url('Cord-BoldItalic.svg#Cord-BoldItalic') format('svg');
+    font-weight: bold;
+    font-style: italic;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: 'Cord';
+    src: url('Cord-Italic.eot');
+    src: url('Cord-Italic.eot?#iefix') format('embedded-opentype'),
+        url('Cord-Italic.woff2') format('woff2'),
+        url('Cord-Italic.woff') format('woff'),
+        url('Cord-Italic.svg#Cord-Italic') format('svg');
+    font-weight: normal;
+    font-style: italic;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: 'Cord';
+    src: url('Cord-Light.eot');
+    src: url('Cord-Light.eot?#iefix') format('embedded-opentype'),
+        url('Cord-Light.woff2') format('woff2'),
+        url('Cord-Light.woff') format('woff'),
+        url('Cord-Light.svg#Cord-Light') format('svg');
+    font-weight: 300;
+    font-style: normal;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: 'Cord';
+    src: url('Cord-LightItalic.eot');
+    src: url('Cord-LightItalic.eot?#iefix') format('embedded-opentype'),
+        url('Cord-LightItalic.woff2') format('woff2'),
+        url('Cord-LightItalic.woff') format('woff'),
+        url('Cord-LightItalic.svg#Cord-LightItalic') format('svg');
+    font-weight: 300;
+    font-style: italic;
+    font-display: swap;
+}
+
