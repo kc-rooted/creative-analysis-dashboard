@@ -118,8 +118,8 @@ export default function AdminPage() {
 
       if (response.ok) {
         setCurrentClientId(clientId);
-        // Refresh the main dashboard
-        router.push('/');
+        // Client successfully changed
+        window.location.href = '/';
       } else {
         console.error('Failed to set current client');
       }
@@ -152,56 +152,64 @@ export default function AdminPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-blue-600 mx-auto"></div>
-          <p className="mt-4 text-gray-600">Loading admin panel...</p>
-        </div>
+      <div className="min-h-screen">
+
+        <main className="w-full max-w-[2000px] mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          <div className="flex justify-center items-center" style={{minHeight: 'calc(100vh - 200px)'}}>
+            <div className="w-12 h-12 animate-logo-breathing">
+              <svg viewBox="0 0 1000 1000" className="w-full h-full">
+                <defs>
+                  <style>
+                    {`.logo-bg { fill: transparent; } .logo-text { fill: var(--text-primary); } .logo-accent { fill: var(--accent-primary); }`}
+                  </style>
+                </defs>
+                <rect className="logo-bg" width="1000" height="1000"></rect>
+                <g>
+                  <g>
+                    <path className="logo-text" d="M744.02,725.16h-77.12l-42.19-97.08-94.02-220.6-65.13,150.13-72.31,167.55h-75.99l194.08-449.7h39.22l193.47,449.7Z"></path>
+                    <path className="logo-text" d="M864.04,725.16h-70.56v-450.31h70.56v450.31Z"></path>
+                  </g>
+                  <path className="logo-accent" d="M252.65,316.43l-23.46-41.49c-62.15,107.41-93.23,177.62-93.23,210.45v26c0,32.92,31.78,103.82,95.07,212.81,61.28-107.41,92.01-177.18,91.92-209.22v-29.85c0-14.71-7.88-39.57-23.46-74.67-15.58-35.02-31.25-66.36-46.83-94.02h0ZM267.19,535.8c-10.33,10.42-22.94,15.58-37.64,15.67-14.71,0-27.31-5.16-37.64-15.49-10.42-10.33-15.58-22.94-15.67-37.64,0-14.71,5.16-27.31,15.49-37.64,10.33-10.42,22.94-15.58,37.64-15.67,14.71,0,27.31,5.16,37.64,15.49,10.42,10.33,15.58,22.94,15.67,37.64.09,14.71-5.08,27.31-15.49,37.64h0Z"></path>
+                </g>
+              </svg>
+            </div>
+          </div>
+        </main>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <header className="bg-white shadow-sm border-b">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-                <Settings className="w-6 h-6" />
-                Admin Panel - Client Management
-              </h1>
-              <p className="text-sm text-gray-600 mt-1">
-                Configure client datasets, brand guidelines, and analysis settings
-              </p>
-            </div>
-            <button
-              onClick={() => router.push('/')}
-              className="px-4 py-2 bg-gray-100 hover:bg-gray-200 rounded-md text-sm font-medium"
-            >
-              Back to Dashboard
-            </button>
-          </div>
-        </div>
-      </header>
+    <div className="min-h-screen">
 
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="bg-white rounded-lg shadow p-6 mb-6">
+      {/* Page Title */}
+      <div className="w-full max-w-[2000px] mx-auto px-4 sm:px-6 lg:px-8 py-6">
+        <div className="flex items-center gap-2 mb-2">
+          <Settings className="w-6 h-6" style={{color: 'var(--accent-primary)'}} />
+          <h2 style={{color: 'var(--text-primary)'}}>Admin Panel - Client Management</h2>
+        </div>
+        <p className="text-sm" style={{color: 'var(--text-muted)'}}>
+          Configure client datasets, brand guidelines, and analysis settings
+        </p>
+      </div>
+
+      <main className="w-full max-w-[2000px] mx-auto px-4 sm:px-6 lg:px-8 pb-8">
+        <div className="card p-6 mb-6">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-semibold">Current Active Client</h2>
-            <span className="px-3 py-1 bg-green-100 text-green-800 rounded-full text-sm font-medium">
+            <h2 className="text-lg font-semibold" style={{color: 'var(--text-primary)'}}>Current Active Client</h2>
+            <span className="px-3 py-1 rounded-full text-sm font-medium" style={{background: 'var(--accent-bg)', color: 'var(--accent-primary)'}}>
               {clients.find(c => c.id === currentClientId)?.name || 'None Selected'}
             </span>
           </div>
         </div>
 
-        <div className="bg-white rounded-lg shadow">
-          <div className="px-6 py-4 border-b border-gray-200">
+        <div className="card">
+          <div className="px-6 py-4 border-b" style={{borderColor: 'var(--border-muted)'}}>
             <div className="flex items-center justify-between">
-              <h2 className="text-lg font-semibold">Client Configurations</h2>
+              <h2 className="text-lg font-semibold" style={{color: 'var(--text-primary)'}}>Client Configurations</h2>
               <button
                 onClick={createNewClient}
-                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md text-sm font-medium flex items-center gap-2"
+                className="btn-primary px-4 py-2 text-sm font-medium flex items-center gap-2"
               >
                 <Plus className="w-4 h-4" />
                 Add Client
@@ -209,35 +217,35 @@ export default function AdminPage() {
             </div>
           </div>
 
-          <div className="divide-y divide-gray-200">
+          <div className="divide-y" style={{borderColor: 'var(--border-muted)'}}>
             {clients.map((client) => (
               <div key={client.id} className="p-6">
                 <div className="flex items-center justify-between">
                   <div className="flex-1">
                     <div className="flex items-center gap-4">
-                      <h3 className="text-lg font-medium">{client.name}</h3>
+                      <h3 className="text-lg font-medium" style={{color: 'var(--text-primary)'}}>{client.name}</h3>
                       {currentClientId === client.id && (
-                        <span className="px-2 py-1 bg-green-100 text-green-800 rounded text-xs font-medium">
+                        <span className="px-2 py-1 rounded text-xs font-medium" style={{background: 'var(--accent-bg)', color: 'var(--accent-primary)'}}>
                           ACTIVE
                         </span>
                       )}
                     </div>
-                    <p className="text-sm text-gray-600 mt-1">
+                    <p className="text-sm mt-1" style={{color: 'var(--text-muted)'}}>
                       Dataset: {client.bigquery.dataset} • Industry: {client.brand.industry}
                     </p>
                     <div className="flex items-center gap-2 mt-2">
-                      <Palette className="w-4 h-4 text-gray-400" />
+                      <Palette className="w-4 h-4" style={{color: 'var(--text-muted)'}} />
                       <div className="flex gap-1">
                         {client.brand.colors.slice(0, 5).map((color, idx) => (
                           <div
                             key={idx}
-                            className="w-4 h-4 rounded border border-gray-200"
-                            style={{ backgroundColor: color.hex }}
+                            className="w-4 h-4 rounded border"
+                            style={{ backgroundColor: color.hex, borderColor: 'var(--border-muted)' }}
                             title={`${color.name} - ${color.hex}`}
                           />
                         ))}
                         {client.brand.colors.length > 5 && (
-                          <span className="text-xs text-gray-500 ml-1">
+                          <span className="text-xs ml-1" style={{color: 'var(--text-muted)'}}>
                             +{client.brand.colors.length - 5}
                           </span>
                         )}
@@ -248,20 +256,23 @@ export default function AdminPage() {
                     {currentClientId !== client.id && (
                       <button
                         onClick={() => handleSetCurrentClient(client.id)}
-                        className="px-3 py-1 bg-blue-100 hover:bg-blue-200 text-blue-800 rounded text-sm font-medium"
+                        className="btn-secondary px-3 py-1 text-sm font-medium"
                       >
                         Activate
                       </button>
                     )}
                     <button
                       onClick={() => setEditingClient(client)}
-                      className="p-2 text-gray-400 hover:text-gray-600"
+                      className="p-2 transition-colors duration-200"
+                      style={{color: 'var(--text-muted)'}}
+                      onMouseEnter={(e) => e.currentTarget.style.color = 'var(--text-secondary)'}
+                      onMouseLeave={(e) => e.currentTarget.style.color = 'var(--text-muted)'}
                     >
                       <Edit className="w-4 h-4" />
                     </button>
                     <button
                       onClick={() => handleDeleteClient(client.id)}
-                      className="p-2 text-red-400 hover:text-red-600"
+                      className="p-2 text-red-400 hover:text-red-300 transition-colors duration-200"
                     >
                       <Trash2 className="w-4 h-4" />
                     </button>
@@ -271,12 +282,15 @@ export default function AdminPage() {
             ))}
 
             {clients.length === 0 && (
-              <div className="p-12 text-center text-gray-500">
+              <div className="p-12 text-center" style={{color: 'var(--text-muted)'}}>
                 <Settings className="w-12 h-12 mx-auto mb-4 opacity-50" />
                 <p>No clients configured yet</p>
                 <button
                   onClick={createNewClient}
-                  className="mt-2 text-blue-600 hover:text-blue-700"
+                  className="mt-2 transition-colors duration-200"
+                  style={{color: 'var(--accent-primary)'}}
+                  onMouseEnter={(e) => e.currentTarget.style.color = 'var(--accent-hover)'}
+                  onMouseLeave={(e) => e.currentTarget.style.color = 'var(--accent-primary)'}
                 >
                   Add your first client
                 </button>
@@ -352,14 +366,14 @@ function ClientEditModal({
   };
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-      <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
-        <div className="px-6 py-4 border-b border-gray-200">
+    <div className="fixed inset-0 flex items-center justify-center p-4 z-50" style={{background: 'var(--bg-overlay)'}}>
+      <div className="card max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+        <div className="px-6 py-4 border-b" style={{borderColor: 'var(--border-muted)'}}>
           <div className="flex items-center justify-between">
-            <h2 className="text-xl font-semibold">
+            <h2 className="text-xl font-semibold" style={{color: 'var(--text-primary)'}}>
               {isCreating ? 'Create New Client' : 'Edit Client'}
             </h2>
-            <button onClick={onCancel} className="text-gray-400 hover:text-gray-600">
+            <button onClick={onCancel} className="transition-colors duration-200" style={{color: 'var(--text-muted)'}} onMouseEnter={(e) => e.currentTarget.style.color = 'var(--text-secondary)'} onMouseLeave={(e) => e.currentTarget.style.color = 'var(--text-muted)'}>
               <X className="w-6 h-6" />
             </button>
           </div>
@@ -369,33 +383,35 @@ function ClientEditModal({
           {/* Basic Info */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block text-sm font-medium mb-1" style={{color: 'var(--text-secondary)'}}>
                 Client ID
               </label>
               <input
                 type="text"
                 value={editedClient.id}
                 onChange={(e) => setEditedClient(prev => ({ ...prev, id: e.target.value }))}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3 py-2 rounded-md focus:outline-none"
+                style={{background: 'var(--bg-elevated)', border: '1px solid var(--border-muted)', color: 'var(--text-primary)'}}
                 placeholder="client_id_lowercase"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block text-sm font-medium mb-1" style={{color: 'var(--text-secondary)'}}>
                 Client Name
               </label>
               <input
                 type="text"
                 value={editedClient.name}
                 onChange={(e) => setEditedClient(prev => ({ ...prev, name: e.target.value }))}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3 py-2 rounded-md focus:outline-none"
+                style={{background: 'var(--bg-elevated)', border: '1px solid var(--border-muted)', color: 'var(--text-primary)'}}
                 placeholder="Client Display Name"
               />
             </div>
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label className="block text-sm font-medium mb-1" style={{color: 'var(--text-secondary)'}}>
               BigQuery Dataset
             </label>
             <input
@@ -405,7 +421,8 @@ function ClientEditModal({
                 ...prev, 
                 bigquery: { ...prev.bigquery, dataset: e.target.value }
               }))}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full px-3 py-2 rounded-md focus:outline-none"
+              style={{background: 'var(--bg-elevated)', border: '1px solid var(--border-muted)', color: 'var(--text-primary)'}}
               placeholder="client_analytics"
             />
           </div>
@@ -413,12 +430,12 @@ function ClientEditModal({
           {/* Brand Colors */}
           <div>
             <div className="flex items-center justify-between mb-3">
-              <label className="block text-sm font-medium text-gray-700">
+              <label className="block text-sm font-medium" style={{color: 'var(--text-secondary)'}}>
                 Brand Colors
               </label>
               <button
                 onClick={addBrandColor}
-                className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded text-sm flex items-center gap-1"
+                className="btn-primary px-3 py-1 text-sm flex items-center gap-1"
               >
                 <Plus className="w-3 h-3" />
                 Add Color
@@ -426,12 +443,13 @@ function ClientEditModal({
             </div>
             <div className="space-y-3">
               {editedClient.brand.colors.map((color, index) => (
-                <div key={index} className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
+                <div key={index} className="flex items-center gap-3 p-3 rounded-lg" style={{background: 'var(--bg-elevated)'}}>
                   <input
                     type="color"
                     value={color.hex}
                     onChange={(e) => updateBrandColor(index, { hex: e.target.value })}
-                    className="w-12 h-8 rounded border border-gray-300"
+                    className="w-12 h-8 rounded"
+                    style={{border: '1px solid var(--border-muted)'}}
                   />
                   <div className="flex-1 grid grid-cols-1 md:grid-cols-3 gap-2">
                     <input
@@ -439,19 +457,22 @@ function ClientEditModal({
                       value={color.name}
                       onChange={(e) => updateBrandColor(index, { name: e.target.value })}
                       placeholder="Color name"
-                      className="px-2 py-1 border border-gray-300 rounded text-sm"
+                      className="px-2 py-1 rounded text-sm"
+                      style={{background: 'var(--bg-card)', border: '1px solid var(--border-muted)', color: 'var(--text-primary)'}}
                     />
                     <input
                       type="text"
                       value={color.description}
                       onChange={(e) => updateBrandColor(index, { description: e.target.value })}
                       placeholder="Description"
-                      className="px-2 py-1 border border-gray-300 rounded text-sm"
+                      className="px-2 py-1 rounded text-sm"
+                      style={{background: 'var(--bg-card)', border: '1px solid var(--border-muted)', color: 'var(--text-primary)'}}
                     />
                     <select
                       value={color.usage}
                       onChange={(e) => updateBrandColor(index, { usage: e.target.value })}
-                      className="px-2 py-1 border border-gray-300 rounded text-sm"
+                      className="px-2 py-1 rounded text-sm"
+                      style={{background: 'var(--bg-card)', border: '1px solid var(--border-muted)', color: 'var(--text-primary)'}}
                     >
                       <option value="primary_brand">Primary Brand</option>
                       <option value="accent">Accent</option>
@@ -462,7 +483,7 @@ function ClientEditModal({
                   </div>
                   <button
                     onClick={() => removeBrandColor(index)}
-                    className="text-red-400 hover:text-red-600"
+                    className="text-red-400 hover:text-red-300 transition-colors duration-200"
                   >
                     <Trash2 className="w-4 h-4" />
                   </button>
@@ -474,7 +495,7 @@ function ClientEditModal({
           {/* Brand Details */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block text-sm font-medium mb-1" style={{color: 'var(--text-secondary)'}}>
                 Industry
               </label>
               <input
@@ -484,12 +505,13 @@ function ClientEditModal({
                   ...prev, 
                   brand: { ...prev.brand, industry: e.target.value }
                 }))}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3 py-2 rounded-md focus:outline-none"
+                style={{background: 'var(--bg-elevated)', border: '1px solid var(--border-muted)', color: 'var(--text-primary)'}}
                 placeholder="e.g. golf_equipment, retail, technology"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block text-sm font-medium mb-1" style={{color: 'var(--text-secondary)'}}>
                 Brand Personality
               </label>
               <input
@@ -499,14 +521,15 @@ function ClientEditModal({
                   ...prev, 
                   brand: { ...prev.brand, brandPersonality: e.target.value }
                 }))}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3 py-2 rounded-md focus:outline-none"
+                style={{background: 'var(--bg-elevated)', border: '1px solid var(--border-muted)', color: 'var(--text-primary)'}}
                 placeholder="e.g. premium_performance_focused_innovative"
               />
             </div>
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label className="block text-sm font-medium mb-1" style={{color: 'var(--text-secondary)'}}>
               Custom Prompt Additions
             </label>
             <textarea
@@ -516,22 +539,23 @@ function ClientEditModal({
                 analysis: { ...prev.analysis, customPromptAdditions: e.target.value }
               }))}
               rows={3}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full px-3 py-2 rounded-md focus:outline-none"
+              style={{background: 'var(--bg-elevated)', border: '1px solid var(--border-muted)', color: 'var(--text-primary)'}}
               placeholder="Additional context for Claude analysis..."
             />
           </div>
         </div>
 
-        <div className="px-6 py-4 border-t border-gray-200 flex items-center justify-end gap-3">
+        <div className="px-6 py-4 border-t flex items-center justify-end gap-3" style={{borderColor: 'var(--border-muted)'}}>
           <button
             onClick={onCancel}
-            className="px-4 py-2 text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-md text-sm font-medium"
+            className="btn-secondary px-4 py-2 text-sm font-medium"
           >
             Cancel
           </button>
           <button
             onClick={() => onSave(editedClient)}
-            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md text-sm font-medium flex items-center gap-2"
+            className="btn-primary px-4 py-2 text-sm font-medium flex items-center gap-2"
           >
             <Save className="w-4 h-4" />
             {isCreating ? 'Create Client' : 'Save Changes'}

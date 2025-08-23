@@ -105,7 +105,7 @@ export function CreativeCard({
         <div className="flex-1">
 
           {creative.creative_tags && creative.creative_tags.length > 0 && (
-            <div className="flex flex-wrap gap-1 mb-3 justify-center">
+            <div className="flex flex-wrap gap-1 mb-8 justify-center">
               {creative.creative_tags.slice(0, 3).map(tag => (
                 <span 
                   key={tag}

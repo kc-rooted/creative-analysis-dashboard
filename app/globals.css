@@ -349,3 +349,86 @@ button:focus {
 ::-webkit-scrollbar-thumb:hover {
   background: var(--accent-subtle);
 }
+
+/* Tool Message Styles for Conversation */
+.tool-message {
+  padding: 1rem;
+  margin: 1rem 0;
+  border-radius: 8px;
+  font-size: .7rem;
+  font-weight: 500;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-muted);
+  color: var(--text-secondary);
+}
+
+/* Tool Call (Starting) */
+.tool-call {
+  color: var(--text-secondary);
+}
+
+/* Tool Result (Completed) */
+.tool-result {
+  color: var(--text-secondary);
+}
+
+/* Tool Progress (In Progress) */
+.tool-progress {
+  color: var(--text-secondary);
+}
+
+/* Specific Tool Types */
+.tool-sql {
+  color: var(--text-secondary);
+}
+
+.tool-schema {
+  color: var(--accent-primary);
+}
+
+/* Prose styling for markdown content */
+.prose {
+  color: var(--text-primary);
+}
+
+.prose h1, .prose h2, .prose h3, .prose h4, .prose h5, .prose h6 {
+  color: var(--text-primary);
+  font-family: var(--font-nord);
+}
+
+.prose p {
+  color: var(--text-secondary);
+}
+
+.prose strong {
+  color: var(--text-primary);
+}
+
+.prose code {
+  background: var(--bg-elevated);
+  color: var(--accent-primary);
+  padding: 0.125rem 0.25rem;
+  border-radius: 0.25rem;
+}
+
+.prose pre {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-muted);
+  border-radius: 0.5rem;
+  padding: 1rem;
+}
+
+.prose table {
+  border: 1px solid var(--border-muted);
+}
+
+.prose th {
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  border: 1px solid var(--border-muted);
+}
+
+.prose td {
+  border: 1px solid var(--border-muted);
+  color: var(--text-secondary);
+}
