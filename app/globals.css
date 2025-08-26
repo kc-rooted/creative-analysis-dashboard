@@ -71,6 +71,119 @@
   font-display: swap;
 }
 
+/* TGS Perfect Font */
+@font-face {
+  font-family: 'TGS Perfect';
+  src: url('/fonts/tgsperfect/TGSPerfectCondensed.woff2') format('woff2'),
+       url('/fonts/tgsperfect/TGSPerfectCondensed.woff') format('woff'),
+       url('/fonts/tgsperfect/TGSPerfectCondensed.eot') format('embedded-opentype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* Vancouver Font */
+@font-face {
+  font-family: 'Vancouver';
+  src: url('/fonts/vancouver/Vancouver-2.0.woff2') format('woff2'),
+       url('/fonts/vancouver/Vancouver-2.0.woff') format('woff'),
+       url('/fonts/vancouver/Vancouver-2.0.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* Grift Font Family */
+@font-face {
+  font-family: 'Grift';
+  src: url('/fonts/grift/Grift-Thin.woff2') format('woff2'),
+       url('/fonts/grift/Grift-Thin.woff') format('woff'),
+       url('/fonts/grift/Grift-Thin.ttf') format('truetype');
+  font-weight: 100;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Grift';
+  src: url('/fonts/grift/Grift-ExtraLight.woff2') format('woff2'),
+       url('/fonts/grift/Grift-ExtraLight.woff') format('woff'),
+       url('/fonts/grift/Grift-ExtraLight.ttf') format('truetype');
+  font-weight: 200;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Grift';
+  src: url('/fonts/grift/Grift-Light.woff2') format('woff2'),
+       url('/fonts/grift/Grift-Light.woff') format('woff'),
+       url('/fonts/grift/Grift-Light.ttf') format('truetype');
+  font-weight: 300;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Grift';
+  src: url('/fonts/grift/Grift-Regular.woff2') format('woff2'),
+       url('/fonts/grift/Grift-Regular.woff') format('woff'),
+       url('/fonts/grift/Grift-Regular.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Grift';
+  src: url('/fonts/grift/Grift-Medium.woff2') format('woff2'),
+       url('/fonts/grift/Grift-Medium.woff') format('woff'),
+       url('/fonts/grift/Grift-Medium.ttf') format('truetype');
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Grift';
+  src: url('/fonts/grift/Grift-SemiBold.woff2') format('woff2'),
+       url('/fonts/grift/Grift-SemiBold.woff') format('woff'),
+       url('/fonts/grift/Grift-SemiBold.ttf') format('truetype');
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Grift';
+  src: url('/fonts/grift/Grift-Bold.woff2') format('woff2'),
+       url('/fonts/grift/Grift-Bold.woff') format('woff'),
+       url('/fonts/grift/Grift-Bold.ttf') format('truetype');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Grift';
+  src: url('/fonts/grift/Grift-ExtraBold.woff2') format('woff2'),
+       url('/fonts/grift/Grift-ExtraBold.woff') format('woff'),
+       url('/fonts/grift/Grift-ExtraBold.ttf') format('truetype');
+  font-weight: 800;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Grift';
+  src: url('/fonts/grift/Grift-Black.woff2') format('woff2'),
+       url('/fonts/grift/Grift-Black.woff') format('woff'),
+       url('/fonts/grift/Grift-Black.ttf') format('truetype');
+  font-weight: 900;
+  font-style: normal;
+  font-display: swap;
+}
+
 :root {
   /* Base Colors */
   --bg-primary: #0a0e13;
@@ -139,6 +252,7 @@ h1 {
   font-family: var(--font-nord);
   font-size: 2.986rem;
   font-weight: 900;
+  line-height: normal;
   margin: 0;
 }
 
@@ -146,6 +260,7 @@ h2 {
   font-family: var(--font-nord);
   font-size: 2.488rem;
   font-weight: 700;
+  line-height: normal;
   margin: 0;
 }
 
@@ -153,6 +268,7 @@ h3 {
   font-family: var(--font-nord);
   font-size: 2.074rem;
   font-weight: 500;
+  line-height: normal;
   margin: 0;
 }
 
@@ -160,6 +276,7 @@ h4 {
   font-family: var(--font-nord);
   font-size: 1.728rem;
   font-weight: 450;
+  line-height: normal;
   margin: 0;
 }
 
@@ -167,6 +284,7 @@ h5 {
   font-family: var(--font-nord);
   font-size: 1.44rem;
   font-weight: 400;
+  line-height: normal;
   margin: 0;
 }
 
@@ -174,6 +292,7 @@ h6 {
   font-family: var(--font-nord);
   font-size: 1.2rem;
   font-weight: 300;
+  line-height: normal;
   margin: 0;
 }
 
@@ -181,6 +300,39 @@ p {
   font-size: 1rem;
   padding: 0.25rem 0rem;
   margin: 0;
+}
+
+/* List styles */
+ul {
+  list-style-type: disc;
+  padding-left: 1.5rem;
+  margin: 0.5rem 0;
+}
+
+ol {
+  list-style-type: decimal;
+  padding-left: 1.5rem;
+  margin: 0.5rem 0;
+}
+
+li {
+  margin: 0.25rem 0;
+  line-height: 1.6;
+}
+
+ul ul, ol ul {
+  list-style-type: circle;
+  margin: 0.25rem 0;
+}
+
+ul ul ul, ol ol ul {
+  list-style-type: square;
+}
+
+/* Table styles */
+table {
+  margin-top: 1rem;
+  margin-bottom: 1rem;
 }
 
 small {

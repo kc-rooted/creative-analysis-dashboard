@@ -2,6 +2,7 @@
 
 import { usePathname, useRouter } from 'next/navigation';
 import { MessageSquare, LayoutGrid, Settings } from 'lucide-react';
+import { UserMenu } from './auth/user-menu';
 
 export function Navigation() {
   const pathname = usePathname();
@@ -87,6 +88,10 @@ export function Navigation() {
             >
               <Settings className="w-4 h-4" />
             </button>
+
+            <div className="w-px h-8 mx-2" style={{background: 'var(--border-muted)'}}></div>
+            
+            <UserMenu />
           </div>
         </div>
       </div>

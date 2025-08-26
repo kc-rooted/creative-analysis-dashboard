@@ -31,6 +31,39 @@ import {
   CollapsibleTrigger,
 } from "@/components/conversation/collapsible"
 
+const conversationStyles = `
+  .conversation-wrapper {
+    font-size: 1.2rem; /* Increase base size by 20% */
+  }
+  
+  .grift-content {
+    font-family: 'Grift', sans-serif;
+  }
+  
+  .grift-content h1,
+  .grift-content h2,
+  .grift-content h3,
+  .grift-content h4,
+  .grift-content h5,
+  .grift-content h6 {
+    font-family: 'Grift', sans-serif;
+    line-height: normal;
+  }
+  
+  .grift-content p,
+  .grift-content ul,
+  .grift-content ol,
+  .grift-content li,
+  .grift-content div {
+    font-family: 'Grift', sans-serif;
+  }
+  
+  /* Tool messages stay at original size */
+  .tool-message {
+    font-size: 0.833rem; /* Scale back to original size (1rem / 1.2) */
+  }
+`;
+
 export default function ConversationPage() {
   // State needs to be defined first
   const [input, setInput] = useState<string>('');
@@ -61,8 +94,9 @@ export default function ConversationPage() {
   const isAssistantThinking = status === 'streaming' || status === 'submitted';
 
   return (
-    <div className="flex min-h-svh flex-col items-center justify-center gap-6">
-      <div className="w-full max-w-4xl">
+    <div className="flex min-h-svh flex-col items-center justify-center gap-6 conversation-wrapper">
+      <style jsx>{conversationStyles}</style>
+      <div className="w-full" style={{ maxWidth: '73rem' }}>
         <div className="center">
           <h1 className="text-4xl font-extrabold text-center" style={{color: 'var(--text-primary)'}}>
             What do you want to learn today about {selectedClient === 'jumbomax' ? 'JumboMax' : selectedClient === 'hb' ? 'Holderness & Bourne' : selectedClient === 'lab' ? 'L.A.B. Golf' : selectedClient}?
@@ -107,14 +141,14 @@ export default function ConversationPage() {
               }
               if (part.type === 'tool-call') {
                 return { type: 'tool-element', element: (
-                  <div key={`tool-call-${partIndex}`} className="tool-message tool-call">
+                  <div key={`tool-call-${partIndex}`} className="tool-message tool-call" style={{ fontFamily: "'NORD', sans-serif" }}>
                     <Cog className="w-4 h-4 inline mr-2" /> <strong>Executing {part.toolName}</strong>...
                   </div>
                 ), key: `tool-call-${partIndex}` };
               }
               if (part.type === 'tool-result') {
                 return { type: 'tool-element', element: (
-                  <div key={`tool-result-${partIndex}`} className="tool-message tool-result">
+                  <div key={`tool-result-${partIndex}`} className="tool-message tool-result" style={{ fontFamily: "'NORD', sans-serif" }}>
                     <CheckCircle className="w-4 h-4 inline mr-2" /> <strong>Tool completed successfully</strong>
                   </div>
                 ), key: `tool-result-${partIndex}` };
@@ -129,14 +163,14 @@ export default function ConversationPage() {
                     const results = part.output.results;
                     const count = part.output.count || results.length;
                     return { type: 'tool-element', element: (
-                      <div key={`tool-sql-${partIndex}`} className="tool-message tool-result tool-sql">
+                      <div key={`tool-sql-${partIndex}`} className="tool-message tool-result tool-sql" style={{ fontFamily: "'NORD', sans-serif" }}>
                         <CheckCircle className="w-4 h-4 inline mr-2" /> <strong>SQL Query Completed</strong> - Found {count} rows
                       </div>
                     ), key: `tool-sql-${partIndex}` };
                   }
                   if (toolName === 'getTableSchema' && part.output) {
                     return { type: 'tool-element', element: (
-                      <div key={`tool-schema-${partIndex}`} className="tool-message tool-result tool-schema">
+                      <div key={`tool-schema-${partIndex}`} className="tool-message tool-result tool-schema" style={{ fontFamily: "'NORD', sans-serif" }}>
                         <CheckCircle className="w-4 h-4 inline mr-2" /> <strong>Schema Retrieved</strong> - Table structure loaded successfully
                       </div>
                     ), key: `tool-schema-${partIndex}` };
@@ -149,27 +183,27 @@ export default function ConversationPage() {
                   }
                   // Other tools
                   return { type: 'tool-element', element: (
-                    <div key={`tool-${toolName}-${partIndex}`} className={`tool-message tool-result tool-${toolName}`}>
+                    <div key={`tool-${toolName}-${partIndex}`} className={`tool-message tool-result tool-${toolName}`} style={{ fontFamily: "'NORD', sans-serif" }}>
                       <CheckCircle className="w-4 h-4 inline mr-2" /> <strong>{toolName} Completed</strong>
                     </div>
                   ), key: `tool-${toolName}-${partIndex}` };
                 }
                 if (part.input) {
                   return { type: 'tool-element', element: (
-                    <div key={`tool-start-${toolName}-${partIndex}`} className={`tool-message tool-call tool-${toolName}`}>
+                    <div key={`tool-start-${toolName}-${partIndex}`} className={`tool-message tool-call tool-${toolName}`} style={{ fontFamily: "'NORD', sans-serif" }}>
                       <Cog className="w-4 h-4 inline mr-2" /> <strong>{toolName}</strong> started
                     </div>
                   ), key: `tool-start-${toolName}-${partIndex}` };
                 }
                 if (part.state === 'done') {
                   return { type: 'tool-element', element: (
-                    <div key={`tool-done-${toolName}-${partIndex}`} className={`tool-message tool-result tool-${toolName}`}>
+                    <div key={`tool-done-${toolName}-${partIndex}`} className={`tool-message tool-result tool-${toolName}`} style={{ fontFamily: "'NORD', sans-serif" }}>
                       <CheckCircle className="w-4 h-4 inline mr-2" /> <strong>{toolName}</strong> completed successfully
                     </div>
                   ), key: `tool-done-${toolName}-${partIndex}` };
                 }
                 return { type: 'tool-element', element: (
-                  <div key={`tool-progress-${toolName}-${partIndex}`} className={`tool-message tool-progress tool-${toolName}`}>
+                  <div key={`tool-progress-${toolName}-${partIndex}`} className={`tool-message tool-progress tool-${toolName}`} style={{ fontFamily: "'NORD', sans-serif" }}>
                     <Loader2 className="w-4 h-4 inline mr-2 animate-spin" /> <strong>{toolName}</strong> in progress...
                   </div>
                 ), key: `tool-progress-${toolName}-${partIndex}` };
@@ -225,9 +259,11 @@ export default function ConversationPage() {
                   {orderedContent.map((item, idx) => (
                     <div key={item.key} className={item.isSummary ? 'summary' : ''}>
                       {item.type === 'markdown' ? (
-                        <MemoizedMarkdown id={`${message.id}-${idx}`} content={item.content} />
+                        <div className="grift-content">
+                          <MemoizedMarkdown id={`${message.id}-${idx}`} content={item.content} />
+                        </div>
                       ) : item.type === 'report' ? (
-                        <div className="my-6">
+                        <div className="my-6 grift-content">
                           <ReportRenderer report={item.report} />
                         </div>
                       ) : (
@@ -238,7 +274,7 @@ export default function ConversationPage() {
                   {isLastAssistant && isAssistantThinking && (
                     <div className="flex items-center gap-2 mt-2">
                       <div className="animate-spin w-4 h-4 border-2 border-t-transparent rounded-full" style={{borderColor: 'var(--accent-primary)'}}></div>
-                      <p style={{color: 'var(--text-muted)'}}><em>Working on your request...</em></p>
+                      <p className="grift-content" style={{color: 'var(--text-muted)'}}><em>Working on your request...</em></p>
                     </div>
                   )}
                 </div>
