@@ -1,0 +1,22 @@
+version: '3.8'
+
+services:
+  rooted-creative-ai-placeholder:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: rooted-creative-ai-placeholder
+    restart: unless-stopped
+    ports:
+      - "3000:80"
+    networks:
+      - rooted-network
+    labels:
+      - "com.docker.compose.project=rooted-creative-ai"
+    environment:
+      - NGINX_HOST=localhost
+      - NGINX_PORT=80
+
+networks:
+  rooted-network:
+    driver: bridge

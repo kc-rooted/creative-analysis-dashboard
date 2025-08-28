@@ -10,6 +10,7 @@ export async function GET(request: NextRequest) {
     const offset = parseInt(searchParams.get('offset') || '0');
     const sortBy = (searchParams.get('sortBy') || 'roas') as 'priority' | 'date' | 'usage' | 'roas' | 'analyzed';
 
+
     // Check if we should use mock data
     if (process.env.USE_MOCK_DATA === 'true') {
       console.log('Using mock data - USE_MOCK_DATA is set to true');
@@ -40,15 +41,7 @@ export async function GET(request: NextRequest) {
 
     const creatives = await getDeduplicatedCreatives(status, limit, offset, sortBy);
     
-    // Convert BigQuery Big decimal objects to numbers for ROAS
-    const processedCreatives = creatives.map(creative => {
-      if (creative.roas && typeof creative.roas === 'object') {
-        creative.roas = parseFloat(creative.roas.toString());
-      }
-      return creative;
-    });
-    
-    return NextResponse.json(processedCreatives);
+    return NextResponse.json(creatives);
   } catch (error) {
     console.error('Error fetching creatives:', error);
     

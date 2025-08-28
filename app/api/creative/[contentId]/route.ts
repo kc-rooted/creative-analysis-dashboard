@@ -125,28 +125,7 @@ export async function GET(
       );
     }
 
-    console.log('Found creative data. Revenue:', rows[0].total_revenue, 'Conversion Rate:', rows[0].conversion_rate_percent);
-    
-    // Convert BigQuery Big decimal objects to numbers
-    const creative = rows[0];
-    if (creative.total_revenue && typeof creative.total_revenue === 'object') {
-      creative.total_revenue = parseFloat(creative.total_revenue.toString());
-    }
-    if (creative.conversion_rate_percent && typeof creative.conversion_rate_percent === 'object') {
-      creative.conversion_rate_percent = parseFloat(creative.conversion_rate_percent.toString());
-    }
-    if (creative.roas && typeof creative.roas === 'object') {
-      creative.roas = parseFloat(creative.roas.toString());
-    }
-    
-    // Convert funnel spend fields from Big objects to numbers
-    ['tofu_spend', 'mofu_spend', 'bofu_spend'].forEach(field => {
-      if (creative[field] && typeof creative[field] === 'object') {
-        creative[field] = parseFloat(creative[field].toString());
-      }
-    });
-    
-    return NextResponse.json(creative);
+    return NextResponse.json(rows[0]);
   } catch (error) {
     console.error('Error fetching creative details:', error);
     return NextResponse.json(
