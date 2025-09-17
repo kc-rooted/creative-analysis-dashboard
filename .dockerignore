@@ -43,8 +43,12 @@ tmp
 temp
 
 # Service account files
-*.json
+*-key.json
+*-service-account.json
+service-account.json
 !package*.json
+!tsconfig.json
+!next.config.json
 
 # Database files
 *.db
