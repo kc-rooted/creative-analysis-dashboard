@@ -24,7 +24,7 @@ services:
       - "4000:4000"
     environment:
       - NODE_ENV=production
-      - NEXTAUTH_URL=https://your-domain.com
+      - NEXTAUTH_URL=https://ai.rootedsolutions.co
       - NEXTAUTH_SECRET=your-nextauth-secret-here
       - GOOGLE_CLIENT_ID=your-google-client-id
       - GOOGLE_CLIENT_SECRET=your-google-client-secret
