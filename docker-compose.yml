@@ -6,14 +6,14 @@ services:
       - "4000:4000"
     environment:
       - NODE_ENV=production
-      - NEXTAUTH_URL=https://ai.rootedsolutions.co
-      - NEXTAUTH_SECRET=your-nextauth-secret-here
-      - AUTH_TRUST_HOST=true
-      - GOOGLE_CLIENT_ID=your-google-client-id
-      - GOOGLE_CLIENT_SECRET=your-google-client-secret
-      - GOOGLE_CLOUD_PROJECT_ID=your-project-id
-      - CURRENT_CLIENT_ID=your-client-id
-      - BIGQUERY_DATASET=your-dataset-name
-      - ANTHROPIC_API_KEY=your-anthropic-api-key
-      - GOOGLE_SERVICE_ACCOUNT_KEY=your-service-account-json-as-string
+      - NEXTAUTH_URL=${NEXTAUTH_URL}
+      - NEXTAUTH_SECRET=${NEXTAUTH_SECRET}
+      - AUTH_TRUST_HOST=${AUTH_TRUST_HOST}
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
+      - GOOGLE_CLOUD_PROJECT_ID=${GOOGLE_CLOUD_PROJECT_ID}
+      - CURRENT_CLIENT_ID=${CURRENT_CLIENT_ID}
+      - BIGQUERY_DATASET=${BIGQUERY_DATASET}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - GOOGLE_SERVICE_ACCOUNT_KEY=${GOOGLE_SERVICE_ACCOUNT_KEY}
     restart: unless-stopped
