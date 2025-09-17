@@ -47,3 +47,6 @@ dbdocs-key.json
 
 # generated database files
 output.dbml
+
+# deployment guide with secrets (local only)
+PORTAINER_DEPLOYMENT.md
