@@ -2,25 +2,24 @@ FROM node:20-alpine
 
 WORKDIR /app
 
-# Copy package files
+# Install dependencies first (better Docker layer caching)
 COPY package*.json ./
-
-# Install ALL dependencies (needed for build)
-RUN npm ci
+RUN npm ci --prefer-offline --no-audit --progress=false
 
 # Copy source code
 COPY . .
 
-# Set build-time environment variables
+# Set build-time environment variables to speed up build
 ENV NODE_ENV=production
 ENV NEXT_LINT=false
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV SKIP_ENV_VALIDATION=true
+ENV CI=true
 
-# Build the application with verbose output for debugging
-RUN npm run build 2>&1 || (echo "Build failed, checking logs..." && cat /tmp/next-build.log 2>/dev/null && exit 1)
+# Build the application
+RUN npm run build
 
-# Remove dev dependencies after build
+# Remove dev dependencies to reduce image size
 RUN npm prune --production
 
 # Expose port

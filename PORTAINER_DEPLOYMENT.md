@@ -100,6 +100,18 @@ CMD ["npm", "start"]
 
 ## Troubleshooting
 
+### Build Timeout (504 Gateway Timeout)
+If you get a 504 timeout during build:
+1. **Wait and retry** - The first build takes longest due to downloading dependencies
+2. **Try during off-peak hours** - Less server load
+3. **Alternative method**: Build manually in Portainer terminal:
+   ```bash
+   git clone https://github.com/kc-rooted/creative-analysis-dashboard.git
+   cd creative-analysis-dashboard
+   docker build -t rooted-intelligence:local .
+   ```
+   Then use `image: rooted-intelligence:local` in your stack
+
 ### Build Fails
 - Check that all environment variables are set
 - Verify GitHub repository access
@@ -107,10 +119,11 @@ CMD ["npm", "start"]
 
 ### App Won't Start
 - Ensure port 4000 is not already in use
-- Check environment variable values
+- Check environment variable values (especially `AUTH_TRUST_HOST=true`)
 - Review container logs
 
 ### Authentication Issues
 - Verify `NEXTAUTH_URL` matches your domain
 - Check Google OAuth redirect URIs are configured
 - Ensure all auth-related environment variables are set
+- **Critical**: Must include `AUTH_TRUST_HOST=true`
