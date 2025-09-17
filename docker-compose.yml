@@ -1,0 +1,27 @@
+version: '3.8'
+services:
+  creative-dashboard:
+    build: .
+    ports:
+      - "4000:4000"
+    environment:
+      - NODE_ENV=production
+      - NEXTAUTH_URL=https://your-domain.com
+      - NEXTAUTH_SECRET=your-nextauth-secret-here
+      - GOOGLE_CLIENT_ID=your-google-client-id
+      - GOOGLE_CLIENT_SECRET=your-google-client-secret
+      - ANTHROPIC_API_KEY=your-anthropic-api-key
+      - OPENAI_API_KEY=your-openai-api-key
+      - GOOGLE_API_KEY=your-google-api-key
+    restart: unless-stopped
+    volumes:
+      - app_data:/app/data
+    networks:
+      - web
+
+volumes:
+  app_data:
+
+networks:
+  web:
+    external: true
