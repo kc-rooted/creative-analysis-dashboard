@@ -126,15 +126,13 @@ Always structure your responses with clear headings, use bullet points for key i
       messages: modelMessages,
       onFinish: async (result) => {
         // Log any errors for debugging
-        if (result.error) {
+        if ('error' in result && result.error) {
           console.error('Stream finished with error:', result.error);
         }
         // Log usage information if available
         if (result.usage) {
           console.log('Usage data:', result.usage);
-          // Append usage info to the response text
-          const { inputTokens, outputTokens, totalTokens } = result.usage;
-          result.text += `\\n\\n<div class=\"usage-info\" style=\"font-size: 0.7rem; color: #9CA3AF; margin-top: 1rem; padding-top: 0.5rem; border-top: 1px solid #E5E7EB;\">💰 ${inputTokens} in • ${outputTokens} out • ${totalTokens} total tokens</div>`;
+          // Note: Can't modify result.text as it's readonly
         }
       },
     });
