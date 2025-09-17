@@ -8,11 +8,14 @@ services:
       - NODE_ENV=production
       - NEXTAUTH_URL=https://ai.rootedsolutions.co
       - NEXTAUTH_SECRET=your-nextauth-secret-here
+      - AUTH_TRUST_HOST=true
       - GOOGLE_CLIENT_ID=your-google-client-id
       - GOOGLE_CLIENT_SECRET=your-google-client-secret
+      - GOOGLE_CLOUD_PROJECT_ID=your-project-id
+      - CURRENT_CLIENT_ID=your-client-id
+      - BIGQUERY_DATASET=your-dataset-name
       - ANTHROPIC_API_KEY=your-anthropic-api-key
-      - OPENAI_API_KEY=your-openai-api-key
-      - GOOGLE_API_KEY=your-google-api-key
+      - GOOGLE_SERVICE_ACCOUNT_KEY=your-service-account-json-as-string
     restart: unless-stopped
     volumes:
       - app_data:/app/data
