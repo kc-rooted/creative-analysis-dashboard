@@ -17,14 +17,3 @@ services:
       - ANTHROPIC_API_KEY=your-anthropic-api-key
       - GOOGLE_SERVICE_ACCOUNT_KEY=your-service-account-json-as-string
     restart: unless-stopped
-    volumes:
-      - app_data:/app/data
-    networks:
-      - web
-
-volumes:
-  app_data:
-
-networks:
-  web:
-    external: true
