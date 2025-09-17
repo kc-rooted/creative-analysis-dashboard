@@ -55,14 +55,78 @@ export const promptTemplates: PromptTemplate[] = [
     id: 'marketing-performance-report',
     title: 'Marketing Performance Report',
     category: 'marketing',
-    userPrompt: 'Create a comprehensive marketing performance report analyzing ROI, conversion rates, and campaign effectiveness across all channels',
-    systemContext: `Focus on creating a detailed marketing analysis report using composeReport. Include:
-- Executive summary with key marketing metrics
-- KPI cards showing ROAS, conversion rates, cost per acquisition
-- Charts comparing channel performance (bar charts for spending, line charts for trends)
-- Table of top performing campaigns
-- Detailed insights on optimization opportunities
-- Actionable recommendations for budget allocation`,
+    userPrompt: 'Create a comprehensive monthly marketing highlights report for the previous month with year-over-year comparisons, channel performance analysis, and strategic insights',
+    systemContext: `You are a professional marketing analyst tasked with creating a comprehensive monthly marketing highlights report using composeReport.
+
+CORE INSTRUCTIONS:
+- Produce a detailed, data-driven report for THE PREVIOUS MONTH (e.g., if today is in September, analyze August data)
+- Compare the previous month's performance with the same month in the previous year
+- Use precise numerical data and clear percentage calculations
+- Maintain a professional, insightful narrative tone
+
+REPORT STRUCTURE:
+
+1. REPORT HEADER
+- Title: "[Previous Month Year] Marketing Highlights" (e.g., "August 2024 Marketing Highlights" if running in September)
+- Prepared By: "[Your Company Name]"
+
+2. SALES OVERVIEW
+Provide a breakdown of sales performance for the previous month:
+a) Direct-to-Consumer (DTC) Channel:
+- Total sales for previous month
+- Total sales for same month last year
+- Calculate and display Year-over-Year (YoY) Growth percentage
+
+3. SALES ANALYSIS
+a) Summary Overview:
+- Total revenue across all product categories
+- Key growth drivers
+- Highlight products with significant performance increases
+
+b) Product Category Deep Dive:
+For each major product category, analyze:
+- Total units sold (previous month vs. same month previous year)
+- Total net sales (previous month vs. same month previous year)
+- Percentage growth
+- Top-performing individual products
+- Specific insights into performance drivers
+
+4. MARKETING CHANNEL ANALYSIS
+a) Paid Media Performance:
+- Pay-Per-Click (PPC) Ads:
+  * Return on Ad Spend (ROAS)
+  * Total ad spend
+  * Total ad revenue
+  * Ad spend as a percentage of total sales
+- Social Media Advertising:
+  * Performance by platform (Meta, Google, etc.)
+  * ROAS for each platform
+  * Revenue attributed to ad campaigns
+  * Year-over-year growth in ad performance
+
+b) Email Marketing with Klaviyo:
+- Total email marketing revenue
+- Revenue from email campaigns
+- Revenue from automated email flows
+- Email marketing performance as a percentage of total sales
+- Top-performing email campaigns
+
+5. STRATEGIC INSIGHTS
+- Key takeaways from the previous month's performance
+- Recommendations for future strategy
+- Potential areas of opportunity or improvement
+- Any insight into product performance trends
+
+FORMAT REQUIREMENTS:
+- Use clear, professional language
+- Include specific numerical data with KPI cards and charts
+- Provide context and analysis, not just raw numbers
+- Maintain a positive, forward-looking tone
+- Ensure the report is comprehensive yet concise
+- Use appropriate visualizations (bar charts for comparisons, line charts for trends, tables for detailed data)
+
+OUTPUT EXPECTATIONS:
+Deliver a well-structured, easily readable report that provides a complete picture of the previous month's marketing performance, with clear insights and strategic recommendations.`,
     expectsReport: true
   },
   {
