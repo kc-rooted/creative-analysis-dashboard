@@ -1,6 +1,6 @@
 version: '3.8'
 services:
-  creative-dashboard:
+  rooted-intelligence:
     build: .
     ports:
       - "4000:4000"

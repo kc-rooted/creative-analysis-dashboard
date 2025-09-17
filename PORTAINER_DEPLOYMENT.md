@@ -4,7 +4,7 @@
 
 ### 1. Create New Stack in Portainer
 - Navigate to **Stacks** → **Add stack**
-- Name: `creative-analysis-dashboard`
+- Name: `rooted-intelligence`
 - Build method: **Repository**
 
 ### 2. Repository Configuration
@@ -18,7 +18,7 @@ Use this docker-compose.yml:
 ```yaml
 version: '3.8'
 services:
-  creative-dashboard:
+  rooted-intelligence:
     build: .
     ports:
       - "4000:4000"
