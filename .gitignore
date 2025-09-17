@@ -51,5 +51,3 @@ output.dbml
 # deployment guide with secrets (local only)
 PORTAINER_DEPLOYMENT.md
 
-# environment file with secrets (local only)
-stack.env
