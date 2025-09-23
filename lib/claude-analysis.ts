@@ -364,7 +364,7 @@ export async function processCreativesForAnalysis(limit: number = 10): Promise<{
         try {
           await bigquery.query({
             query: `
-              UPDATE \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${process.env.BIGQUERY_DATASET}.creative_analysis\`
+              UPDATE \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${clientConfig.bigquery.dataset}.creative_analysis\`
               SET 
                 analysis_status = 'failed',
                 error_message = @error_message,
