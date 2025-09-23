@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 export async function POST(request: NextRequest) {
   try {
     const { contentIds } = await request.json();
+    console.log(`🚀 [ANALYZE] Starting analysis for ${contentIds?.length || 0} creatives:`, contentIds);
 
     if (!contentIds || !Array.isArray(contentIds)) {
       return NextResponse.json(
@@ -14,6 +15,7 @@ export async function POST(request: NextRequest) {
     if (contentIds.length === 1) {
       // Single creative - use single analysis endpoint
       const baseUrl = process.env.NEXTAUTH_URL || request.nextUrl.origin;
+      console.log(`🎯 [ANALYZE] Single creative mode, calling: ${baseUrl}/api/analyze-single`);
       const response = await fetch(`${baseUrl}/api/analyze-single`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -22,6 +24,7 @@ export async function POST(request: NextRequest) {
 
       if (response.ok) {
         const result = await response.json();
+        console.log(`✅ [ANALYZE] Single analysis succeeded`);
         return NextResponse.json({
           success: true,
           message: `Analysis completed for 1 creative`,
@@ -32,6 +35,9 @@ export async function POST(request: NextRequest) {
           },
         });
       } else {
+        const errorText = await response.text();
+        console.error(`❌ [ANALYZE] Single analysis failed: ${response.status} ${response.statusText}`);
+        console.error(`❌ [ANALYZE] Error response:`, errorText);
         return NextResponse.json({
           success: false,
           message: `Analysis failed for creative`,
@@ -60,7 +66,9 @@ export async function POST(request: NextRequest) {
     }
 
   } catch (error) {
-    console.error('Error triggering analysis:', error);
+    console.error(`❌ [ANALYZE] Error triggering analysis:`, error);
+    console.error(`❌ [ANALYZE] Error type: ${error.constructor.name}`);
+    console.error(`❌ [ANALYZE] Error message: ${error.message}`);
     return NextResponse.json(
       { error: 'Failed to trigger analysis' },
       { status: 500 }

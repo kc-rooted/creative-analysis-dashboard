@@ -74,6 +74,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Mark as analyzing
+    console.log(`🔄 [${contentId}] Marking as analyzing...`);
     await bigquery.query({
       query: `
         UPDATE \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${getCurrentDatasetName()}.creative_analysis\`
@@ -82,16 +83,21 @@ export async function POST(request: NextRequest) {
       `,
       params: { content_id: contentId },
     });
+    console.log(`✅ [${contentId}] Status updated to analyzing`);
 
     // Analyze with Claude
-    console.log(`Starting analysis for: ${contentId}`);
+    console.log(`🎯 [${contentId}] Starting Claude analysis...`);
+    console.log(`📷 [${contentId}] Image URL: ${creative.primary_image_url}`);
     const analysisResult = await analyzeCreativeWithClaude(
       creative.primary_image_url,
       creative
     );
+    console.log(`🧠 [${contentId}] Claude analysis completed successfully`);
 
     // Update database
+    console.log(`💾 [${contentId}] Updating database with analysis results...`);
     await updateCreativeAnalysis(contentId, analysisResult);
+    console.log(`✅ [${contentId}] Database update completed`);
 
     return NextResponse.json({
       success: true,
@@ -100,16 +106,18 @@ export async function POST(request: NextRequest) {
     });
 
   } catch (error) {
-    console.error('Error in single creative analysis:', error);
+    console.error(`❌ [${contentId || 'unknown'}] Error in single creative analysis:`, error);
+    console.error(`❌ [${contentId || 'unknown'}] Error stack:`, error.stack);
     
     // Try to update status to failed if we have a contentId
     const body = await request.json().catch(() => ({}));
     if (body.contentId) {
       try {
+        console.log(`🔄 [${body.contentId}] Updating status to failed due to error...`);
         await bigquery.query({
           query: `
             UPDATE \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${getCurrentDatasetName()}.creative_analysis\`
-            SET 
+            SET
               analysis_status = 'failed',
               error_message = @error_message,
               retry_count = COALESCE(retry_count, 0) + 1,
@@ -121,8 +129,9 @@ export async function POST(request: NextRequest) {
             error_message: error instanceof Error ? error.message : 'Unknown error',
           },
         });
+        console.log(`✅ [${body.contentId}] Status updated to failed`);
       } catch (updateError) {
-        console.error('Failed to update error status:', updateError);
+        console.error(`❌ [${body.contentId}] Failed to update error status:`, updateError);
       }
     }
 

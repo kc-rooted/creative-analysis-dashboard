@@ -40,26 +40,35 @@ export async function analyzeCreativeWithClaude(
     total_usage_count?: number;
   }
 ): Promise<ClaudeAnalysisResponse> {
+  const contentId = creative.content_id;
+  console.log(`🚀 [${contentId}] Starting Claude analysis process...`);
   try {
     // Fetch the image
+    console.log(`🌐 [${contentId}] Fetching image from: ${imageUrl}`);
     const imageResponse = await fetch(imageUrl);
     if (!imageResponse.ok) {
+      console.error(`❌ [${contentId}] Image fetch failed: ${imageResponse.status} ${imageResponse.statusText}`);
       throw new Error(`Failed to fetch image: ${imageResponse.statusText}`);
     }
+    console.log(`✅ [${contentId}] Image fetched successfully, size: ${imageResponse.headers.get('content-length') || 'unknown'} bytes`);
 
     const imageBuffer = await imageResponse.arrayBuffer();
+    console.log(`🔄 [${contentId}] Converting image to base64, buffer size: ${imageBuffer.byteLength} bytes`);
     const imageBase64 = Buffer.from(imageBuffer).toString('base64');
-    
+
     // Detect image type
     const contentType = imageResponse.headers.get('content-type') || 'image/jpeg';
+    console.log(`📷 [${contentId}] Image content type: ${contentType}`);
 
     const creativeName = creative.cleaned_creative_name || creative.representative_creative_name || 'campaign';
     const adText = creative.representative_ad_text ? `\n\nAd copy text: "${creative.representative_ad_text}"` : '';
     const usageInfo = creative.total_usage_count ? `\n\nThis creative is used in ${creative.total_usage_count} campaigns.` : '';
     
     // Get client-specific configuration
+    console.log(`⚙️ [${contentId}] Getting client configuration...`);
     const clientConfig = getCurrentClientConfigSync();
     const clientContext = generateClientContext(clientConfig);
+    console.log(`✅ [${contentId}] Client config loaded for: ${clientConfig.name}`);
 
     const prompt = `Analyze this advertising creative for ${creativeName}.${adText}${usageInfo}
 
@@ -108,6 +117,7 @@ Provide analysis in this EXACT JSON format:
 
 Return ONLY the JSON object, no additional text.`;
 
+    console.log(`🤖 [${contentId}] Sending request to Claude API...`);
     const message = await anthropic.messages.create({
       model: 'claude-3-5-haiku-20241022',
       max_tokens: 2000,
@@ -131,23 +141,39 @@ Return ONLY the JSON object, no additional text.`;
         },
       ],
     });
+    console.log(`✅ [${contentId}] Claude API response received`);
 
-    const responseText = message.content[0].type === 'text' 
-      ? message.content[0].text 
+    const responseText = message.content[0].type === 'text'
+      ? message.content[0].text
       : '';
 
+    console.log(`📝 [${contentId}] Claude response length: ${responseText.length} characters`);
+    console.log(`🔍 [${contentId}] Claude response preview: ${responseText.substring(0, 200)}...`);
+
     // Parse the JSON response
+    console.log(`🔄 [${contentId}] Parsing Claude response as JSON...`);
     const analysisResult = JSON.parse(responseText);
+    console.log(`✅ [${contentId}] JSON parsing successful`);
     
     // Validate the response has required fields
+    console.log(`🔍 [${contentId}] Validating Claude response...`);
     if (!analysisResult.analysis_text || !analysisResult.confidence_score) {
+      console.error(`❌ [${contentId}] Invalid Claude response: missing required fields`);
+      console.error(`❌ [${contentId}] Response keys:`, Object.keys(analysisResult));
       throw new Error('Invalid Claude response: missing required fields');
     }
 
+    console.log(`✅ [${contentId}] Claude analysis validation passed`);
+    console.log(`📊 [${contentId}] Confidence score: ${analysisResult.confidence_score}`);
     return analysisResult as ClaudeAnalysisResponse;
 
   } catch (error) {
-    console.error('Error in Claude analysis:', error);
+    console.error(`❌ [${contentId}] Error in Claude analysis:`, error);
+    console.error(`❌ [${contentId}] Error type: ${error.constructor.name}`);
+    console.error(`❌ [${contentId}] Error message: ${error.message}`);
+    if (error.stack) {
+      console.error(`❌ [${contentId}] Error stack:`, error.stack);
+    }
     throw error;
   }
 }
@@ -156,10 +182,13 @@ export async function updateCreativeAnalysis(
   contentId: string,
   analysisData: ClaudeAnalysisResponse
 ): Promise<void> {
+  console.log(`💾 [${contentId}] Starting database update process...`);
   const { BigQuery } = require('@google-cloud/bigquery');
-  
+
   // Get client-specific dataset
+  console.log(`⚙️ [${contentId}] Getting client config for database update...`);
   const clientConfig = getCurrentClientConfigSync();
+  console.log(`✅ [${contentId}] Using dataset: ${clientConfig.bigquery.dataset}`);
   const bigquery = new BigQuery({
     projectId: process.env.GOOGLE_CLOUD_PROJECT_ID,
     ...(process.env.GOOGLE_SERVICE_ACCOUNT_KEY
@@ -170,6 +199,7 @@ export async function updateCreativeAnalysis(
 
   try {
     // First, try to insert or update using MERGE
+    console.log(`🔄 [${contentId}] Preparing MERGE query for analysis results...`);
     const query = `
       MERGE \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${clientConfig.bigquery.dataset}.creative_analysis\` AS target
       USING (SELECT @content_id AS content_id) AS source
@@ -231,28 +261,38 @@ export async function updateCreativeAnalysis(
       brand_elements: analysisData.brand_elements,
     };
 
+    console.log(`💾 [${contentId}] Executing MERGE query...`);
+    console.log(`📊 [${contentId}] Analysis data summary: confidence=${analysisData.confidence_score}, format=${analysisData.creative_format}, tags=${analysisData.creative_tags?.length || 0}`);
     await bigquery.query({ query, params: queryParams });
-    console.log(`✅ Updated analysis for content_id: ${contentId}`);
+    console.log(`✅ [${contentId}] Database MERGE completed successfully`);
 
   } catch (error) {
-    console.error(`❌ Failed to update analysis for ${contentId}:`, error);
-    
+    console.error(`❌ [${contentId}] Failed to update analysis:`, error);
+    console.error(`❌ [${contentId}] Error type: ${error.constructor.name}`);
+    console.error(`❌ [${contentId}] Error message: ${error.message}`);
+
     // Handle errors and update error fields
-    await bigquery.query({
-      query: `
-        UPDATE \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${clientConfig.bigquery.dataset}.creative_analysis\`
-        SET 
-          analysis_status = 'failed',
-          error_message = @error_message,
-          retry_count = COALESCE(retry_count, 0) + 1,
-          updated_at = CURRENT_TIMESTAMP()
-        WHERE content_id = @content_id
-      `,
-      params: {
-        content_id: contentId,
-        error_message: error.message.substring(0, 500),
-      },
-    });
+    console.log(`🔄 [${contentId}] Updating status to failed due to database error...`);
+    try {
+      await bigquery.query({
+        query: `
+          UPDATE \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${clientConfig.bigquery.dataset}.creative_analysis\`
+          SET
+            analysis_status = 'failed',
+            error_message = @error_message,
+            retry_count = COALESCE(retry_count, 0) + 1,
+            updated_at = CURRENT_TIMESTAMP()
+          WHERE content_id = @content_id
+        `,
+        params: {
+          content_id: contentId,
+          error_message: error.message.substring(0, 500),
+        },
+      });
+      console.log(`✅ [${contentId}] Status updated to failed`);
+    } catch (updateError) {
+      console.error(`❌ [${contentId}] Failed to update error status:`, updateError);
+    }
     
     throw error;
   }
