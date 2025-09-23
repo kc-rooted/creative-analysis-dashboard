@@ -13,7 +13,8 @@ export async function POST(request: NextRequest) {
 
     if (contentIds.length === 1) {
       // Single creative - use single analysis endpoint
-      const response = await fetch(`${request.nextUrl.origin}/api/analyze-single`, {
+      const baseUrl = process.env.NEXTAUTH_URL || request.nextUrl.origin;
+      const response = await fetch(`${baseUrl}/api/analyze-single`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ contentId: contentIds[0] }),
@@ -43,7 +44,8 @@ export async function POST(request: NextRequest) {
       }
     } else {
       // Multiple creatives - trigger batch analysis
-      const response = await fetch(`${request.nextUrl.origin}/api/analyze-batch`, {
+      const baseUrl = process.env.NEXTAUTH_URL || request.nextUrl.origin;
+      const response = await fetch(`${baseUrl}/api/analyze-batch`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ limit: Math.min(contentIds.length, 50) }),
