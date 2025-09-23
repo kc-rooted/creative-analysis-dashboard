@@ -94,9 +94,15 @@ export const listDatasets = tool({
     try {
       console.log('[listDatasets] Getting datasets...');
       const { BigQuery } = await import('@google-cloud/bigquery');
-      
-      // Use the same simple constructor as the existing bigquery.ts
-      const bigquery = new BigQuery();
+
+      // Use environment-aware credential configuration
+      const bigquery = new BigQuery({
+        projectId: process.env.GOOGLE_CLOUD_PROJECT_ID,
+        ...(process.env.GOOGLE_SERVICE_ACCOUNT_KEY
+          ? { credentials: JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_KEY) }
+          : { keyFilename: process.env.GOOGLE_APPLICATION_CREDENTIALS }
+        ),
+      });
       
       const [datasets] = await bigquery.getDatasets();
       
@@ -129,9 +135,15 @@ export const listTables = tool({
     try {
       console.log('[listTables] Getting tables for dataset:', datasetId);
       const { BigQuery } = await import('@google-cloud/bigquery');
-      
-      // Use the same simple constructor as the existing bigquery.ts
-      const bigquery = new BigQuery();
+
+      // Use environment-aware credential configuration
+      const bigquery = new BigQuery({
+        projectId: process.env.GOOGLE_CLOUD_PROJECT_ID,
+        ...(process.env.GOOGLE_SERVICE_ACCOUNT_KEY
+          ? { credentials: JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_KEY) }
+          : { keyFilename: process.env.GOOGLE_APPLICATION_CREDENTIALS }
+        ),
+      });
       
       const dataset = bigquery.dataset(datasetId);
       const [tables] = await dataset.getTables();
@@ -169,9 +181,15 @@ export const describeTable = tool({
     try {
       console.log('[describeTable] Getting schema for:', `${datasetId}.${tableId}`);
       const { BigQuery } = await import('@google-cloud/bigquery');
-      
-      // Use the same simple constructor as the existing bigquery.ts
-      const bigquery = new BigQuery();
+
+      // Use environment-aware credential configuration
+      const bigquery = new BigQuery({
+        projectId: process.env.GOOGLE_CLOUD_PROJECT_ID,
+        ...(process.env.GOOGLE_SERVICE_ACCOUNT_KEY
+          ? { credentials: JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_KEY) }
+          : { keyFilename: process.env.GOOGLE_APPLICATION_CREDENTIALS }
+        ),
+      });
       
       const dataset = bigquery.dataset(datasetId);
       const table = dataset.table(tableId);

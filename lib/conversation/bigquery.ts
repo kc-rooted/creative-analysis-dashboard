@@ -1,6 +1,12 @@
 import { BigQuery } from '@google-cloud/bigquery';
 
-const bigquery = new BigQuery();
+const bigquery = new BigQuery({
+  projectId: process.env.GOOGLE_CLOUD_PROJECT_ID,
+  ...(process.env.GOOGLE_SERVICE_ACCOUNT_KEY
+    ? { credentials: JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_KEY) }
+    : { keyFilename: process.env.GOOGLE_APPLICATION_CREDENTIALS }
+  ),
+});
 let sqlResults = '';
 
 export async function runSQLQuery(sql: string) {
