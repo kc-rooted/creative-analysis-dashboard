@@ -3,7 +3,10 @@ import { BigQuery } from '@google-cloud/bigquery';
 
 const bigquery = new BigQuery({
   projectId: process.env.GOOGLE_CLOUD_PROJECT_ID,
-  keyFilename: process.env.GOOGLE_APPLICATION_CREDENTIALS,
+  ...(process.env.GOOGLE_SERVICE_ACCOUNT_KEY
+    ? { credentials: JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_KEY) }
+    : { keyFilename: process.env.GOOGLE_APPLICATION_CREDENTIALS }
+  ),
 });
 
 const ADMIN_DATASET = 'admin_configs';
