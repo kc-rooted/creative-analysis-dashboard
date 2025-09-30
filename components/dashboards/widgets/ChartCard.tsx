@@ -279,7 +279,7 @@ export default function ChartCard({ title, type, dateRange, data, className = ''
                   return [formattedValue, label];
                 }}
               />
-              {data[0]?.revenue && (
+              {data[0]?.revenue !== undefined && (
                 <Line
                   type="monotone"
                   dataKey="revenue"
@@ -290,7 +290,18 @@ export default function ChartCard({ title, type, dateRange, data, className = ''
                   activeDot={{ r: 6, fill: '#22c55e' }}
                 />
               )}
-              {data[0]?.spend && (
+              {data[0]?.purchases !== undefined && (
+                <Line
+                  type="monotone"
+                  dataKey="purchases"
+                  name="Purchases"
+                  stroke="#f59e0b"
+                  strokeWidth={2}
+                  dot={{ fill: '#f59e0b', strokeWidth: 0, r: 4 }}
+                  activeDot={{ r: 6, fill: '#f59e0b' }}
+                />
+              )}
+              {data[0]?.spend !== undefined && (
                 <Line
                   type="monotone"
                   dataKey="spend"
@@ -301,7 +312,7 @@ export default function ChartCard({ title, type, dateRange, data, className = ''
                   activeDot={{ r: 6, fill: '#89cdee' }}
                 />
               )}
-              {data[0]?.revenue_cy && (
+              {data[0]?.revenue_cy !== undefined && (
                 <Line
                   type="monotone"
                   dataKey="revenue_cy"
@@ -312,7 +323,7 @@ export default function ChartCard({ title, type, dateRange, data, className = ''
                   activeDot={{ r: 6, fill: '#22c55e' }}
                 />
               )}
-              {data[0]?.revenue_ly && (
+              {data[0]?.revenue_ly !== undefined && (
                 <Line
                   type="monotone"
                   dataKey="revenue_ly"

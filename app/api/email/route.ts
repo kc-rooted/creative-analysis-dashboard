@@ -1,12 +1,19 @@
 import { NextResponse } from 'next/server';
 import { getEmailDashboardData, getEmailCampaignsTable, getEmailFlowsTable } from '@/lib/bigquery';
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
+    // Extract date parameters from URL
+    const { searchParams } = new URL(request.url);
+    const preset = searchParams.get('preset') || 'mtd';
+    const startDate = searchParams.get('startDate') || undefined;
+    const endDate = searchParams.get('endDate') || undefined;
+    const comparisonType = searchParams.get('comparisonType') || 'previous-period';
+
     const [emailData, campaignsTable, flowsTable] = await Promise.all([
-      getEmailDashboardData(),
-      getEmailCampaignsTable(),
-      getEmailFlowsTable()
+      getEmailDashboardData(preset, startDate, endDate, comparisonType),
+      getEmailCampaignsTable(preset, startDate, endDate),
+      getEmailFlowsTable(preset, startDate, endDate)
     ]);
 
     if (!emailData) {
@@ -20,18 +27,33 @@ export async function GET() {
       kpis: {
         totalEmailRevenue: {
           current: emailData.totalEmailRevenue,
+          previous: emailData.prevTotalEmailRevenue,
+          change: emailData.totalEmailRevenueChange,
+          pctOfTotal: emailData.emailPctOfTotal,
+          prevPctOfTotal: emailData.prevEmailPctOfTotal,
+          pctChange: emailData.emailPctChange,
           gaugeValue: emailData.totalEmailRevenue,
           gaugeMax: emailData.totalEmailRevenue * 1.2,
           gaugeTarget: emailData.totalEmailRevenue
         },
         campaignRevenue: {
           current: emailData.campaignRevenue,
+          previous: emailData.prevCampaignRevenue,
+          change: emailData.campaignRevenueChange,
+          pctOfTotal: emailData.campaignPctOfTotal,
+          prevPctOfTotal: emailData.prevCampaignPctOfTotal,
+          pctChange: emailData.campaignPctChange,
           gaugeValue: emailData.campaignRevenue,
           gaugeMax: emailData.totalEmailRevenue,
           gaugeTarget: emailData.totalEmailRevenue * 0.6
         },
         flowRevenue: {
           current: emailData.flowRevenue,
+          previous: emailData.prevFlowRevenue,
+          change: emailData.flowRevenueChange,
+          pctOfTotal: emailData.flowPctOfTotal,
+          prevPctOfTotal: emailData.prevFlowPctOfTotal,
+          pctChange: emailData.flowPctChange,
           gaugeValue: emailData.flowRevenue,
           gaugeMax: emailData.totalEmailRevenue,
           gaugeTarget: emailData.totalEmailRevenue * 0.4
@@ -39,10 +61,19 @@ export async function GET() {
       },
       metrics: {
         openRate: emailData.avgOpenRate,
+        prevOpenRate: emailData.prevAvgOpenRate,
+        openRateChange: emailData.openRateChange,
         clickRate: emailData.avgClickRate,
+        prevClickRate: emailData.prevAvgClickRate,
+        clickRateChange: emailData.clickRateChange,
         bounceRate: emailData.avgBounceRate,
+        prevBounceRate: emailData.prevAvgBounceRate,
+        bounceRateChange: emailData.bounceRateChange,
         unsubscribeRate: emailData.avgUnsubscribeRate,
+        prevUnsubscribeRate: emailData.prevAvgUnsubscribeRate,
+        unsubscribeRateChange: emailData.unsubscribeRateChange,
         totalSends: emailData.totalSends,
+        prevTotalSends: emailData.prevTotalSends,
         totalBounces: emailData.totalBounces,
         totalUnsubscribes: emailData.totalUnsubscribes
       },

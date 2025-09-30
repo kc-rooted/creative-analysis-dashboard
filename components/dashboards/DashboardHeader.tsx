@@ -19,19 +19,6 @@ export default function DashboardHeader({
 }: DashboardHeaderProps) {
   return (
     <div className="w-full mb-8">
-      {/* Main header with date picker */}
-      <div className="flex items-center justify-between gap-4 mb-6">
-        <div>
-          <h1 className="text-3xl font-bold" style={{color: 'var(--text-primary)'}}>
-            Dashboards
-          </h1>
-          <p className="text-sm" style={{color: 'var(--text-muted)'}}>
-            JumboMax Golf Analytics
-          </p>
-        </div>
-
-      </div>
-
       {/* Section tabs */}
       <div className="card p-0 overflow-hidden">
         <div className="flex overflow-x-auto">

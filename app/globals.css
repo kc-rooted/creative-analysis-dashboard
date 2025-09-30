@@ -187,6 +187,7 @@
 :root {
   /* Base Colors */
   --bg-primary: #0a0e13;
+  --bg-primary-30: rgba(10, 14, 19, 0.3);
   --bg-card: rgba(255, 255, 255, 0.025);
   --bg-elevated: rgba(255, 255, 255, 0.04);
   --bg-overlay: rgba(10, 14, 19, 0.95);
