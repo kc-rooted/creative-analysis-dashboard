@@ -584,3 +584,55 @@ button:focus {
   border: 1px solid var(--border-muted);
   color: var(--text-secondary);
 }
+
+/* Tremor Chart Styling for Dark Theme */
+.tremor-base {
+  color: var(--text-primary) !important;
+}
+
+.tremor-AreaChart-axis,
+.tremor-BarChart-axis,
+.tremor-LineChart-axis {
+  color: var(--text-muted) !important;
+}
+
+.tremor-AreaChart-gridLines,
+.tremor-BarChart-gridLines,
+.tremor-LineChart-gridLines {
+  stroke: var(--border-muted) !important;
+}
+
+.tremor-AreaChart-labels,
+.tremor-BarChart-labels,
+.tremor-LineChart-labels {
+  fill: var(--text-muted) !important;
+}
+
+.tremor-Tooltip {
+  background: var(--bg-card) !important;
+  color: var(--text-primary) !important;
+  border: 1px solid var(--border-muted) !important;
+  backdrop-filter: blur(10px);
+}
+
+/* Force Tremor chart colors */
+.tremor-AreaChart-area[data-color="slate"] {
+  fill: var(--accent-primary) !important;
+  fill-opacity: 0.3 !important;
+}
+
+.tremor-BarChart-bar[data-color="slate"] {
+  fill: var(--accent-primary) !important;
+}
+
+.tremor-LineChart-line[data-color="slate"] {
+  stroke: var(--accent-primary) !important;
+}
+
+.tremor-LineChart-line[data-color="gray"] {
+  stroke: var(--accent-hover) !important;
+}
+
+.tremor-DonutChart-slice[data-color="slate"] {
+  fill: var(--accent-primary) !important;
+}

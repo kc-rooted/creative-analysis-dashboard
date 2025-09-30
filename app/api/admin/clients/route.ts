@@ -30,6 +30,7 @@ export async function GET() {
       bigquery: JSON.parse(row.bigquery_config),
       brand: JSON.parse(row.brand_config),
       analysis: JSON.parse(row.analysis_config),
+      dashboard: row.dashboard_config ? JSON.parse(row.dashboard_config) : undefined,
     }));
 
     return NextResponse.json(clients);
@@ -84,6 +85,7 @@ export async function POST(request: NextRequest) {
           PARSE_JSON(@bigquery_config) as bigquery_config,
           PARSE_JSON(@brand_config) as brand_config,
           PARSE_JSON(@analysis_config) as analysis_config,
+          PARSE_JSON(@dashboard_config) as dashboard_config,
           CURRENT_TIMESTAMP() as updated_at
       ) AS source
       ON target.id = source.id
@@ -92,11 +94,12 @@ export async function POST(request: NextRequest) {
         bigquery_config = source.bigquery_config,
         brand_config = source.brand_config,
         analysis_config = source.analysis_config,
+        dashboard_config = source.dashboard_config,
         updated_at = source.updated_at
       WHEN NOT MATCHED THEN INSERT
-        (id, name, bigquery_config, brand_config, analysis_config, created_at, updated_at)
+        (id, name, bigquery_config, brand_config, analysis_config, dashboard_config, created_at, updated_at)
       VALUES
-        (source.id, source.name, source.bigquery_config, source.brand_config, source.analysis_config, CURRENT_TIMESTAMP(), source.updated_at)
+        (source.id, source.name, source.bigquery_config, source.brand_config, source.analysis_config, source.dashboard_config, CURRENT_TIMESTAMP(), source.updated_at)
     `;
 
     await bigquery.query({
@@ -107,6 +110,7 @@ export async function POST(request: NextRequest) {
         bigquery_config: JSON.stringify(clientConfig.bigquery),
         brand_config: JSON.stringify(clientConfig.brand),
         analysis_config: JSON.stringify(clientConfig.analysis),
+        dashboard_config: JSON.stringify(clientConfig.dashboard || {}),
       },
     });
 
@@ -178,6 +182,7 @@ async function ensureAdminInfrastructure() {
         { name: 'bigquery_config', type: 'JSON', mode: 'REQUIRED' },
         { name: 'brand_config', type: 'JSON', mode: 'REQUIRED' },
         { name: 'analysis_config', type: 'JSON', mode: 'REQUIRED' },
+        { name: 'dashboard_config', type: 'JSON', mode: 'NULLABLE' },
         { name: 'created_at', type: 'TIMESTAMP', mode: 'REQUIRED' },
         { name: 'updated_at', type: 'TIMESTAMP', mode: 'REQUIRED' },
       ];

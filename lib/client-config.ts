@@ -8,12 +8,12 @@ export interface BrandColor {
 export interface ClientConfig {
   id: string;
   name: string;
-  
+
   // BigQuery Configuration (only dataset varies by client)
   bigquery: {
     dataset: string;
   };
-  
+
   // Brand Guidelines
   brand: {
     colors: BrandColor[];
@@ -23,11 +23,17 @@ export interface ClientConfig {
     brandPersonality: string;
     competitiveContext: string;
   };
-  
+
   // Analysis Configuration
   analysis: {
     customPromptAdditions?: string;
     focusAreas: string[]; // e.g., ["performance", "brand_compliance", "audience_alignment"]
+  };
+
+  // Dashboard Configuration
+  dashboard?: {
+    monthlyRevenueTargets?: number[]; // 12 values for Jan-Dec
+    monthlyRoasTarget?: number;
   };
 }
 
@@ -83,6 +89,24 @@ export const CLIENT_CONFIGS: Record<string, ClientConfig> = {
     analysis: {
       focusAreas: ["performance", "brand_compliance", "golf_appeal", "target_audience_alignment"],
       customPromptAdditions: "Focus specifically on golf equipment marketing appeal and how well the creative resonates with golfers seeking performance improvements."
+    },
+
+    dashboard: {
+      monthlyRevenueTargets: [
+        300000, // January
+        300000, // February
+        300000, // March
+        300000, // April
+        300000, // May
+        300000, // June
+        300000, // July
+        300000, // August
+        300000, // September
+        300000, // October
+        300000, // November
+        300000  // December
+      ],
+      monthlyRoasTarget: 6.5
     }
   }
 };

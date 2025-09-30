@@ -1,7 +1,7 @@
 'use client';
 
 import { usePathname, useRouter } from 'next/navigation';
-import { MessageSquare, LayoutGrid, Settings, Users } from 'lucide-react';
+import { MessageSquare, LayoutGrid, Settings, Users, BarChart3 } from 'lucide-react';
 import { UserMenu } from './auth/user-menu';
 
 export function Navigation() {
@@ -11,6 +11,7 @@ export function Navigation() {
   const isCreative = pathname === '/' || pathname.startsWith('/creative');
   const isConversation = pathname.startsWith('/conversation');
   const isInfluencer = pathname.startsWith('/influencer');
+  const isDashboards = pathname.startsWith('/dashboards');
   const isAdmin = pathname.startsWith('/admin');
 
   return (
@@ -78,8 +79,8 @@ export function Navigation() {
                 isInfluencer ? 'btn-primary' : ''
               }`}
               style={!isInfluencer ? {
-                background: 'var(--bg-elevated)', 
-                border: '1px solid var(--border-muted)', 
+                background: 'var(--bg-elevated)',
+                border: '1px solid var(--border-muted)',
                 color: 'var(--text-secondary)'
               } : {}}
               onMouseEnter={(e) => !isInfluencer && (e.currentTarget.style.background = 'var(--bg-card)')}
@@ -87,6 +88,23 @@ export function Navigation() {
             >
               <Users className="w-4 h-4" />
               INFLUENCERS
+            </button>
+
+            <button
+              onClick={() => router.push('/dashboards')}
+              className={`px-4 py-2 rounded-lg font-medium transition-all duration-200 flex items-center gap-2 ${
+                isDashboards ? 'btn-primary' : ''
+              }`}
+              style={!isDashboards ? {
+                background: 'var(--bg-elevated)',
+                border: '1px solid var(--border-muted)',
+                color: 'var(--text-secondary)'
+              } : {}}
+              onMouseEnter={(e) => !isDashboards && (e.currentTarget.style.background = 'var(--bg-card)')}
+              onMouseLeave={(e) => !isDashboards && (e.currentTarget.style.background = 'var(--bg-elevated)')}
+            >
+              <BarChart3 className="w-4 h-4" />
+              DASHBOARDS
             </button>
 
             <div className="w-px h-8 mx-2" style={{background: 'var(--border-muted)'}}></div>

@@ -29,6 +29,10 @@ interface ClientConfig {
     focusAreas: string[];
     customPromptAdditions?: string;
   };
+  dashboard?: {
+    monthlyRevenueTargets?: number[];
+    monthlyRoasTarget?: number;
+  };
 }
 
 export default function AdminPage() {
@@ -145,6 +149,10 @@ export default function AdminPage() {
         focusAreas: [],
         customPromptAdditions: '',
       },
+      dashboard: {
+        monthlyRevenueTargets: [],
+        monthlyRoasTarget: 6.5
+      }
     };
     setEditingClient(newClient);
     setIsCreating(true);
@@ -534,8 +542,8 @@ function ClientEditModal({
             </label>
             <textarea
               value={editedClient.analysis.customPromptAdditions || ''}
-              onChange={(e) => setEditedClient(prev => ({ 
-                ...prev, 
+              onChange={(e) => setEditedClient(prev => ({
+                ...prev,
                 analysis: { ...prev.analysis, customPromptAdditions: e.target.value }
               }))}
               rows={3}
@@ -543,6 +551,60 @@ function ClientEditModal({
               style={{background: 'var(--bg-elevated)', border: '1px solid var(--border-muted)', color: 'var(--text-primary)'}}
               placeholder="Additional context for Claude analysis..."
             />
+          </div>
+
+          {/* Dashboard Configuration */}
+          <div className="border-t pt-6" style={{borderColor: 'var(--border-muted)'}}>
+            <h3 className="text-md font-semibold mb-4" style={{color: 'var(--text-primary)'}}>Dashboard Configuration</h3>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium mb-1" style={{color: 'var(--text-secondary)'}}>
+                  Monthly Revenue Targets (comma-separated, 12 values for Jan-Dec)
+                </label>
+                <input
+                  type="text"
+                  value={editedClient.dashboard?.monthlyRevenueTargets?.join(',') || ''}
+                  onChange={(e) => {
+                    const values = e.target.value.split(',').map(v => parseFloat(v.trim())).filter(v => !isNaN(v));
+                    setEditedClient(prev => ({
+                      ...prev,
+                      dashboard: {
+                        ...prev.dashboard,
+                        monthlyRevenueTargets: values.length === 12 ? values : prev.dashboard?.monthlyRevenueTargets
+                      }
+                    }));
+                  }}
+                  className="w-full px-3 py-2 rounded-md focus:outline-none font-mono text-sm"
+                  style={{background: 'var(--bg-elevated)', border: '1px solid var(--border-muted)', color: 'var(--text-primary)'}}
+                  placeholder="300000,300000,300000,300000,300000,300000,300000,300000,300000,300000,300000,300000"
+                />
+                <p className="text-xs mt-1" style={{color: 'var(--text-muted)'}}>
+                  Enter exactly 12 comma-separated values (one for each month)
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium mb-1" style={{color: 'var(--text-secondary)'}}>
+                  Monthly ROAS Target
+                </label>
+                <input
+                  type="number"
+                  step="0.1"
+                  value={editedClient.dashboard?.monthlyRoasTarget || ''}
+                  onChange={(e) => setEditedClient(prev => ({
+                    ...prev,
+                    dashboard: {
+                      ...prev.dashboard,
+                      monthlyRoasTarget: parseFloat(e.target.value)
+                    }
+                  }))}
+                  className="w-full px-3 py-2 rounded-md focus:outline-none"
+                  style={{background: 'var(--bg-elevated)', border: '1px solid var(--border-muted)', color: 'var(--text-primary)'}}
+                  placeholder="6.5"
+                />
+              </div>
+            </div>
           </div>
         </div>
 
