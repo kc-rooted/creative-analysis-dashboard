@@ -11,8 +11,8 @@ import { DateRange } from '@/types/dashboard';
 // Dashboard sections
 const DASHBOARD_SECTIONS = [
   { id: 'overview', label: 'Business Overview' },
-  { id: 'platform', label: 'Platform Performance' },
   { id: 'facebook', label: 'Facebook Ads' },
+  { id: 'google', label: 'Google Ads' },
   { id: 'email', label: 'Email & Retention' },
   { id: 'product', label: 'Product' },
   { id: 'customers', label: 'Customers' },

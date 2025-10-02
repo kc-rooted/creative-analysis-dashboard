@@ -1,12 +1,16 @@
 import { NextResponse } from 'next/server';
-import { getCustomerCLVData } from '@/lib/bigquery';
+import { getCustomerCLVData, getAudienceOverlapAnalysis } from '@/lib/bigquery';
 
 export async function GET(request: Request) {
   try {
-    const clvData = await getCustomerCLVData();
+    const [clvData, audienceOverlap] = await Promise.all([
+      getCustomerCLVData(),
+      getAudienceOverlapAnalysis()
+    ]);
 
     return NextResponse.json({
-      clvData
+      clvData,
+      audienceOverlap
     });
   } catch (error) {
     console.error('Error in customer API:', error);

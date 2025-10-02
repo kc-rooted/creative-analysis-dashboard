@@ -1,18 +1,19 @@
 import { NextResponse } from 'next/server';
-import { getProductIntelligence, getGripRepeatPurchaseAnalysis, getGeographicProductPerformance, getProductAffinity, getProductRankings, getGripSwitchingPatterns } from '@/lib/bigquery';
+import { getProductIntelligence, getGripRepeatPurchaseAnalysis, getGeographicProductPerformance, getProductAffinity, getProductRankings, getGripSwitchingPatterns, getPutterGripSwitchingPatterns } from '@/lib/bigquery';
 
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
     const period = searchParams.get('period') || '30d';
 
-    const [products, gripAnalysis, geoPerformance, affinity, rankings, gripSwitching] = await Promise.all([
+    const [products, gripAnalysis, geoPerformance, affinity, rankings, gripSwitching, putterGripSwitching] = await Promise.all([
       getProductIntelligence(period),
       getGripRepeatPurchaseAnalysis(),
       getGeographicProductPerformance(),
       getProductAffinity(),
       getProductRankings(),
-      getGripSwitchingPatterns()
+      getGripSwitchingPatterns(),
+      getPutterGripSwitchingPatterns()
     ]);
 
     return NextResponse.json({
@@ -21,7 +22,8 @@ export async function GET(request: Request) {
       geoPerformance,
       affinity,
       rankings,
-      gripSwitching
+      gripSwitching,
+      putterGripSwitching
     });
   } catch (error) {
     console.error('Error in product API:', error);

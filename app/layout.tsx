@@ -15,7 +15,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Rooted Creative Intelligence",
+  title: "Rooted Intelligence",
   description: "AI-driven creative analysis pipeline for marketing campaigns",
 };
 

@@ -133,14 +133,6 @@ export default function KPICard({
               )}
             </div>
           )}
-
-          {/* Fallback for simple previous value */}
-          {!periodData && previousValue && (
-            <div className="flex items-center gap-4 text-sm" style={{color: 'var(--text-muted)'}}>
-              <span>7D: {previousValue}</span>
-              <span>30D: {currentValue}</span>
-            </div>
-          )}
         </div>
 
         {/* Gauge */}
@@ -173,7 +165,7 @@ export default function KPICard({
             </div>
 
             {/* Value label positioned under the end of the progress bar */}
-            {gaugeMin > 0 && (
+            {gaugeMin > 0 && gaugeValue !== null && (
               <div
                 className="absolute top-4 text-xs font-medium"
                 style={{

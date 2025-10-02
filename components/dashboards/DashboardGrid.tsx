@@ -11,10 +11,11 @@ import ProductBundleTable from './widgets/ProductBundleTable';
 import ProductRankings from './widgets/ProductRankings';
 import ProductAlsoBought from './widgets/ProductAlsoBought';
 import GripSwitchingSankey from './widgets/GripSwitchingSankey';
+import PutterGripSwitchingSankey from './widgets/PutterGripSwitchingSankey';
 import CustomerCLVDashboard from './widgets/CustomerCLVDashboard';
-import PlatformPerformanceMatrix from './widgets/PlatformPerformanceMatrix';
-import CampaignMarginalROAS from './widgets/CampaignMarginalROAS';
 import { Loader2, FrownIcon } from 'lucide-react';
+import { formatCurrency, formatNumber } from '@/lib/format';
+import { LineChart, Line, CartesianGrid, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 
 interface DashboardGridProps {
   section: string;
@@ -53,16 +54,26 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
   const [customerData, setCustomerData] = useState<any>(null);
   const [customerLoading, setCustomerLoading] = useState(true);
   const [customerError, setCustomerError] = useState<string | null>(null);
-  const [platformData, setPlatformData] = useState<any>(null);
-  const [platformLoading, setPlatformLoading] = useState(true);
-  const [platformError, setPlatformError] = useState<string | null>(null);
-  const [platformPeriod, setPlatformPeriod] = useState<string>('30d');
   const [facebookData, setFacebookData] = useState<any>(null);
   const [facebookLoading, setFacebookLoading] = useState(true);
   const [facebookError, setFacebookError] = useState<string | null>(null);
   const [facebookDatePreset, setFacebookDatePreset] = useState<DatePreset>('mtd');
   const [facebookCustomDates, setFacebookCustomDates] = useState<{ start?: string; end?: string }>({});
   const [facebookComparisonType, setFacebookComparisonType] = useState<ComparisonType>('previous-period');
+  const [googleData, setGoogleData] = useState<any>(null);
+  const [googleLoading, setGoogleLoading] = useState(true);
+  const [googleError, setGoogleError] = useState<string | null>(null);
+  const [googleDatePreset, setGoogleDatePreset] = useState<DatePreset>('mtd');
+  const [googleCustomDates, setGoogleCustomDates] = useState<{ start?: string; end?: string }>({});
+  const [googleComparisonType, setGoogleComparisonType] = useState<ComparisonType>('previous-period');
+  const [operationalData, setOperationalData] = useState<any>(null);
+  const [operationalLoading, setOperationalLoading] = useState(true);
+  const [operationalError, setOperationalError] = useState<string | null>(null);
+  const [customPrices, setCustomPrices] = useState<{[key: string]: number}>({});
+  const [overviewPeriod, setOverviewPeriod] = useState<'7d' | 'mtd' | '30d'>('7d');
+  const [forecastData, setForecastData] = useState<any>(null);
+  const [forecastLoading, setForecastLoading] = useState(true);
+  const [forecastError, setForecastError] = useState<string | null>(null);
 
   // Fetch dashboard data on mount only
   useEffect(() => {
@@ -70,9 +81,9 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
       try {
         setLoading(true);
         setError(null);
-        console.log('Fetching dashboard data...');
+        console.log('Fetching dashboard data for period:', overviewPeriod);
 
-        const response = await fetch('/api/dashboard');
+        const response = await fetch(`/api/dashboard?period=${overviewPeriod}`);
 
         if (!response.ok) {
           const errorData = await response.json();
@@ -91,7 +102,7 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
     };
 
     fetchDashboardData();
-  }, []); // Only fetch once on mount
+  }, [overviewPeriod]); // Refetch when period changes
 
   // Fetch email data when on email section or when date filter changes
   useEffect(() => {
@@ -188,29 +199,6 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
     fetchCustomerData();
   }, [section]);
 
-  // Fetch platform data when on platform section or period changes
-  useEffect(() => {
-    if (section !== 'platform') return;
-
-    const fetchPlatformData = async () => {
-      try {
-        setPlatformLoading(true);
-        setPlatformError(null);
-        const response = await fetch(`/api/platform?period=${platformPeriod}`);
-        if (!response.ok) {
-          throw new Error('Failed to fetch platform data');
-        }
-        const data = await response.json();
-        setPlatformData(data);
-      } catch (err) {
-        setPlatformError(err instanceof Error ? err.message : 'Unknown error');
-      } finally {
-        setPlatformLoading(false);
-      }
-    };
-    fetchPlatformData();
-  }, [section, platformPeriod]);
-
   // Fetch Facebook data when on facebook section or when date filter changes
   useEffect(() => {
     if (section !== 'facebook') return;
@@ -260,6 +248,101 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
     setFacebookComparisonType(type);
   };
 
+  // Fetch Google Ads data when on google section or when date filter changes
+  useEffect(() => {
+    if (section !== 'google') return;
+
+    const fetchGoogleData = async () => {
+      try {
+        setGoogleLoading(true);
+        setGoogleError(null);
+
+        // Build query params
+        const params = new URLSearchParams({
+          preset: googleDatePreset,
+          comparisonType: googleComparisonType
+        });
+        if (googleDatePreset === 'custom' && googleCustomDates.start && googleCustomDates.end) {
+          params.append('startDate', googleCustomDates.start);
+          params.append('endDate', googleCustomDates.end);
+        }
+
+        const response = await fetch(`/api/google?${params.toString()}`);
+        if (!response.ok) {
+          throw new Error('Failed to fetch Google Ads data');
+        }
+        const data = await response.json();
+        setGoogleData(data);
+      } catch (err) {
+        setGoogleError(err instanceof Error ? err.message : 'Unknown error');
+      } finally {
+        setGoogleLoading(false);
+      }
+    };
+    fetchGoogleData();
+  }, [section, googleDatePreset, googleCustomDates, googleComparisonType]);
+
+  // Handle Google Ads date filter changes
+  const handleGoogleDateChange = (preset: DatePreset, startDate?: string, endDate?: string) => {
+    setGoogleDatePreset(preset);
+    if (preset === 'custom' && startDate && endDate) {
+      setGoogleCustomDates({ start: startDate, end: endDate });
+    } else {
+      setGoogleCustomDates({});
+    }
+  };
+
+  // Handle Google Ads comparison type changes
+  const handleGoogleComparisonChange = (type: ComparisonType) => {
+    setGoogleComparisonType(type);
+  };
+
+  // Fetch operational data when on operational section
+  useEffect(() => {
+    if (section !== 'operational') return;
+
+    const fetchOperationalData = async () => {
+      try {
+        setOperationalLoading(true);
+        setOperationalError(null);
+        const response = await fetch('/api/operational');
+        if (!response.ok) {
+          throw new Error('Failed to fetch operational data');
+        }
+        const data = await response.json();
+        setOperationalData(data);
+      } catch (err) {
+        setOperationalError(err instanceof Error ? err.message : 'Unknown error');
+      } finally {
+        setOperationalLoading(false);
+      }
+    };
+    fetchOperationalData();
+  }, [section]);
+
+  // Fetch forecasting data when on forecasting section
+  useEffect(() => {
+    if (section !== 'forecasting') return;
+
+    const fetchForecastData = async () => {
+      try {
+        setForecastLoading(true);
+        setForecastError(null);
+        const response = await fetch('/api/forecasting');
+        if (!response.ok) {
+          throw new Error('Failed to fetch forecasting data');
+        }
+        const data = await response.json();
+        setForecastData(data);
+      } catch (err) {
+        setForecastError(err instanceof Error ? err.message : 'Unknown error');
+      } finally {
+        setForecastLoading(false);
+      }
+    };
+    fetchForecastData();
+  }, [section]);
+
   // Only show Big 5 KPIs for Business Overview section
   if (section === 'overview') {
     // Show loading state
@@ -300,16 +383,59 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
         </div>
       );
     }
+
+    // Helper function to get the right period data
+    const getPeriodData = (kpi: any) => {
+      switch (overviewPeriod) {
+        case '7d':
+          return kpi.periodData.sevenDay;
+        case 'mtd':
+          return kpi.periodData.monthToDate;
+        case '30d':
+          return kpi.periodData.thirtyDay;
+        default:
+          return kpi.periodData.sevenDay;
+      }
+    };
+
     return (
       <div className="space-y-8">
+        {/* Period Selector */}
+        <div className="flex justify-end gap-2">
+          <button
+            onClick={() => setOverviewPeriod('7d')}
+            className={`px-4 py-2 text-sm font-medium rounded-lg transition-all ${
+              overviewPeriod === '7d' ? 'btn-primary' : 'bg-[var(--bg-elevated)] text-[var(--text-secondary)]'
+            }`}
+          >
+            Last 7 Days
+          </button>
+          <button
+            onClick={() => setOverviewPeriod('mtd')}
+            className={`px-4 py-2 text-sm font-medium rounded-lg transition-all ${
+              overviewPeriod === 'mtd' ? 'btn-primary' : 'bg-[var(--bg-elevated)] text-[var(--text-secondary)]'
+            }`}
+          >
+            Month to Date
+          </button>
+          <button
+            onClick={() => setOverviewPeriod('30d')}
+            className={`px-4 py-2 text-sm font-medium rounded-lg transition-all ${
+              overviewPeriod === '30d' ? 'btn-primary' : 'bg-[var(--bg-elevated)] text-[var(--text-secondary)]'
+            }`}
+          >
+            Last 30 Days
+          </button>
+        </div>
+
         {/* Big 5 KPIs - Large Cards */}
         <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-5 gap-6">
           {/* Total Revenue */}
           <KPICard
             title="TOTAL REVENUE"
-            currentValue={`$${(dashboardData.kpis.totalRevenue.current / 1000).toFixed(1)}K`}
+            currentValue={`$${(getPeriodData(dashboardData.kpis.totalRevenue).value / 1000).toFixed(1)}K`}
             previousValue={undefined}
-            trend={dashboardData.kpis.totalRevenue.periodData?.monthToDate?.trend || 0}
+            trend={getPeriodData(dashboardData.kpis.totalRevenue).trend || 0}
             subtitle={undefined}
             periodData={{
               sevenDay: {
@@ -332,9 +458,9 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
           {/* Blended ROAS */}
           <KPICard
             title="BLENDED ROAS"
-            currentValue={`${dashboardData.kpis.blendedROAS.current.toFixed(2)}x`}
+            currentValue={`${getPeriodData(dashboardData.kpis.blendedROAS).value.toFixed(2)}x`}
             previousValue={undefined}
-            trend={dashboardData.kpis.blendedROAS.periodData?.monthToDate?.trend || 0}
+            trend={getPeriodData(dashboardData.kpis.blendedROAS).trend || 0}
             subtitle={undefined}
             periodData={{
               sevenDay: {
@@ -357,9 +483,9 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
           {/* Paid Media Spend */}
           <KPICard
             title="PAID MEDIA SPEND"
-            currentValue={`$${(dashboardData.kpis.paidMediaSpend.current / 1000).toFixed(1)}K`}
+            currentValue={`$${(getPeriodData(dashboardData.kpis.paidMediaSpend).value / 1000).toFixed(1)}K`}
             previousValue={undefined}
-            trend={dashboardData.kpis.paidMediaSpend.periodData?.monthToDate?.trend || 0}
+            trend={getPeriodData(dashboardData.kpis.paidMediaSpend).trend || 0}
             subtitle={undefined}
             periodData={{
               sevenDay: {
@@ -382,9 +508,9 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
           {/* Email Revenue */}
           <KPICard
             title="EMAIL REVENUE"
-            currentValue={`$${(dashboardData.kpis.emailPerformance.current / 1000).toFixed(1)}K`}
+            currentValue={`$${(getPeriodData(dashboardData.kpis.emailPerformance).value / 1000).toFixed(1)}K`}
             previousValue={undefined}
-            trend={dashboardData.kpis.emailPerformance.periodData?.monthToDate?.trend || 0}
+            trend={getPeriodData(dashboardData.kpis.emailPerformance).trend || 0}
             subtitle={undefined}
             periodData={{
               sevenDay: {
@@ -489,9 +615,9 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
           {/* Google Spend */}
           <KPICard
             title="GOOGLE SPEND"
-            currentValue={`$${(dashboardData.kpis.googleSpend.current / 1000).toFixed(1)}K`}
+            currentValue={`$${(getPeriodData(dashboardData.kpis.googleSpend).value / 1000).toFixed(1)}K`}
             previousValue={undefined}
-            trend={dashboardData.kpis.googleSpend.periodData?.monthToDate?.trend || 0}
+            trend={getPeriodData(dashboardData.kpis.googleSpend).trend || 0}
             subtitle={undefined}
             periodData={{
               sevenDay: {
@@ -514,9 +640,9 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
           {/* Google Revenue */}
           <KPICard
             title="GOOGLE REVENUE"
-            currentValue={`$${(dashboardData.kpis.googleRevenue.current / 1000).toFixed(1)}K`}
+            currentValue={`$${(getPeriodData(dashboardData.kpis.googleRevenue).value / 1000).toFixed(1)}K`}
             previousValue={undefined}
-            trend={dashboardData.kpis.googleRevenue.periodData?.monthToDate?.trend || 0}
+            trend={getPeriodData(dashboardData.kpis.googleRevenue).trend || 0}
             subtitle={undefined}
             periodData={{
               sevenDay: {
@@ -539,9 +665,9 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
           {/* Google ROAS */}
           <KPICard
             title="GOOGLE ROAS"
-            currentValue={`${dashboardData.kpis.googleROAS.current.toFixed(2)}x`}
+            currentValue={`${getPeriodData(dashboardData.kpis.googleROAS).value.toFixed(2)}x`}
             previousValue={undefined}
-            trend={dashboardData.kpis.googleROAS.periodData?.monthToDate?.trend || 0}
+            trend={getPeriodData(dashboardData.kpis.googleROAS).trend || 0}
             subtitle={undefined}
             periodData={{
               sevenDay: {
@@ -564,9 +690,9 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
           {/* Meta Spend */}
           <KPICard
             title="META SPEND"
-            currentValue={`$${(dashboardData.kpis.metaSpend.current / 1000).toFixed(1)}K`}
+            currentValue={`$${(getPeriodData(dashboardData.kpis.metaSpend).value / 1000).toFixed(1)}K`}
             previousValue={undefined}
-            trend={dashboardData.kpis.metaSpend.periodData?.monthToDate?.trend || 0}
+            trend={getPeriodData(dashboardData.kpis.metaSpend).trend || 0}
             subtitle={undefined}
             periodData={{
               sevenDay: {
@@ -589,9 +715,9 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
           {/* Meta Revenue */}
           <KPICard
             title="META REVENUE"
-            currentValue={`$${(dashboardData.kpis.metaRevenue.current / 1000).toFixed(1)}K`}
+            currentValue={`$${(getPeriodData(dashboardData.kpis.metaRevenue).value / 1000).toFixed(1)}K`}
             previousValue={undefined}
-            trend={dashboardData.kpis.metaRevenue.periodData?.monthToDate?.trend || 0}
+            trend={getPeriodData(dashboardData.kpis.metaRevenue).trend || 0}
             subtitle={undefined}
             periodData={{
               sevenDay: {
@@ -614,9 +740,9 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
           {/* Meta ROAS */}
           <KPICard
             title="META ROAS"
-            currentValue={`${dashboardData.kpis.metaROAS.current.toFixed(2)}x`}
+            currentValue={`${getPeriodData(dashboardData.kpis.metaROAS).value.toFixed(2)}x`}
             previousValue={undefined}
-            trend={dashboardData.kpis.metaROAS.periodData?.monthToDate?.trend || 0}
+            trend={getPeriodData(dashboardData.kpis.metaROAS).trend || 0}
             subtitle={undefined}
             periodData={{
               sevenDay: {
@@ -636,6 +762,225 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
             dateRange={dateRange}
           />
         </div>
+
+        {/* Business Health Metrics - 5 Cards */}
+        {dashboardData.kpis.businessHealth && (
+          <div>
+            <h2 className="text-xl font-bold mb-4" style={{color: 'var(--text-primary)'}}>Business Health & Performance</h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6">
+              {/* Business Health Index */}
+              <div className="card p-6">
+                <div className="space-y-4">
+                  <h3 className="text-sm font-medium" style={{color: 'var(--text-muted)'}}>
+                    BUSINESS HEALTH
+                  </h3>
+
+                  <div className="text-4xl font-bold" style={{color: 'var(--text-primary)'}}>
+                    {dashboardData.kpis.businessHealth.healthIndex}
+                  </div>
+
+                  {/* Trend Badges */}
+                  <div className="flex flex-col gap-2">
+                    <span
+                      className="px-2 py-1 rounded text-xs font-medium text-center"
+                      style={{
+                        background: dashboardData.kpis.businessHealth.revenueTrend === 'REVENUE_GROWING' ? 'rgba(34, 197, 94, 0.1)' : dashboardData.kpis.businessHealth.revenueTrend === 'REVENUE_DECLINING' ? 'rgba(239, 68, 68, 0.1)' : 'rgba(245, 158, 11, 0.1)',
+                        color: dashboardData.kpis.businessHealth.revenueTrend === 'REVENUE_GROWING' ? '#22c55e' : dashboardData.kpis.businessHealth.revenueTrend === 'REVENUE_DECLINING' ? '#ef4444' : '#f59e0b'
+                      }}
+                    >
+                      {dashboardData.kpis.businessHealth.revenueTrend.replace('REVENUE_', '')}
+                    </span>
+                    <span
+                      className="px-2 py-1 rounded text-xs font-medium text-center"
+                      style={{
+                        background: dashboardData.kpis.businessHealth.demandTrend === 'DEMAND_GROWING' ? 'rgba(34, 197, 94, 0.1)' : dashboardData.kpis.businessHealth.demandTrend === 'DEMAND_DECLINING' ? 'rgba(239, 68, 68, 0.1)' : 'rgba(245, 158, 11, 0.1)',
+                        color: dashboardData.kpis.businessHealth.demandTrend === 'DEMAND_GROWING' ? '#22c55e' : dashboardData.kpis.businessHealth.demandTrend === 'DEMAND_DECLINING' ? '#ef4444' : '#f59e0b'
+                      }}
+                    >
+                      {dashboardData.kpis.businessHealth.demandTrend.replace('DEMAND_', '')} DEMAND
+                    </span>
+                  </div>
+
+                  {/* Health Gauge */}
+                  <div className="space-y-2">
+                    <div className="relative h-3 rounded-full" style={{background: 'var(--border-muted)'}}>
+                      <div
+                        className="absolute top-0 left-0 h-3 rounded-full transition-all duration-500"
+                        style={{
+                          width: `${(dashboardData.kpis.businessHealth.healthIndex / 100) * 100}%`,
+                          background: dashboardData.kpis.businessHealth.healthIndex >= 70 ? 'linear-gradient(90deg, var(--accent-primary), #22c55e)' : dashboardData.kpis.businessHealth.healthIndex >= 40 ? 'linear-gradient(90deg, var(--accent-primary), #f59e0b)' : 'linear-gradient(90deg, var(--accent-primary), #ef4444)'
+                        }}
+                      />
+                    </div>
+                    <div className="flex justify-between text-xs" style={{color: 'var(--text-muted)'}}>
+                      <span>0</span>
+                      <span>{dashboardData.kpis.businessHealth.gaugeTarget} Target</span>
+                      <span>100</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Search Demand */}
+              {dashboardData.kpis.searchDemand && (
+                <div className="card p-6">
+                  <div className="space-y-4">
+                    <h3 className="text-sm font-medium" style={{color: 'var(--text-muted)'}}>
+                      SEARCH DEMAND
+                    </h3>
+
+                    <div className="text-4xl font-bold" style={{color: 'var(--text-primary)'}}>
+                      {(dashboardData.kpis.searchDemand.current / 1000).toFixed(1)}K
+                    </div>
+
+                    <div className="text-sm" style={{color: 'var(--text-secondary)'}}>
+                      7-Day Avg Impressions
+                    </div>
+
+                    {/* YoY Change */}
+                    <div className={`text-sm font-medium ${dashboardData.kpis.searchDemand.yoyChange >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                      {dashboardData.kpis.searchDemand.yoyChange >= 0 ? '↑' : '↓'} {Math.abs(dashboardData.kpis.searchDemand.yoyChange).toFixed(1)}% YoY
+                    </div>
+
+                    {/* Trend Badge */}
+                    <span
+                      className="inline-block px-2 py-1 rounded text-xs font-medium"
+                      style={{
+                        background: dashboardData.kpis.searchDemand.trend === 'DEMAND_GROWING' ? 'rgba(34, 197, 94, 0.1)' : dashboardData.kpis.searchDemand.trend === 'DEMAND_DECLINING' ? 'rgba(239, 68, 68, 0.1)' : 'rgba(245, 158, 11, 0.1)',
+                        color: dashboardData.kpis.searchDemand.trend === 'DEMAND_GROWING' ? '#22c55e' : dashboardData.kpis.searchDemand.trend === 'DEMAND_DECLINING' ? '#ef4444' : '#f59e0b'
+                      }}
+                    >
+                      {dashboardData.kpis.searchDemand.trend.replace('DEMAND_', '')}
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              {/* Brand Awareness */}
+              {dashboardData.kpis.brandAwareness && (
+                <div className="card p-6">
+                  <div className="space-y-4">
+                    <h3 className="text-sm font-medium" style={{color: 'var(--text-muted)'}}>
+                      BRAND AWARENESS
+                    </h3>
+
+                    <div className="text-4xl font-bold" style={{color: 'var(--text-primary)'}}>
+                      {(dashboardData.kpis.brandAwareness.current).toFixed(0)}
+                    </div>
+
+                    <div className="text-sm" style={{color: 'var(--text-secondary)'}}>
+                      30-Day Avg Brand Impressions
+                    </div>
+
+                    {/* Progress Bar */}
+                    <div className="space-y-2">
+                      <div className="relative h-3 rounded-full" style={{background: 'var(--border-muted)'}}>
+                        <div
+                          className="absolute top-0 left-0 h-3 rounded-full transition-all duration-500"
+                          style={{
+                            width: `${Math.min((dashboardData.kpis.brandAwareness.gaugeValue / dashboardData.kpis.brandAwareness.gaugeMax) * 100, 100)}%`,
+                            background: 'linear-gradient(90deg, var(--accent-primary), #22c55e)'
+                          }}
+                        />
+                      </div>
+                      <div className="text-xs text-center" style={{color: 'var(--text-muted)'}}>
+                        Target: {dashboardData.kpis.brandAwareness.gaugeTarget.toFixed(0)}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* YoY Performance */}
+              {dashboardData.kpis.yoyPerformance && (
+                <div className="card p-6">
+                  <div className="space-y-4">
+                    <div>
+                      <h3 className="text-sm font-medium" style={{color: 'var(--text-muted)'}}>
+                        YOY PERFORMANCE
+                      </h3>
+                      <div className="text-xs mt-1" style={{color: 'var(--text-muted)', opacity: 0.7}}>
+                        Single Day Comparison
+                      </div>
+                    </div>
+
+                    {/* Status Badge */}
+                    <div
+                      className="inline-block px-3 py-2 rounded-lg text-sm font-medium"
+                      style={{
+                        background: dashboardData.kpis.yoyPerformance.status === 'OUTPERFORMING_YOY' ? 'rgba(34, 197, 94, 0.1)' : dashboardData.kpis.yoyPerformance.status === 'UNDERPERFORMING_YOY' ? 'rgba(239, 68, 68, 0.1)' : 'rgba(245, 158, 11, 0.1)',
+                        color: dashboardData.kpis.yoyPerformance.status === 'OUTPERFORMING_YOY' ? '#22c55e' : dashboardData.kpis.yoyPerformance.status === 'UNDERPERFORMING_YOY' ? '#ef4444' : '#f59e0b'
+                      }}
+                    >
+                      {dashboardData.kpis.yoyPerformance.status.replace(/_/g, ' ')}
+                    </div>
+
+                    {/* Metrics */}
+                    <div className="space-y-2 text-sm">
+                      <div className="flex justify-between items-center">
+                        <span style={{color: 'var(--text-muted)'}}>Revenue:</span>
+                        <span className={`font-semibold ${dashboardData.kpis.yoyPerformance.revenueYoyChange >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                          {dashboardData.kpis.yoyPerformance.revenueYoyChange >= 0 ? '+' : ''}{dashboardData.kpis.yoyPerformance.revenueYoyChange.toFixed(1)}%
+                        </span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span style={{color: 'var(--text-muted)'}}>Orders:</span>
+                        <span className={`font-semibold ${dashboardData.kpis.yoyPerformance.ordersYoyChange >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                          {dashboardData.kpis.yoyPerformance.ordersYoyChange >= 0 ? '+' : ''}{dashboardData.kpis.yoyPerformance.ordersYoyChange.toFixed(1)}%
+                        </span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span style={{color: 'var(--text-muted)'}}>Search:</span>
+                        <span className={`font-semibold ${dashboardData.kpis.yoyPerformance.searchYoyChange >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                          {dashboardData.kpis.yoyPerformance.searchYoyChange >= 0 ? '+' : ''}{dashboardData.kpis.yoyPerformance.searchYoyChange.toFixed(1)}%
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Revenue Momentum */}
+              {dashboardData.kpis.revenueMomentum && (
+                <div className="card p-6">
+                  <div className="space-y-4">
+                    <h3 className="text-sm font-medium" style={{color: 'var(--text-muted)'}}>
+                      REVENUE MOMENTUM
+                    </h3>
+
+                    <div className="text-4xl font-bold" style={{color: 'var(--text-primary)'}}>
+                      {(dashboardData.kpis.revenueMomentum.revenue7dAvg / 1000).toFixed(1)}K
+                    </div>
+
+                    <div className="text-sm" style={{color: 'var(--text-secondary)'}}>
+                      7-Day Avg Daily Revenue
+                    </div>
+
+                    {/* Acceleration */}
+                    <div className={`text-sm font-medium ${dashboardData.kpis.revenueMomentum.acceleration >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                      {dashboardData.kpis.revenueMomentum.acceleration >= 0 ? '↑ Accelerating' : '↓ Decelerating'} {Math.abs(dashboardData.kpis.revenueMomentum.acceleration).toFixed(1)}%
+                    </div>
+
+                    {/* Trend Badge */}
+                    <span
+                      className="inline-block px-2 py-1 rounded text-xs font-medium"
+                      style={{
+                        background: dashboardData.kpis.revenueMomentum.trend === 'REVENUE_GROWING' ? 'rgba(34, 197, 94, 0.1)' : dashboardData.kpis.revenueMomentum.trend === 'REVENUE_DECLINING' ? 'rgba(239, 68, 68, 0.1)' : 'rgba(245, 158, 11, 0.1)',
+                        color: dashboardData.kpis.revenueMomentum.trend === 'REVENUE_GROWING' ? '#22c55e' : dashboardData.kpis.revenueMomentum.trend === 'REVENUE_DECLINING' ? '#ef4444' : '#f59e0b'
+                      }}
+                    >
+                      {dashboardData.kpis.revenueMomentum.trend.replace('REVENUE_', '')}
+                    </span>
+
+                    <div className="text-xs" style={{color: 'var(--text-muted)'}}>
+                      vs 30D Avg: ${(dashboardData.kpis.revenueMomentum.revenue30dAvg / 1000).toFixed(1)}K
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
       </div>
     );
   }
@@ -767,9 +1112,9 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
           </div>
         </div>
 
-        {/* Key Metrics */}
+        {/* Campaigns - Key Metrics */}
         <div className="card p-6">
-          <h3 className="text-lg font-semibold mb-6" style={{color: 'var(--text-primary)'}}>Key Metrics</h3>
+          <h3 className="text-lg font-semibold mb-6" style={{color: 'var(--text-primary)'}}>Campaigns - Key Metrics</h3>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
             <div>
               <div className="text-sm" style={{color: 'var(--text-muted)'}}>Open Rate</div>
@@ -897,6 +1242,9 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
       );
     }
 
+    const behavioralSegments = customerData.audienceOverlap?.filter((item: any) => item.analysisType === 'Behavioral Analysis') || [];
+    const demographicSegments = customerData.audienceOverlap?.filter((item: any) => item.analysisType.includes('Demographic')) || [];
+
     return (
       <div className="space-y-8">
         {/* CLV & Churn Risk Dashboard */}
@@ -904,102 +1252,182 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
           <h3 className="text-lg font-semibold mb-8" style={{color: 'var(--text-primary)'}}>CLV & Churn Risk Dashboard</h3>
           <CustomerCLVDashboard data={customerData.clvData} />
         </div>
-      </div>
-    );
-  }
 
-  // Platform section
-  if (section === 'platform') {
-    // Show loading state
-    if (platformLoading) {
-      return (
-        <div className="flex justify-center items-center py-12">
-          <div className="flex items-center gap-3">
-            <Loader2 className="h-8 w-8 animate-spin" style={{color: 'var(--accent-primary)'}} />
-            <span className="text-lg" style={{color: 'var(--text-secondary)'}}>Loading platform data...</span>
-          </div>
-        </div>
-      );
-    }
+        {/* Audience Overlap Analysis */}
+        {customerData.audienceOverlap && customerData.audienceOverlap.length > 0 && (
+          <div className="space-y-6">
+            <h2 className="text-xl font-bold" style={{color: 'var(--text-primary)'}}>Cross-Platform Audience Overlap Analysis</h2>
 
-    // Show error state
-    if (platformError) {
-      return (
-        <div className="text-center py-12">
-          <div className="card p-6 max-w-md mx-auto">
-            <h3 className="text-lg font-semibold mb-2" style={{color: 'var(--text-primary)'}}>Error Loading Data</h3>
-            <p className="text-sm mb-4" style={{color: 'var(--text-muted)'}}>{platformError}</p>
-            <button
-              onClick={() => window.location.reload()}
-              className="btn-primary px-4 py-2"
-            >
-              Retry
-            </button>
-          </div>
-        </div>
-      );
-    }
+            {/* Overview Cards */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {/* Behavioral Segments Overview */}
+              {behavioralSegments.length > 0 && (
+                <div className="card p-6">
+                  <h3 className="text-lg font-semibold mb-4" style={{color: 'var(--text-primary)'}}>Behavioral Segments</h3>
+                  <div className="space-y-4">
+                    {behavioralSegments.map((segment: any, idx: number) => (
+                      <div key={idx}>
+                        <div className="flex justify-between items-center mb-2">
+                          <span className="font-medium" style={{color: 'var(--text-primary)'}}>{segment.segment}</span>
+                          <span className="text-sm" style={{color: 'var(--text-muted)'}}>{segment.segmentSize} customers</span>
+                        </div>
+                        <div className="flex gap-2 mb-2">
+                          <span
+                            className="px-2 py-1 rounded text-xs font-medium"
+                            style={{
+                              background: segment.overlapEfficiency.includes('Positive') ? 'rgba(34, 197, 94, 0.1)' : segment.overlapEfficiency.includes('Negative') ? 'rgba(239, 68, 68, 0.1)' : 'rgba(137, 205, 238, 0.1)',
+                              color: segment.overlapEfficiency.includes('Positive') ? '#22c55e' : segment.overlapEfficiency.includes('Negative') ? '#ef4444' : 'var(--accent-primary)'
+                            }}
+                          >
+                            {segment.overlapEfficiency}
+                          </span>
+                        </div>
+                        <div className="text-xs p-2 rounded" style={{backgroundColor: 'rgba(137, 205, 238, 0.1)', color: 'var(--text-secondary)'}}>
+                          💡 {segment.strategicRecommendation}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
-    // Show platform dashboard
-    if (!platformData) {
-      return (
-        <div className="text-center py-12">
-          <p style={{color: 'var(--text-muted)'}}>No data available</p>
-        </div>
-      );
-    }
-
-    const periodOptions = [
-      { value: '7d', label: '7D' },
-      { value: '30d', label: '30D' },
-      { value: '60d', label: '60D' },
-      { value: '90d', label: '90D' },
-    ];
-
-    return (
-      <div className="space-y-8">
-        {/* Channel Performance Matrix */}
-        <div className="card p-6">
-          <div className="flex justify-between items-center mb-6">
-            <h3 className="text-lg font-semibold" style={{color: 'var(--text-primary)'}}>
-              Paid Media Efficiency Matrix
-            </h3>
-            {/* Period Selector */}
-            <div className="flex gap-2">
-              {periodOptions.map(option => (
-                <button
-                  key={option.value}
-                  onClick={() => setPlatformPeriod(option.value)}
-                  className={`px-3 py-1 rounded-lg text-xs font-medium transition-all ${
-                    platformPeriod === option.value ? 'btn-primary' : ''
-                  }`}
-                  style={platformPeriod !== option.value ? {
-                    background: 'var(--bg-elevated)',
-                    border: '1px solid var(--border-muted)',
-                    color: 'var(--text-secondary)'
-                  } : {}}
-                >
-                  {option.label}
-                </button>
-              ))}
+              {/* Strategic Insights */}
+              <div className="card p-6">
+                <h3 className="text-lg font-semibold mb-4" style={{color: 'var(--text-primary)'}}>Strategic Insights</h3>
+                <div className="space-y-4">
+                  {behavioralSegments.length > 0 && (
+                    <>
+                      <div>
+                        <div className="text-sm mb-2" style={{color: 'var(--text-muted)'}}>PLATFORM PERFORMANCE</div>
+                        <div className="grid grid-cols-2 gap-4">
+                          <div>
+                            <div className="text-xs mb-1" style={{color: 'var(--text-muted)'}}>Facebook ROAS</div>
+                            <div className="text-2xl font-bold" style={{color: '#1877F2'}}>{behavioralSegments[0]?.facebookRoas.toFixed(2)}x</div>
+                          </div>
+                          <div>
+                            <div className="text-xs mb-1" style={{color: 'var(--text-muted)'}}>Google ROAS</div>
+                            <div className="text-2xl font-bold" style={{color: '#4285F4'}}>{behavioralSegments[0]?.googleRoas.toFixed(2)}x</div>
+                          </div>
+                        </div>
+                      </div>
+                      <div>
+                        <div className="text-sm mb-2" style={{color: 'var(--text-muted)'}}>CORRELATION METRICS</div>
+                        <div className="space-y-2">
+                          <div className="flex justify-between items-center">
+                            <span className="text-xs" style={{color: 'var(--text-muted)'}}>Spend Correlation</span>
+                            <span className="text-sm font-medium" style={{color: 'var(--text-primary)'}}>{(behavioralSegments[0]?.spendCorrelation * 100).toFixed(0)}%</span>
+                          </div>
+                          <div className="flex justify-between items-center">
+                            <span className="text-xs" style={{color: 'var(--text-muted)'}}>Revenue Correlation</span>
+                            <span className="text-sm font-medium" style={{color: 'var(--text-primary)'}}>{(behavioralSegments[0]?.revenueCorrelation * 100).toFixed(0)}%</span>
+                          </div>
+                          <div className="flex justify-between items-center">
+                            <span className="text-xs" style={{color: 'var(--text-muted)'}}>Engagement Correlation</span>
+                            <span className="text-sm font-medium" style={{color: 'var(--text-primary)'}}>{(behavioralSegments[0]?.engagementCorrelation * 100).toFixed(0)}%</span>
+                          </div>
+                        </div>
+                      </div>
+                    </>
+                  )}
+                </div>
+              </div>
             </div>
-          </div>
-          <PlatformPerformanceMatrix data={platformData.platformMetrics} roasTarget={6.5} period={platformPeriod} />
-        </div>
 
-        {/* Campaign-Level Marginal ROAS - Hidden for now */}
-        {false && (
-          <div className="card p-6">
-            <h3 className="text-lg font-semibold mb-6" style={{color: 'var(--text-primary)'}}>
-              Campaign-Level Marginal ROAS
-            </h3>
-            <CampaignMarginalROAS data={platformData.campaignTypes} />
+            {/* Behavioral Segments Table */}
+            {behavioralSegments.length > 0 && (
+              <div className="card p-6">
+                <h3 className="text-lg font-semibold mb-4" style={{color: 'var(--text-primary)'}}>Behavioral Segment Performance</h3>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr style={{borderBottom: '1px solid var(--border-muted)'}}>
+                        <th className="text-left py-3 px-2" style={{color: 'var(--text-muted)'}}>Segment</th>
+                        <th className="text-right py-3 px-2" style={{color: 'var(--text-muted)'}}>Size</th>
+                        <th className="text-right py-3 px-2" style={{color: 'var(--text-muted)'}}>FB Spend</th>
+                        <th className="text-right py-3 px-2" style={{color: 'var(--text-muted)'}}>Google Spend</th>
+                        <th className="text-right py-3 px-2" style={{color: 'var(--text-muted)'}}>FB ROAS</th>
+                        <th className="text-right py-3 px-2" style={{color: 'var(--text-muted)'}}>Google ROAS</th>
+                        <th className="text-right py-3 px-2" style={{color: 'var(--text-muted)'}}>Combined ROAS</th>
+                        <th className="text-left py-3 px-2" style={{color: 'var(--text-muted)'}}>Efficiency</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {behavioralSegments.map((segment: any, idx: number) => (
+                        <tr key={idx} style={{borderBottom: '1px solid var(--border-muted)'}}>
+                          <td className="py-3 px-2 font-medium" style={{color: 'var(--text-primary)'}}>{segment.segment}</td>
+                          <td className="py-3 px-2 text-right" style={{color: 'var(--text-primary)'}}>{segment.segmentSize}</td>
+                          <td className="py-3 px-2 text-right" style={{color: 'var(--text-primary)'}}>${segment.facebookSpend.toFixed(0)}</td>
+                          <td className="py-3 px-2 text-right" style={{color: 'var(--text-primary)'}}>${segment.googleSpend.toFixed(0)}</td>
+                          <td className="py-3 px-2 text-right" style={{color: '#1877F2'}}>{segment.facebookRoas.toFixed(2)}x</td>
+                          <td className="py-3 px-2 text-right" style={{color: '#4285F4'}}>{segment.googleRoas.toFixed(2)}x</td>
+                          <td className="py-3 px-2 text-right font-semibold" style={{color: 'var(--text-primary)'}}>{segment.combinedRoas.toFixed(2)}x</td>
+                          <td className="py-3 px-2">
+                            <span
+                              className="px-2 py-1 rounded text-xs font-medium"
+                              style={{
+                                background: segment.overlapEfficiency.includes('Positive') ? 'rgba(34, 197, 94, 0.1)' : segment.overlapEfficiency.includes('Negative') ? 'rgba(239, 68, 68, 0.1)' : 'rgba(137, 205, 238, 0.1)',
+                                color: segment.overlapEfficiency.includes('Positive') ? '#22c55e' : segment.overlapEfficiency.includes('Negative') ? '#ef4444' : 'var(--accent-primary)'
+                              }}
+                            >
+                              {segment.overlapEfficiency}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {/* Demographic Segments Table */}
+            {demographicSegments.length > 0 && (
+              <div className="card p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-lg font-semibold" style={{color: 'var(--text-primary)'}}>Demographic Segment Analysis</h3>
+                  <span className="px-3 py-1 rounded text-xs font-medium" style={{background: 'rgba(245, 158, 11, 0.1)', color: '#f59e0b'}}>
+                    ⚠️ Limited Data - 40% Coverage
+                  </span>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr style={{borderBottom: '1px solid var(--border-muted)'}}>
+                        <th className="text-left py-3 px-2" style={{color: 'var(--text-muted)'}}>Segment</th>
+                        <th className="text-right py-3 px-2" style={{color: 'var(--text-muted)'}}>FB ROAS</th>
+                        <th className="text-right py-3 px-2" style={{color: 'var(--text-muted)'}}>Opportunity Score</th>
+                        <th className="text-left py-3 px-2" style={{color: 'var(--text-muted)'}}>Status</th>
+                        <th className="text-left py-3 px-2" style={{color: 'var(--text-muted)'}}>Recommendation</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {demographicSegments.map((segment: any, idx: number) => (
+                        <tr key={idx} style={{borderBottom: '1px solid var(--border-muted)'}}>
+                          <td className="py-3 px-2 font-medium" style={{color: 'var(--text-primary)'}}>{segment.segment}</td>
+                          <td className="py-3 px-2 text-right" style={{color: '#1877F2'}}>{segment.facebookRoas.toFixed(2)}x</td>
+                          <td className="py-3 px-2 text-right" style={{color: 'var(--text-primary)'}}>{segment.marketOpportunityScore.toFixed(1)}</td>
+                          <td className="py-3 px-2">
+                            <span className="px-2 py-1 rounded text-xs font-medium" style={{background: 'rgba(245, 158, 11, 0.1)', color: '#f59e0b'}}>
+                              {segment.overlapEfficiency}
+                            </span>
+                          </td>
+                          <td className="py-3 px-2 text-xs" style={{color: 'var(--text-secondary)'}}>
+                            {segment.strategicRecommendation}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>
     );
   }
 
+  // Platform section
   // Facebook section
   if (section === 'facebook') {
     // Show loading state
@@ -1056,9 +1484,19 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
           {/* Facebook Spend */}
           <KPICard
             title="Facebook Spend"
-            currentValue={`$${(facebookData.spend.current / 1000).toFixed(1)}K`}
-            previousValue={`$${(facebookData.spend.previous / 1000).toFixed(1)}K`}
+            currentValue={formatCurrency(facebookData.spend.current)}
+            previousValue={formatCurrency(facebookData.spend.previous)}
             trend={facebookData.spend.change}
+            periodData={{
+              sevenDay: {
+                value: formatCurrency(facebookData.trailing7d.spend),
+                trend: facebookData.trailing7d.spendChange
+              },
+              thirtyDay: {
+                value: formatCurrency(facebookData.trailing30d.spend),
+                trend: facebookData.trailing30d.spendChange
+              }
+            }}
             gaugeValue={facebookData.spend.current}
             gaugeMax={facebookData.spend.current * 1.5}
             gaugeLabel="Spend"
@@ -1069,9 +1507,19 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
           {/* Facebook Revenue */}
           <KPICard
             title="Facebook Revenue"
-            currentValue={`$${(facebookData.revenue.current / 1000).toFixed(1)}K`}
-            previousValue={`$${(facebookData.revenue.previous / 1000).toFixed(1)}K`}
+            currentValue={formatCurrency(facebookData.revenue.current)}
+            previousValue={formatCurrency(facebookData.revenue.previous)}
             trend={facebookData.revenue.change}
+            periodData={{
+              sevenDay: {
+                value: formatCurrency(facebookData.trailing7d.revenue),
+                trend: facebookData.trailing7d.revenueChange
+              },
+              thirtyDay: {
+                value: formatCurrency(facebookData.trailing30d.revenue),
+                trend: facebookData.trailing30d.revenueChange
+              }
+            }}
             gaugeValue={facebookData.revenue.current}
             gaugeMax={facebookData.revenue.current * 1.5}
             gaugeLabel="Revenue"
@@ -1085,6 +1533,16 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
             currentValue={`${facebookData.roas.current.toFixed(2)}x`}
             previousValue={`${facebookData.roas.previous.toFixed(2)}x`}
             trend={facebookData.roas.change}
+            periodData={{
+              sevenDay: {
+                value: `${facebookData.trailing7d.roas.toFixed(2)}x`,
+                trend: facebookData.trailing7d.roasChange
+              },
+              thirtyDay: {
+                value: `${facebookData.trailing30d.roas.toFixed(2)}x`,
+                trend: facebookData.trailing30d.roasChange
+              }
+            }}
             gaugeValue={facebookData.roas.current}
             gaugeTarget={roasTarget}
             gaugeMax={roasTarget * 2}
@@ -1096,9 +1554,19 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
           {/* Facebook Impressions */}
           <KPICard
             title="Facebook Impressions"
-            currentValue={`${(facebookData.impressions.current / 1000).toFixed(0)}K`}
-            previousValue={`${(facebookData.impressions.previous / 1000).toFixed(0)}K`}
+            currentValue={formatNumber(facebookData.impressions.current, 0)}
+            previousValue={formatNumber(facebookData.impressions.previous, 0)}
             trend={facebookData.impressions.change}
+            periodData={{
+              sevenDay: {
+                value: formatNumber(facebookData.trailing7d.impressions, 0),
+                trend: facebookData.trailing7d.impressionsChange
+              },
+              thirtyDay: {
+                value: formatNumber(facebookData.trailing30d.impressions, 0),
+                trend: facebookData.trailing30d.impressionsChange
+              }
+            }}
             gaugeValue={facebookData.impressions.current}
             gaugeMax={facebookData.impressions.current * 1.5}
             gaugeLabel="Impressions"
@@ -1109,15 +1577,91 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
           {/* Facebook Clicks */}
           <KPICard
             title="Facebook Clicks"
-            currentValue={facebookData.clicks.current.toLocaleString()}
-            previousValue={facebookData.clicks.previous.toLocaleString()}
+            currentValue={formatNumber(facebookData.clicks.current, 0)}
+            previousValue={formatNumber(facebookData.clicks.previous, 0)}
             trend={facebookData.clicks.change}
+            periodData={{
+              sevenDay: {
+                value: formatNumber(facebookData.trailing7d.clicks, 0),
+                trend: facebookData.trailing7d.clicksChange
+              },
+              thirtyDay: {
+                value: formatNumber(facebookData.trailing30d.clicks, 0),
+                trend: facebookData.trailing30d.clicksChange
+              }
+            }}
             gaugeValue={facebookData.clicks.current}
             gaugeMax={facebookData.clicks.current * 1.5}
             gaugeLabel="Clicks"
             status={facebookData.clicks.change > 0 ? 'good' : 'monitor'}
             dateRange={dateRange}
           />
+        </div>
+
+        {/* Efficiency Metrics Row */}
+        <div className="card p-6">
+          <h3 className="text-lg font-semibold mb-6" style={{color: 'var(--text-primary)'}}>Efficiency Metrics</h3>
+          <div className="grid grid-cols-5 gap-6">
+            {/* CTR */}
+            <div>
+              <div className="text-sm mb-2" style={{color: 'var(--text-muted)'}}>CTR (Click-Through Rate)</div>
+              <div className="text-2xl font-bold" style={{color: 'var(--text-primary)'}}>{facebookData.ctr.current}%</div>
+              <div className="text-sm mt-1" style={{color: 'var(--text-muted)'}}>
+                Previous: {facebookData.ctr.previous}%
+              </div>
+              <div className={`text-sm font-semibold mt-1 ${facebookData.ctr.change >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                {facebookData.ctr.change >= 0 ? '↑' : '↓'} {Math.abs(facebookData.ctr.change).toFixed(1)}%
+              </div>
+            </div>
+
+            {/* Conversion Rate */}
+            <div>
+              <div className="text-sm mb-2" style={{color: 'var(--text-muted)'}}>Conversion Rate</div>
+              <div className="text-2xl font-bold" style={{color: 'var(--text-primary)'}}>{facebookData.conversionRate.current}%</div>
+              <div className="text-sm mt-1" style={{color: 'var(--text-muted)'}}>
+                Previous: {facebookData.conversionRate.previous}%
+              </div>
+              <div className={`text-sm font-semibold mt-1 ${facebookData.conversionRate.change >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                {facebookData.conversionRate.change >= 0 ? '↑' : '↓'} {Math.abs(facebookData.conversionRate.change).toFixed(1)}%
+              </div>
+            </div>
+
+            {/* CPA */}
+            <div>
+              <div className="text-sm mb-2" style={{color: 'var(--text-muted)'}}>CPA (Cost/Conversion)</div>
+              <div className="text-2xl font-bold" style={{color: 'var(--text-primary)'}}>${facebookData.cpa.current.toFixed(2)}</div>
+              <div className="text-sm mt-1" style={{color: 'var(--text-muted)'}}>
+                Previous: ${facebookData.cpa.previous.toFixed(2)}
+              </div>
+              <div className={`text-sm font-semibold mt-1 ${facebookData.cpa.change <= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                {facebookData.cpa.change <= 0 ? '↓' : '↑'} {Math.abs(facebookData.cpa.change).toFixed(1)}%
+              </div>
+            </div>
+
+            {/* CPC */}
+            <div>
+              <div className="text-sm mb-2" style={{color: 'var(--text-muted)'}}>CPC (Cost per Click)</div>
+              <div className="text-2xl font-bold" style={{color: 'var(--text-primary)'}}>${facebookData.cpc.current.toFixed(2)}</div>
+              <div className="text-sm mt-1" style={{color: 'var(--text-muted)'}}>
+                Previous: ${facebookData.cpc.previous.toFixed(2)}
+              </div>
+              <div className={`text-sm font-semibold mt-1 ${facebookData.cpc.change <= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                {facebookData.cpc.change <= 0 ? '↓' : '↑'} {Math.abs(facebookData.cpc.change).toFixed(1)}%
+              </div>
+            </div>
+
+            {/* CPM */}
+            <div>
+              <div className="text-sm mb-2" style={{color: 'var(--text-muted)'}}>CPM (Cost per 1K Impr.)</div>
+              <div className="text-2xl font-bold" style={{color: 'var(--text-primary)'}}>${facebookData.cpm.current.toFixed(2)}</div>
+              <div className="text-sm mt-1" style={{color: 'var(--text-muted)'}}>
+                Previous: ${facebookData.cpm.previous.toFixed(2)}
+              </div>
+              <div className={`text-sm font-semibold mt-1 ${facebookData.cpm.change <= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                {facebookData.cpm.change <= 0 ? '↓' : '↑'} {Math.abs(facebookData.cpm.change).toFixed(1)}%
+              </div>
+            </div>
+          </div>
         </div>
 
         {/* Performance Chart */}
@@ -1127,6 +1671,84 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
           dateRange={dateRange}
           data={facebookData.dailyMetrics}
         />
+
+        {/* Campaigns Table */}
+        <div className="card p-6">
+          <h3 className="text-lg font-semibold mb-6" style={{color: 'var(--text-primary)'}}>Top Campaigns by Spend</h3>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr style={{borderBottom: '1px solid var(--border-muted)'}}>
+                  <th className="text-left py-3 px-2" style={{color: 'var(--text-muted)'}}>Campaign</th>
+                  <th className="text-right py-3 px-2" style={{color: 'var(--text-muted)'}}>Spend</th>
+                  <th className="text-right py-3 px-2" style={{color: 'var(--text-muted)'}}>Revenue</th>
+                  <th className="text-right py-3 px-2" style={{color: 'var(--text-muted)'}}>Purchases</th>
+                  <th className="text-right py-3 px-2" style={{color: 'var(--text-muted)'}}>ROAS</th>
+                  <th className="text-right py-3 px-2" style={{color: 'var(--text-muted)'}}>Clicks</th>
+                  <th className="text-right py-3 px-2" style={{color: 'var(--text-muted)'}}>Impressions</th>
+                  <th className="text-right py-3 px-2" style={{color: 'var(--text-muted)'}}>Reach</th>
+                </tr>
+              </thead>
+              <tbody>
+                {facebookData.campaigns.map((campaign: any, idx: number) => (
+                  <tr key={idx} style={{borderBottom: '1px solid var(--border-muted)'}}>
+                    <td className="py-3 px-2">
+                      <a
+                        href={`/campaign/${encodeURIComponent(campaign.campaignName)}`}
+                        className="hover:underline"
+                        style={{color: 'var(--accent-primary)'}}
+                      >
+                        {campaign.campaignName}
+                      </a>
+                    </td>
+                    <td className="text-right py-3 px-2" style={{color: 'var(--text-primary)'}}>{formatCurrency(campaign.spend)}</td>
+                    <td className="text-right py-3 px-2" style={{color: 'var(--text-primary)'}}>{formatCurrency(campaign.purchaseValue)}</td>
+                    <td className="text-right py-3 px-2" style={{color: 'var(--text-primary)'}}>{campaign.purchases.toLocaleString()}</td>
+                    <td className="text-right py-3 px-2" style={{color: campaign.roas >= roasTarget ? 'var(--color-success)' : 'var(--text-primary)'}}>{campaign.roas.toFixed(2)}x</td>
+                    <td className="text-right py-3 px-2" style={{color: 'var(--text-primary)'}}>{formatNumber(campaign.clicks, 0)}</td>
+                    <td className="text-right py-3 px-2" style={{color: 'var(--text-primary)'}}>{formatNumber(campaign.impressions, 0)}</td>
+                    <td className="text-right py-3 px-2" style={{color: 'var(--text-primary)'}}>{formatNumber(campaign.reach, 0)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* Ads Table */}
+        <div className="card p-6">
+          <h3 className="text-lg font-semibold mb-6" style={{color: 'var(--text-primary)'}}>Top Ads by Spend</h3>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr style={{borderBottom: '1px solid var(--border-muted)'}}>
+                  <th className="text-left py-3 px-2" style={{color: 'var(--text-muted)'}}>Campaign</th>
+                  <th className="text-left py-3 px-2" style={{color: 'var(--text-muted)'}}>Ad Set</th>
+                  <th className="text-left py-3 px-2" style={{color: 'var(--text-muted)'}}>Ad</th>
+                  <th className="text-right py-3 px-2" style={{color: 'var(--text-muted)'}}>Spend</th>
+                  <th className="text-right py-3 px-2" style={{color: 'var(--text-muted)'}}>Revenue</th>
+                  <th className="text-right py-3 px-2" style={{color: 'var(--text-muted)'}}>ROAS</th>
+                  <th className="text-right py-3 px-2" style={{color: 'var(--text-muted)'}}>Purchases</th>
+                  <th className="text-right py-3 px-2" style={{color: 'var(--text-muted)'}}>CTR</th>
+                </tr>
+              </thead>
+              <tbody>
+                {facebookData.ads.map((ad: any, idx: number) => (
+                  <tr key={idx} style={{borderBottom: '1px solid var(--border-muted)'}}>
+                    <td className="py-3 px-2" style={{color: 'var(--text-secondary)'}}>{ad.campaignName}</td>
+                    <td className="py-3 px-2" style={{color: 'var(--text-secondary)'}}>{ad.adsetName}</td>
+                    <td className="py-3 px-2" style={{color: 'var(--text-primary)'}}>{ad.adName}</td>
+                    <td className="text-right py-3 px-2" style={{color: 'var(--text-primary)'}}>{formatCurrency(ad.spend)}</td>
+                    <td className="text-right py-3 px-2" style={{color: 'var(--text-primary)'}}>{formatCurrency(ad.revenue)}</td>
+                    <td className="text-right py-3 px-2" style={{color: ad.roas >= roasTarget ? 'var(--color-success)' : 'var(--text-primary)'}}>{ad.roas.toFixed(2)}x</td>
+                    <td className="text-right py-3 px-2" style={{color: 'var(--text-primary)'}}>{ad.purchases.toLocaleString()}</td>
+                    <td className="text-right py-3 px-2" style={{color: 'var(--text-primary)'}}>{ad.ctr.toFixed(2)}%</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
       </div>
     );
   }
@@ -1323,6 +1945,12 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
           </div>
         </div>
 
+        {/* Putter Grip Switching & Loyalty Patterns */}
+        <div className="card p-6">
+          <h3 className="text-lg font-semibold mb-8" style={{color: 'var(--text-primary)'}}>Putter Grip Switching & Loyalty Patterns</h3>
+          <PutterGripSwitchingSankey data={productData.putterGripSwitching || []} />
+        </div>
+
         {/* Product Affinity - Three columns */}
         <div className="grid grid-cols-3 gap-6">
           {/* Product Rankings */}
@@ -1378,6 +2006,1000 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
                   ))}
                 </tbody>
               </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Google Ads section
+  if (section === 'google') {
+    // Show loading state
+    if (googleLoading) {
+      return (
+        <div className="flex justify-center items-center py-12">
+          <div className="flex items-center gap-3">
+            <Loader2 className="h-8 w-8 animate-spin" style={{color: 'var(--accent-primary)'}} />
+            <span className="text-lg" style={{color: 'var(--text-secondary)'}}>Loading Google Ads data...</span>
+          </div>
+        </div>
+      );
+    }
+
+    // Show error state
+    if (googleError) {
+      return (
+        <div className="text-center py-12">
+          <div className="card p-6 max-w-md mx-auto">
+            <h3 className="text-lg font-semibold mb-2" style={{color: 'var(--text-primary)'}}>Error Loading Data</h3>
+            <p className="text-sm mb-4" style={{color: 'var(--text-muted)'}}>{googleError}</p>
+            <button
+              onClick={() => window.location.reload()}
+              className="btn-primary px-4 py-2"
+            >
+              Retry
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    // Show Google dashboard
+    if (!googleData) {
+      return (
+        <div className="text-center py-12">
+          <p style={{color: 'var(--text-muted)'}}>No data available</p>
+        </div>
+      );
+    }
+
+    const roasTarget = 5;
+
+    return (
+      <div className="space-y-8">
+        {/* Date Filter and Comparison Selector */}
+        <div className="flex justify-end items-center gap-4 mb-6">
+          <DateFilter onDateChange={handleGoogleDateChange} value={googleDatePreset} />
+          <ComparisonSelector onComparisonChange={handleGoogleComparisonChange} value={googleComparisonType} />
+        </div>
+
+        {/* KPI Cards */}
+        <div className="grid grid-cols-5 gap-4">
+          {/* Google Spend */}
+          <KPICard
+            title="Google Spend"
+            currentValue={formatCurrency(googleData.spend.current)}
+            previousValue={formatCurrency(googleData.spend.previous)}
+            trend={googleData.spend.change}
+            periodData={{
+              sevenDay: {
+                value: formatCurrency(googleData.trailing7d.spend),
+                trend: googleData.trailing7d.spendChange
+              },
+              thirtyDay: {
+                value: formatCurrency(googleData.trailing30d.spend),
+                trend: googleData.trailing30d.spendChange
+              }
+            }}
+            gaugeValue={googleData.spend.current}
+            gaugeMax={googleData.spend.current * 1.5}
+            gaugeLabel="Spend"
+            status={googleData.spend.change > 10 ? 'warning' : 'good'}
+            dateRange={dateRange}
+          />
+
+          {/* Google Revenue */}
+          <KPICard
+            title="Google Revenue"
+            currentValue={formatCurrency(googleData.revenue.current)}
+            previousValue={formatCurrency(googleData.revenue.previous)}
+            trend={googleData.revenue.change}
+            periodData={{
+              sevenDay: {
+                value: formatCurrency(googleData.trailing7d.revenue),
+                trend: googleData.trailing7d.revenueChange
+              },
+              thirtyDay: {
+                value: formatCurrency(googleData.trailing30d.revenue),
+                trend: googleData.trailing30d.revenueChange
+              }
+            }}
+            gaugeValue={googleData.revenue.current}
+            gaugeMax={googleData.revenue.current * 1.5}
+            gaugeLabel="Revenue"
+            status={googleData.revenue.change > 0 ? 'excellent' : 'warning'}
+            dateRange={dateRange}
+          />
+
+          {/* Google ROAS */}
+          <KPICard
+            title="Google ROAS"
+            currentValue={`${googleData.roas.current.toFixed(2)}x`}
+            previousValue={`${googleData.roas.previous.toFixed(2)}x`}
+            trend={googleData.roas.change}
+            periodData={{
+              sevenDay: {
+                value: `${googleData.trailing7d.roas.toFixed(2)}x`,
+                trend: googleData.trailing7d.roasChange
+              },
+              thirtyDay: {
+                value: `${googleData.trailing30d.roas.toFixed(2)}x`,
+                trend: googleData.trailing30d.roasChange
+              }
+            }}
+            gaugeValue={googleData.roas.current}
+            gaugeTarget={roasTarget}
+            gaugeMax={roasTarget * 2}
+            gaugeLabel={`Target: ${roasTarget}x`}
+            status={googleData.roas.current >= roasTarget ? 'excellent' : googleData.roas.current >= roasTarget * 0.8 ? 'good' : 'warning'}
+            dateRange={dateRange}
+          />
+
+          {/* Google Impressions */}
+          <KPICard
+            title="Google Impressions"
+            currentValue={formatNumber(googleData.impressions.current, 0)}
+            previousValue={formatNumber(googleData.impressions.previous, 0)}
+            trend={googleData.impressions.change}
+            periodData={{
+              sevenDay: {
+                value: formatNumber(googleData.trailing7d.impressions, 0),
+                trend: googleData.trailing7d.impressionsChange
+              },
+              thirtyDay: {
+                value: formatNumber(googleData.trailing30d.impressions, 0),
+                trend: googleData.trailing30d.impressionsChange
+              }
+            }}
+            gaugeValue={googleData.impressions.current}
+            gaugeMax={googleData.impressions.current * 1.5}
+            gaugeLabel="Impressions"
+            status={googleData.impressions.change > 0 ? 'good' : 'monitor'}
+            dateRange={dateRange}
+          />
+
+          {/* Google Clicks */}
+          <KPICard
+            title="Google Clicks"
+            currentValue={formatNumber(googleData.clicks.current, 0)}
+            previousValue={formatNumber(googleData.clicks.previous, 0)}
+            trend={googleData.clicks.change}
+            periodData={{
+              sevenDay: {
+                value: formatNumber(googleData.trailing7d.clicks, 0),
+                trend: googleData.trailing7d.clicksChange
+              },
+              thirtyDay: {
+                value: formatNumber(googleData.trailing30d.clicks, 0),
+                trend: googleData.trailing30d.clicksChange
+              }
+            }}
+            gaugeValue={googleData.clicks.current}
+            gaugeMax={googleData.clicks.current * 1.5}
+            gaugeLabel="Clicks"
+            status={googleData.clicks.change > 0 ? 'good' : 'monitor'}
+            dateRange={dateRange}
+          />
+        </div>
+
+        {/* Efficiency Metrics Row */}
+        <div className="card p-6">
+          <h3 className="text-lg font-semibold mb-6" style={{color: 'var(--text-primary)'}}>Efficiency Metrics</h3>
+          <div className="grid grid-cols-5 gap-6">
+            {/* CTR */}
+            <div>
+              <div className="text-sm mb-2" style={{color: 'var(--text-muted)'}}>CTR (Click-Through Rate)</div>
+              <div className="text-2xl font-bold" style={{color: 'var(--text-primary)'}}>{googleData.ctr.current}%</div>
+              <div className="text-sm mt-1" style={{color: 'var(--text-muted)'}}>
+                Previous: {googleData.ctr.previous}%
+              </div>
+              <div className={`text-sm font-semibold mt-1 ${googleData.ctr.change >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                {googleData.ctr.change >= 0 ? '↑' : '↓'} {Math.abs(googleData.ctr.change).toFixed(1)}%
+              </div>
+            </div>
+
+            {/* Conversion Rate */}
+            <div>
+              <div className="text-sm mb-2" style={{color: 'var(--text-muted)'}}>Conversion Rate</div>
+              <div className="text-2xl font-bold" style={{color: 'var(--text-primary)'}}>{googleData.conversionRate.current}%</div>
+              <div className="text-sm mt-1" style={{color: 'var(--text-muted)'}}>
+                Previous: {googleData.conversionRate.previous}%
+              </div>
+              <div className={`text-sm font-semibold mt-1 ${googleData.conversionRate.change >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                {googleData.conversionRate.change >= 0 ? '↑' : '↓'} {Math.abs(googleData.conversionRate.change).toFixed(1)}%
+              </div>
+            </div>
+
+            {/* CPA */}
+            <div>
+              <div className="text-sm mb-2" style={{color: 'var(--text-muted)'}}>CPA (Cost/Conversion)</div>
+              <div className="text-2xl font-bold" style={{color: 'var(--text-primary)'}}>${googleData.cpa.current.toFixed(2)}</div>
+              <div className="text-sm mt-1" style={{color: 'var(--text-muted)'}}>
+                Previous: ${googleData.cpa.previous.toFixed(2)}
+              </div>
+              <div className={`text-sm font-semibold mt-1 ${googleData.cpa.change <= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                {googleData.cpa.change <= 0 ? '↓' : '↑'} {Math.abs(googleData.cpa.change).toFixed(1)}%
+              </div>
+            </div>
+
+            {/* CPC */}
+            <div>
+              <div className="text-sm mb-2" style={{color: 'var(--text-muted)'}}>CPC (Cost per Click)</div>
+              <div className="text-2xl font-bold" style={{color: 'var(--text-primary)'}}>${googleData.cpc.current.toFixed(2)}</div>
+              <div className="text-sm mt-1" style={{color: 'var(--text-muted)'}}>
+                Previous: ${googleData.cpc.previous.toFixed(2)}
+              </div>
+              <div className={`text-sm font-semibold mt-1 ${googleData.cpc.change <= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                {googleData.cpc.change <= 0 ? '↓' : '↑'} {Math.abs(googleData.cpc.change).toFixed(1)}%
+              </div>
+            </div>
+
+            {/* CPM */}
+            <div>
+              <div className="text-sm mb-2" style={{color: 'var(--text-muted)'}}>CPM (Cost per 1K Impr.)</div>
+              <div className="text-2xl font-bold" style={{color: 'var(--text-primary)'}}>${googleData.cpm.current.toFixed(2)}</div>
+              <div className="text-sm mt-1" style={{color: 'var(--text-muted)'}}>
+                Previous: ${googleData.cpm.previous.toFixed(2)}
+              </div>
+              <div className={`text-sm font-semibold mt-1 ${googleData.cpm.change <= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                {googleData.cpm.change <= 0 ? '↓' : '↑'} {Math.abs(googleData.cpm.change).toFixed(1)}%
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Performance Chart */}
+        <ChartCard
+          title={`Google Revenue - Current vs ${googleComparisonType === 'previous-year' ? 'Last Year' : 'Previous Period'}`}
+          type="line"
+          dateRange={dateRange}
+          data={googleData.dailyMetrics}
+        />
+
+        {/* Campaigns Table */}
+        <div className="card p-6">
+          <h3 className="text-lg font-semibold mb-6" style={{color: 'var(--text-primary)'}}>Top Campaigns by Spend</h3>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr style={{borderBottom: '1px solid var(--border-muted)'}}>
+                  <th className="text-left py-3 px-2" style={{color: 'var(--text-muted)'}}>Campaign</th>
+                  <th className="text-right py-3 px-2" style={{color: 'var(--text-muted)'}}>Spend</th>
+                  <th className="text-right py-3 px-2" style={{color: 'var(--text-muted)'}}>Revenue</th>
+                  <th className="text-right py-3 px-2" style={{color: 'var(--text-muted)'}}>Purchases</th>
+                  <th className="text-right py-3 px-2" style={{color: 'var(--text-muted)'}}>ROAS</th>
+                  <th className="text-right py-3 px-2" style={{color: 'var(--text-muted)'}}>Clicks</th>
+                  <th className="text-right py-3 px-2" style={{color: 'var(--text-muted)'}}>Impressions</th>
+                  <th className="text-right py-3 px-2" style={{color: 'var(--text-muted)'}}>Reach</th>
+                </tr>
+              </thead>
+              <tbody>
+                {googleData.campaigns.map((campaign: any, idx: number) => (
+                  <tr key={idx} style={{borderBottom: '1px solid var(--border-muted)'}}>
+                    <td className="py-3 px-2">
+                      <a
+                        href={`/campaign/${encodeURIComponent(campaign.campaignName)}`}
+                        className="hover:underline"
+                        style={{color: 'var(--text-primary)'}}
+                      >
+                        {campaign.campaignName}
+                      </a>
+                    </td>
+                    <td className="text-right py-3 px-2" style={{color: 'var(--text-primary)'}}>${campaign.spend.toLocaleString()}</td>
+                    <td className="text-right py-3 px-2" style={{color: 'var(--text-primary)'}}>${campaign.purchaseValue.toLocaleString()}</td>
+                    <td className="text-right py-3 px-2" style={{color: 'var(--text-primary)'}}>{campaign.purchases.toLocaleString()}</td>
+                    <td className="text-right py-3 px-2" style={{color: 'var(--text-primary)'}}>{campaign.roas.toFixed(2)}x</td>
+                    <td className="text-right py-3 px-2" style={{color: 'var(--text-secondary)'}}>{campaign.clicks.toLocaleString()}</td>
+                    <td className="text-right py-3 px-2" style={{color: 'var(--text-secondary)'}}>{campaign.impressions.toLocaleString()}</td>
+                    <td className="text-right py-3 px-2" style={{color: 'var(--text-secondary)'}}>{campaign.reach.toLocaleString()}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Operational section
+  if (section === 'operational') {
+    // Show loading state
+    if (operationalLoading) {
+      return (
+        <div className="flex justify-center items-center py-12">
+          <div className="flex items-center gap-3">
+            <Loader2 className="h-8 w-8 animate-spin" style={{color: 'var(--accent-primary)'}} />
+            <span className="text-lg" style={{color: 'var(--text-secondary)'}}>Loading operational data...</span>
+          </div>
+        </div>
+      );
+    }
+
+    // Show error state
+    if (operationalError) {
+      return (
+        <div className="text-center py-12">
+          <div className="card p-6 max-w-md mx-auto">
+            <h3 className="text-lg font-semibold mb-2" style={{color: 'var(--text-primary)'}}>Error Loading Data</h3>
+            <p className="text-sm mb-4" style={{color: 'var(--text-muted)'}}>{operationalError}</p>
+            <button
+              onClick={() => window.location.reload()}
+              className="btn-primary px-4 py-2"
+            >
+              Retry
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    // Show operational data
+    if (!operationalData) {
+      return (
+        <div className="text-center py-12">
+          <p style={{color: 'var(--text-muted)'}}>No operational data available</p>
+        </div>
+      );
+    }
+
+    const putterGrips = operationalData.putterGripPricing || [];
+    const swingGrips = operationalData.swingGripPricing || [];
+
+    // Function to calculate elasticity-based projections
+    const calculateProjection = (item: any, testPrice: number, itemType: 'swing' | 'putter') => {
+      const currentPrice = itemType === 'swing' ? item.currentUnitPrice : item.currentAvgPrice;
+      const currentUnits = itemType === 'swing' ? item.totalIndividualUnits : item.currentUnitsSold;
+      const currentRevenue = itemType === 'swing' ? item.currentRevenue : item.currentRevenue;
+
+      // Calculate price change percentage
+      const priceChangePct = ((testPrice - currentPrice) / currentPrice) * 100;
+
+      // Calculate elasticity from the original data
+      // Elasticity = (% change in quantity) / (% change in price)
+      const originalPriceChangePct = item.priceChangePct || 0;
+      const originalDemandChangePct = item.demandChangePct || 0;
+
+      let elasticity = -1.5; // default fallback
+      if (originalPriceChangePct !== 0) {
+        elasticity = originalDemandChangePct / originalPriceChangePct;
+      }
+
+      // Calculate demand change based on derived elasticity
+      const demandChangePct = elasticity * priceChangePct;
+
+      // Calculate new units
+      const newUnits = currentUnits * (1 + demandChangePct / 100);
+
+      // Calculate new revenue
+      const newRevenue = testPrice * newUnits;
+
+      // Calculate revenue change
+      const revenueChange = newRevenue - currentRevenue;
+      const revenueChangePct = (revenueChange / currentRevenue) * 100;
+
+      return {
+        priceChangePct,
+        demandChangePct,
+        projectedUnits: newUnits,
+        projectedRevenue: newRevenue,
+        revenueChange,
+        revenueChangePct
+      };
+    };
+
+    // Calculate summary metrics
+    const totalPutterRevenuePotential = putterGrips.reduce((sum: number, item: any) => sum + (item.revenueChangeWithElasticity || 0), 0);
+    const totalSwingRevenuePotential = swingGrips.reduce((sum: number, item: any) => sum + (item.revenueChangeWithElasticity || 0), 0);
+    const totalRevenuePotential = totalPutterRevenuePotential + totalSwingRevenuePotential;
+    const avgPutterPriceChange = putterGrips.length > 0
+      ? putterGrips.reduce((sum: number, item: any) => sum + Math.abs(item.priceChangePct || 0), 0) / putterGrips.length
+      : 0;
+    const avgSwingPriceChange = swingGrips.length > 0
+      ? swingGrips.reduce((sum: number, item: any) => sum + Math.abs(item.priceChangePct || 0), 0) / swingGrips.length
+      : 0;
+
+    return (
+      <div className="space-y-8">
+        <h2 className="text-2xl font-bold" style={{color: 'var(--text-primary)'}}>Dynamic Pricing Optimization</h2>
+
+        {/* Summary Overview */}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+          <div className="card p-6">
+            <div className="text-sm mb-2" style={{color: 'var(--text-muted)'}}>TOTAL REVENUE POTENTIAL</div>
+            <div className="text-3xl font-bold" style={{color: totalRevenuePotential >= 0 ? '#22c55e' : '#ef4444'}}>
+              {formatCurrency(totalRevenuePotential)}
+            </div>
+            <div className="text-sm mt-2" style={{color: 'var(--text-muted)'}}>With elasticity-adjusted pricing</div>
+          </div>
+
+          <div className="card p-6">
+            <div className="text-sm mb-2" style={{color: 'var(--text-muted)'}}>PUTTER GRIPS OPPORTUNITY</div>
+            <div className="text-3xl font-bold" style={{color: totalPutterRevenuePotential >= 0 ? '#22c55e' : '#ef4444'}}>
+              {formatCurrency(totalPutterRevenuePotential)}
+            </div>
+            <div className="text-sm mt-2" style={{color: 'var(--text-muted)'}}>Avg price change: {avgPutterPriceChange.toFixed(1)}%</div>
+          </div>
+
+          <div className="card p-6">
+            <div className="text-sm mb-2" style={{color: 'var(--text-muted)'}}>SWING GRIPS OPPORTUNITY</div>
+            <div className="text-3xl font-bold" style={{color: totalSwingRevenuePotential >= 0 ? '#22c55e' : '#ef4444'}}>
+              {formatCurrency(totalSwingRevenuePotential)}
+            </div>
+            <div className="text-sm mt-2" style={{color: 'var(--text-muted)'}}>Avg price change: {avgSwingPriceChange.toFixed(1)}%</div>
+          </div>
+
+          <div className="card p-6">
+            <div className="text-sm mb-2" style={{color: 'var(--text-muted)'}}>OPTIMIZATION OPPORTUNITIES</div>
+            <div className="text-3xl font-bold" style={{color: 'var(--text-primary)'}}>
+              {putterGrips.length + swingGrips.length}
+            </div>
+            <div className="text-sm mt-2" style={{color: 'var(--text-muted)'}}>Products analyzed</div>
+          </div>
+        </div>
+
+        {/* Swing Grips Pricing Table */}
+        {swingGrips.length > 0 && (
+          <div className="card p-6">
+            <h3 className="text-lg font-semibold mb-4" style={{color: 'var(--text-primary)'}}>Swing Grips Pricing Model</h3>
+            <p className="text-sm mb-6" style={{color: 'var(--text-muted)'}}>Test different prices to see real-time revenue impact projections</p>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr style={{borderBottom: '1px solid var(--border-muted)'}}>
+                    <th className="text-left py-3 px-2" style={{color: 'var(--text-muted)'}}>Product Line</th>
+                    <th className="text-right py-3 px-2" style={{color: 'var(--text-muted)'}}>Current Price</th>
+                    <th className="text-right py-3 px-2" style={{color: 'var(--text-muted)'}}>Test Price</th>
+                    <th className="text-right py-3 px-2" style={{color: 'var(--text-muted)'}}>Price Change</th>
+                    <th className="text-right py-3 px-2" style={{color: 'var(--text-muted)'}}>Demand Change</th>
+                    <th className="text-right py-3 px-2" style={{color: 'var(--text-muted)'}}>Projected Units</th>
+                    <th className="text-right py-3 px-2" style={{color: 'var(--text-muted)'}}>Revenue Impact</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {swingGrips.map((item: any, idx: number) => {
+                    const itemKey = `swing-${idx}`;
+                    const testPrice = customPrices[itemKey] || 15.99;
+                    const projection = calculateProjection(item, testPrice, 'swing');
+
+                    return (
+                      <tr key={idx} style={{borderBottom: '1px solid var(--border-muted)'}}>
+                        <td className="py-3 px-2" style={{color: 'var(--text-primary)'}}>{item.productLine}</td>
+                        <td className="text-right py-3 px-2" style={{color: 'var(--text-primary)'}}>{formatCurrency(item.currentUnitPrice)}</td>
+                        <td className="text-right py-3 px-2">
+                          <input
+                            type="number"
+                            step="0.01"
+                            value={testPrice}
+                            onChange={(e) => {
+                              const newPrice = parseFloat(e.target.value) || item.currentUnitPrice;
+                              setCustomPrices({...customPrices, [itemKey]: newPrice});
+                            }}
+                            className="w-20 px-2 py-1 text-right rounded border"
+                            style={{
+                              background: 'var(--card-bg)',
+                              color: 'var(--text-primary)',
+                              borderColor: 'var(--border-muted)'
+                            }}
+                          />
+                        </td>
+                        <td className="text-right py-3 px-2 font-semibold" style={{color: projection.priceChangePct > 0 ? '#22c55e' : projection.priceChangePct < 0 ? '#ef4444' : 'var(--text-primary)'}}>
+                          {projection.priceChangePct > 0 ? '+' : ''}{projection.priceChangePct.toFixed(1)}%
+                        </td>
+                        <td className="text-right py-3 px-2 font-semibold" style={{color: projection.demandChangePct > 0 ? '#22c55e' : projection.demandChangePct < 0 ? '#ef4444' : 'var(--text-primary)'}}>
+                          {projection.demandChangePct > 0 ? '+' : ''}{projection.demandChangePct.toFixed(1)}%
+                        </td>
+                        <td className="text-right py-3 px-2" style={{color: 'var(--text-primary)'}}>
+                          {Math.round(projection.projectedUnits).toLocaleString()}
+                        </td>
+                        <td className="text-right py-3 px-2 font-semibold" style={{color: projection.revenueChange >= 0 ? '#22c55e' : '#ef4444'}}>
+                          {formatCurrency(projection.revenueChange)}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {/* Putter Grips Pricing Table */}
+        {putterGrips.length > 0 && (
+          <div className="card p-6">
+            <h3 className="text-lg font-semibold mb-2" style={{color: 'var(--text-primary)'}}>Putter Grips Pricing Model</h3>
+            <p className="text-sm mb-6" style={{color: 'var(--text-muted)'}}>Testing a $34.99 Price Point</p>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr style={{borderBottom: '1px solid var(--border-muted)'}}>
+                    <th className="text-left py-3 px-2" style={{color: 'var(--text-muted)'}}>Product</th>
+                    <th className="text-right py-3 px-2" style={{color: 'var(--text-muted)'}}>Current Price</th>
+                    <th className="text-right py-3 px-2" style={{color: 'var(--text-muted)'}}>Units Sold</th>
+                    <th className="text-right py-3 px-2" style={{color: 'var(--text-muted)'}}>Price Change</th>
+                    <th className="text-right py-3 px-2" style={{color: 'var(--text-muted)'}}>Demand Change</th>
+                    <th className="text-right py-3 px-2" style={{color: 'var(--text-muted)'}}>Revenue Impact</th>
+                    <th className="text-left py-3 px-2" style={{color: 'var(--text-muted)'}}>Risk</th>
+                    <th className="text-left py-3 px-2" style={{color: 'var(--text-muted)'}}>Recommendation</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {putterGrips.map((item: any, idx: number) => (
+                    <tr key={idx} style={{borderBottom: '1px solid var(--border-muted)'}}>
+                      <td className="py-3 px-2" style={{color: 'var(--text-primary)'}}>{item.title}</td>
+                      <td className="text-right py-3 px-2" style={{color: 'var(--text-primary)'}}>{formatCurrency(item.currentAvgPrice)}</td>
+                      <td className="text-right py-3 px-2" style={{color: 'var(--text-primary)'}}>{(item.currentUnitsSold || 0).toLocaleString()}</td>
+                      <td className="text-right py-3 px-2 font-semibold" style={{color: (item.priceChangePct || 0) > 0 ? '#22c55e' : '#ef4444'}}>
+                        {(item.priceChangePct || 0) > 0 ? '+' : ''}{(item.priceChangePct || 0).toFixed(1)}%
+                      </td>
+                      <td className="text-right py-3 px-2 font-semibold" style={{color: (item.demandChangePct || 0) > 0 ? '#22c55e' : '#ef4444'}}>
+                        {(item.demandChangePct || 0) > 0 ? '+' : ''}{(item.demandChangePct || 0).toFixed(1)}%
+                      </td>
+                      <td className="text-right py-3 px-2 font-semibold" style={{color: (item.revenueChangeWithElasticity || 0) >= 0 ? '#22c55e' : '#ef4444'}}>
+                        {formatCurrency(item.revenueChangeWithElasticity)}
+                      </td>
+                      <td className="py-3 px-2 text-sm" style={{color: 'var(--text-secondary)'}}>{item.riskCategory}</td>
+                      <td className="py-3 px-2 text-sm" style={{color: 'var(--text-secondary)'}}>{item.recommendation}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // Forecasting section
+  if (section === 'forecasting') {
+    // Show loading state
+    if (forecastLoading) {
+      return (
+        <div className="flex justify-center items-center py-12">
+          <div className="flex items-center gap-3">
+            <Loader2 className="h-8 w-8 animate-spin" style={{color: 'var(--accent-primary)'}} />
+            <span className="text-lg" style={{color: 'var(--text-secondary)'}}>Loading forecast data...</span>
+          </div>
+        </div>
+      );
+    }
+
+    // Show error state
+    if (forecastError) {
+      return (
+        <div className="text-center py-12">
+          <div className="card p-6 max-w-md mx-auto">
+            <h3 className="text-lg font-semibold mb-2" style={{color: 'var(--text-primary)'}}>Error Loading Data</h3>
+            <p className="text-sm mb-4" style={{color: 'var(--text-muted)'}}>{forecastError}</p>
+            <button
+              onClick={() => window.location.reload()}
+              className="btn-primary px-4 py-2"
+            >
+              Retry
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    if (!forecastData) {
+      return (
+        <div className="text-center py-12">
+          <p style={{color: 'var(--text-muted)'}}>No forecast data available</p>
+        </div>
+      );
+    }
+
+    const bfcmData = forecastData.bfcm;
+    const q4Data = forecastData.q4;
+
+    // Historical BFCM data
+    const historicalBFCM = [
+      { year: 2022, days: 13, totalRevenue: 111814, avgDaily: 8601, minDaily: 5232, maxDaily: 13588, vsNormal: 128.5 },
+      { year: 2023, days: 13, totalRevenue: 86820, avgDaily: 6678, minDaily: 1827, maxDaily: 10548, vsNormal: 60.5 },
+      { year: 2024, days: 12, totalRevenue: 198702, avgDaily: 16559, minDaily: 8432, maxDaily: 27546, vsNormal: 85.3 }
+    ];
+
+    return (
+      <div className="space-y-8">
+        {/* Forecast Scenario Cards */}
+        {bfcmData && q4Data && (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* BFCM 2025 Scenarios */}
+            <div className="card p-6">
+              <h3 className="text-lg font-semibold mb-6" style={{color: 'var(--text-primary)'}}>
+                BFCM 2025 Forecast Scenarios
+              </h3>
+              <div className="space-y-4">
+                {Object.entries(bfcmData.scenarios).map(([name, data]: [string, any], index) => {
+                  const displayName = name === 'forecast' ? 'Forecast' :
+                                    name === 'stretchGoal' ? 'Stretch Goal' :
+                                    name.charAt(0).toUpperCase() + name.slice(1);
+                  const scenarios = Object.values(bfcmData.scenarios) as any[];
+                  const minTotal = Math.min(...scenarios.map((s: any) => s.total));
+                  const maxTotal = Math.max(...scenarios.map((s: any) => s.total));
+                  // Add minimum 20% width, scale remaining 80%
+                  const percentage = 20 + ((data.total - minTotal) / (maxTotal - minTotal)) * 80;
+
+                  const getColor = (name: string) => {
+                    if (name === 'conservative') return '#ef4444';
+                    if (name === 'forecast') return '#f59e0b';
+                    if (name === 'optimistic') return '#22c55e';
+                    if (name === 'stretchGoal') return '#10b981';
+                    return '#94a3b8';
+                  };
+
+                  return (
+                    <div key={name}>
+                      <div className="flex justify-between items-center mb-2">
+                        <span className="text-sm font-medium" style={{color: 'var(--text-secondary)'}}>
+                          {displayName}
+                        </span>
+                        <span className="text-lg font-bold" style={{color: 'var(--text-primary)'}}>
+                          {formatCurrency(data.total, 1)}
+                        </span>
+                      </div>
+                      <div className="w-full h-3 rounded-full" style={{background: 'var(--border-muted)'}}>
+                        <div
+                          className="h-3 rounded-full transition-all duration-500"
+                          style={{
+                            width: `${percentage}%`,
+                            background: `linear-gradient(90deg, ${getColor(name)}, ${getColor(name)}dd)`
+                          }}
+                        />
+                      </div>
+                      <div className="text-xs mt-1" style={{color: 'var(--text-muted)'}}>
+                        {formatCurrency(data.avg, 1)} / day
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              <div className="mt-6 pt-4 border-t" style={{borderColor: 'var(--border-muted)'}}>
+                <p className="text-xs" style={{color: 'var(--text-muted)'}}>
+                  Forecast = Model Prediction. Conservative = -15%. Optimistic = +15%. Stretch Goal = +30%
+                </p>
+              </div>
+            </div>
+
+            {/* Q4 2025 Scenarios */}
+            <div className="card p-6">
+              <h3 className="text-lg font-semibold mb-6" style={{color: 'var(--text-primary)'}}>
+                Q4 2025 Forecast Scenarios
+              </h3>
+              <div className="space-y-4">
+                {Object.entries(q4Data.scenarios).map(([name, data]: [string, any], index) => {
+                  const displayName = name === 'forecast' ? 'Forecast' :
+                                    name === 'stretchGoal' ? 'Stretch Goal' :
+                                    name.charAt(0).toUpperCase() + name.slice(1);
+                  const scenarios = Object.values(q4Data.scenarios) as any[];
+                  const minTotal = Math.min(...scenarios.map((s: any) => s.total));
+                  const maxTotal = Math.max(...scenarios.map((s: any) => s.total));
+                  // Add minimum 20% width, scale remaining 80%
+                  const percentage = 20 + ((data.total - minTotal) / (maxTotal - minTotal)) * 80;
+
+                  const getColor = (name: string) => {
+                    if (name === 'conservative') return '#ef4444';
+                    if (name === 'forecast') return '#f59e0b';
+                    if (name === 'optimistic') return '#22c55e';
+                    if (name === 'stretchGoal') return '#10b981';
+                    return '#94a3b8';
+                  };
+
+                  return (
+                    <div key={name}>
+                      <div className="flex justify-between items-center mb-2">
+                        <span className="text-sm font-medium" style={{color: 'var(--text-secondary)'}}>
+                          {displayName}
+                        </span>
+                        <span className="text-lg font-bold" style={{color: 'var(--text-primary)'}}>
+                          {formatCurrency(data.total, 1)}
+                        </span>
+                      </div>
+                      <div className="w-full h-3 rounded-full" style={{background: 'var(--border-muted)'}}>
+                        <div
+                          className="h-3 rounded-full transition-all duration-500"
+                          style={{
+                            width: `${percentage}%`,
+                            background: `linear-gradient(90deg, ${getColor(name)}, ${getColor(name)}dd)`
+                          }}
+                        />
+                      </div>
+                      <div className="text-xs mt-1" style={{color: 'var(--text-muted)'}}>
+                        {formatCurrency(data.avg, 1)} / day
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              <div className="mt-6 pt-4 border-t" style={{borderColor: 'var(--border-muted)'}}>
+                <p className="text-xs" style={{color: 'var(--text-muted)'}}>
+                  Forecast = Model Prediction. Conservative = -15%. Optimistic = +15%. Stretch Goal = +30%
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Daily Forecast Chart */}
+        {forecastData.daily && (
+          <div className="card p-6">
+            <h3 className="text-lg font-semibold mb-6" style={{color: 'var(--text-primary)'}}>
+              Q4 2025 Daily Revenue Forecast
+            </h3>
+            <div className="h-96">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={forecastData.daily}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border-muted)" />
+                  <XAxis
+                    dataKey="date"
+                    stroke="var(--text-muted)"
+                    tick={{ fill: 'var(--text-muted)', fontSize: 12 }}
+                    tickFormatter={(value) => new Date(value).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                  />
+                  <YAxis
+                    stroke="var(--text-muted)"
+                    tick={{ fill: 'var(--text-muted)', fontSize: 12 }}
+                    tickFormatter={(value) => formatCurrency(value, 0)}
+                  />
+                  <Tooltip
+                    contentStyle={{
+                      backgroundColor: 'var(--bg-primary)',
+                      border: '1px solid var(--border-muted)',
+                      borderRadius: '8px',
+                      color: 'var(--text-primary)'
+                    }}
+                    formatter={(value: number) => formatCurrency(value, 1)}
+                    labelFormatter={(label) => new Date(label).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
+                    itemSorter={(item: any) => {
+                      // Sort in descending order: optimistic (highest), forecast (middle), conservative (lowest)
+                      const order: {[key: string]: number} = { optimistic: 0, forecast: 1, conservative: 2 };
+                      return order[item.dataKey] ?? 999;
+                    }}
+                  />
+                  <Legend
+                    wrapperStyle={{ color: 'var(--text-primary)' }}
+                    payload={[
+                      { value: 'Optimistic', type: 'line', color: '#9CA3AF' },
+                      { value: 'Forecast', type: 'line', color: '#22c55e' },
+                      { value: 'Conservative', type: 'line', color: '#6B7280' }
+                    ]}
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="optimistic"
+                    stroke="#9CA3AF"
+                    strokeWidth={2}
+                    strokeDasharray="5 5"
+                    dot={false}
+                    name="Optimistic"
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="forecast"
+                    stroke="#22c55e"
+                    strokeWidth={3}
+                    dot={false}
+                    name="Forecast"
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="conservative"
+                    stroke="#6B7280"
+                    strokeWidth={2}
+                    strokeDasharray="5 5"
+                    dot={false}
+                    name="Conservative"
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+        )}
+
+        {/* BFCM Impact Summary */}
+        {bfcmData && q4Data && (
+          <div className="card p-6">
+            <h3 className="text-lg font-semibold mb-4" style={{color: 'var(--text-primary)'}}>
+              BFCM Impact Analysis (Forecast)
+            </h3>
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+              <div>
+                <div className="text-sm mb-2" style={{color: 'var(--text-muted)'}}>
+                  BFCM Total Revenue
+                </div>
+                <div className="text-2xl font-bold" style={{color: 'var(--text-primary)'}}>
+                  {formatCurrency(bfcmData.scenarios.forecast.total, 1)}
+                </div>
+              </div>
+              <div>
+                <div className="text-sm mb-2" style={{color: 'var(--text-muted)'}}>
+                  % of Q4 Revenue
+                </div>
+                <div className="text-2xl font-bold" style={{color: 'var(--text-primary)'}}>
+                  {((bfcmData.scenarios.forecast.total / q4Data.scenarios.forecast.total) * 100).toFixed(1)}%
+                </div>
+              </div>
+              <div>
+                <div className="text-sm mb-2" style={{color: 'var(--text-muted)'}}>
+                  Daily Revenue vs Q4 Avg
+                </div>
+                <div className="text-2xl font-bold" style={{color: 'var(--accent-success)'}}>
+                  +{(((bfcmData.scenarios.forecast.avg / q4Data.scenarios.forecast.avg) - 1) * 100).toFixed(0)}%
+                </div>
+              </div>
+              <div>
+                <div className="text-sm mb-2" style={{color: 'var(--text-muted)'}}>
+                  BFCM Daily Average
+                </div>
+                <div className="text-2xl font-bold" style={{color: 'var(--text-primary)'}}>
+                  {formatCurrency(bfcmData.scenarios.forecast.avg, 1)}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Forecast Summary Table */}
+        {forecastData.scenarios && (
+          <div className="card p-6">
+            <h3 className="text-lg font-semibold mb-6" style={{color: 'var(--text-primary)'}}>
+              Forecast Summary by Period
+            </h3>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr style={{borderBottom: '2px solid var(--border-muted)'}}>
+                    <th className="text-left py-3 px-2" style={{color: 'var(--text-muted)'}}>Period</th>
+                    <th className="text-right py-3 px-2" style={{color: 'var(--text-muted)'}}>Days</th>
+                    <th className="text-right py-3 px-2" style={{color: 'var(--text-muted)'}}>Total Revenue</th>
+                    <th className="text-right py-3 px-2" style={{color: 'var(--text-muted)'}}>Avg Daily</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {forecastData.scenarios.map((row: any, idx: number) => (
+                    <tr key={idx} style={{borderBottom: '1px solid var(--border-muted)'}}>
+                      <td className="py-3 px-2 font-medium" style={{color: 'var(--text-primary)'}}>
+                        {row.period}
+                      </td>
+                      <td className="py-3 px-2 text-right" style={{color: 'var(--text-primary)'}}>
+                        {row.days}
+                      </td>
+                      <td className="py-3 px-2 text-right font-semibold" style={{color: 'var(--text-primary)'}}>
+                        {formatCurrency(row.scenarios.forecast.total, 1)}
+                      </td>
+                      <td className="py-3 px-2 text-right" style={{color: 'var(--text-primary)'}}>
+                        {formatCurrency(row.scenarios.forecast.avg, 1)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {/* Historical BFCM Performance Card */}
+        <div className="card p-6">
+          <h3 className="text-lg font-semibold mb-6" style={{color: 'var(--text-primary)'}}>
+            Historical BFCM Performance Analysis
+          </h3>
+
+          <div className="space-y-6">
+            {/* Historical Table */}
+            <div>
+              <h4 className="text-sm font-medium mb-3" style={{color: 'var(--text-muted)'}}>
+                BFCM Revenue by Year
+              </h4>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr style={{borderBottom: '2px solid var(--border-muted)'}}>
+                      <th className="text-left py-3 px-2" style={{color: 'var(--text-muted)'}}>Year</th>
+                      <th className="text-right py-3 px-2" style={{color: 'var(--text-muted)'}}>Days</th>
+                      <th className="text-right py-3 px-2" style={{color: 'var(--text-muted)'}}>Total Revenue</th>
+                      <th className="text-right py-3 px-2" style={{color: 'var(--text-muted)'}}>Avg Daily</th>
+                      <th className="text-right py-3 px-2" style={{color: 'var(--text-muted)'}}>Min Daily</th>
+                      <th className="text-right py-3 px-2" style={{color: 'var(--text-muted)'}}>Max Daily</th>
+                      <th className="text-right py-3 px-2" style={{color: 'var(--text-muted)'}}>% vs Normal</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {historicalBFCM.map((row) => (
+                      <tr key={row.year} style={{borderBottom: '1px solid var(--border-muted)'}}>
+                        <td className="py-3 px-2 font-medium" style={{color: 'var(--text-primary)'}}>
+                          {row.year}
+                        </td>
+                        <td className="py-3 px-2 text-right" style={{color: 'var(--text-primary)'}}>
+                          {row.days}
+                        </td>
+                        <td className="py-3 px-2 text-right font-semibold" style={{color: 'var(--text-primary)'}}>
+                          {formatCurrency(row.totalRevenue, 1)}
+                        </td>
+                        <td className="py-3 px-2 text-right" style={{color: 'var(--text-primary)'}}>
+                          {formatCurrency(row.avgDaily, 1)}
+                        </td>
+                        <td className="py-3 px-2 text-right" style={{color: 'var(--text-secondary)'}}>
+                          {formatCurrency(row.minDaily, 1)}
+                        </td>
+                        <td className="py-3 px-2 text-right" style={{color: 'var(--text-secondary)'}}>
+                          {formatCurrency(row.maxDaily, 1)}
+                        </td>
+                        <td className="py-3 px-2 text-right font-medium" style={{color: 'var(--accent-success)'}}>
+                          +{row.vsNormal.toFixed(1)}%
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* Key Findings Grid */}
+            <div>
+              <h4 className="text-sm font-medium mb-3" style={{color: 'var(--text-muted)'}}>
+                Key Findings
+              </h4>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                {/* 2024 Baseline */}
+                <div className="space-y-3">
+                  <div className="text-xs font-medium uppercase" style={{color: 'var(--text-muted)'}}>
+                    Current 2024 Baseline (excluding BFCM)
+                  </div>
+                  <div className="space-y-2">
+                    <div className="flex justify-between">
+                      <span className="text-sm" style={{color: 'var(--text-secondary)'}}>Last 30 days avg:</span>
+                      <span className="text-sm font-semibold" style={{color: 'var(--text-primary)'}}>$12.5K/day</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-sm" style={{color: 'var(--text-secondary)'}}>Last 90 days avg:</span>
+                      <span className="text-sm font-semibold" style={{color: 'var(--text-primary)'}}>$16.0K/day</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-sm" style={{color: 'var(--text-secondary)'}}>2024 YTD avg:</span>
+                      <span className="text-sm font-semibold" style={{color: 'var(--text-primary)'}}>$12.3K/day</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Historical BFCM Lift */}
+                <div className="space-y-3">
+                  <div className="text-xs font-medium uppercase" style={{color: 'var(--text-muted)'}}>
+                    Historical BFCM Lift
+                  </div>
+                  <div className="space-y-2">
+                    <div className="flex justify-between">
+                      <span className="text-sm" style={{color: 'var(--text-secondary)'}}>3-year average:</span>
+                      <span className="text-sm font-semibold" style={{color: 'var(--accent-success)'}}>+91.4%</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-sm" style={{color: 'var(--text-secondary)'}}>Best performance:</span>
+                      <span className="text-sm font-semibold" style={{color: 'var(--accent-success)'}}>2022 at +128.5%</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-sm" style={{color: 'var(--text-secondary)'}}>Most recent:</span>
+                      <span className="text-sm font-semibold" style={{color: 'var(--accent-success)'}}>2024 at +85.3%</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Average BFCM Performance */}
+                <div className="space-y-3">
+                  <div className="text-xs font-medium uppercase" style={{color: 'var(--text-muted)'}}>
+                    Average BFCM Performance
+                  </div>
+                  <div className="space-y-2">
+                    <div className="text-3xl font-bold" style={{color: 'var(--text-primary)'}}>
+                      $10.6K
+                    </div>
+                    <div className="text-sm" style={{color: 'var(--text-secondary)'}}>
+                      Daily average (2022-2024)
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </div>

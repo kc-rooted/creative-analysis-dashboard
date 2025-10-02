@@ -18,10 +18,10 @@ export default function DashboardHeader({
   onDateRangeChange,
 }: DashboardHeaderProps) {
   return (
-    <div className="w-full mb-8">
+    <div className="mb-8 flex justify-center">
       {/* Section tabs */}
-      <div className="card p-0 overflow-hidden">
-        <div className="flex overflow-x-auto">
+      <div className="card p-0 overflow-hidden" style={{ width: 'fit-content' }}>
+        <div className="flex">
           {sections.map((section) => (
             <button
               key={section.id}

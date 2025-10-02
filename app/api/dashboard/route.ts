@@ -1,14 +1,29 @@
 import { NextResponse } from 'next/server';
-import { getExecutiveSummary, getPaidMediaTrend, getShopifyRevenueYoY, getRevenueForecast7Day, getClientDashboardConfig } from '@/lib/bigquery';
+import { getExecutiveSummary, getPaidMediaTrend, getShopifyRevenueYoY, getRevenueForecast7Day, getClientDashboardConfig, getBusinessContextIndex } from '@/lib/bigquery';
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
-    const [data, paidMediaTrend, shopifyRevenueYoY, revenueForecast, dashboardConfig] = await Promise.all([
+    // Get period from query params (7d, mtd, or 30d)
+    const { searchParams } = new URL(request.url);
+    const period = searchParams.get('period') || '7d';
+
+    // Convert period to days for BigQuery functions
+    let days = 7;
+    if (period === 'mtd') {
+      // Calculate days since start of month
+      const now = new Date();
+      days = now.getDate() - 1; // Days elapsed in current month
+    } else if (period === '30d') {
+      days = 30;
+    }
+
+    const [data, paidMediaTrend, shopifyRevenueYoY, revenueForecast, dashboardConfig, businessContext] = await Promise.all([
       getExecutiveSummary(),
-      getPaidMediaTrend(),
-      getShopifyRevenueYoY(),
+      getPaidMediaTrend(days),
+      getShopifyRevenueYoY(days),
       getRevenueForecast7Day(),
-      getClientDashboardConfig()
+      getClientDashboardConfig(),
+      getBusinessContextIndex()
     ]);
 
     if (!data) {
@@ -269,7 +284,41 @@ export async function GET() {
           suggestedSpend: 0,
           expectedRoas: 0,
           forecastDays: 7
-        }
+        },
+        businessHealth: businessContext ? {
+          healthIndex: businessContext.businessHealthIndex,
+          revenueTrend: businessContext.revenueTrend,
+          demandTrend: businessContext.demandTrend,
+          gaugeValue: businessContext.businessHealthIndex,
+          gaugeMax: 100,
+          gaugeTarget: 70
+        } : null,
+        searchDemand: businessContext ? {
+          current: businessContext.searchImpressions7dAvg,
+          yoyChange: businessContext.searchDemandYoyChangePct,
+          trend: businessContext.demandTrend,
+          gaugeValue: businessContext.searchImpressions7dAvg,
+          gaugeMax: businessContext.searchImpressions7dAvg * 1.5 || 10000,
+          gaugeTarget: businessContext.searchImpressions7dAvg * 1.2 || 8000
+        } : null,
+        brandAwareness: businessContext ? {
+          current: businessContext.brandImpressions30dAvg,
+          gaugeValue: businessContext.brandImpressions30dAvg,
+          gaugeMax: businessContext.brandImpressions30dAvg * 1.5 || 2000,
+          gaugeTarget: businessContext.brandImpressions30dAvg * 1.2 || 1500
+        } : null,
+        yoyPerformance: businessContext ? {
+          status: businessContext.yoyStatus,
+          revenueYoyChange: businessContext.revenueYoyChangePct,
+          ordersYoyChange: businessContext.ordersYoyChangePct,
+          searchYoyChange: businessContext.searchDemandYoyChangePct
+        } : null,
+        revenueMomentum: businessContext ? {
+          revenue7dAvg: businessContext.revenue7dAvg,
+          revenue30dAvg: businessContext.revenue30dAvg,
+          trend: businessContext.revenueTrend,
+          acceleration: ((businessContext.revenue7dAvg - businessContext.revenue30dAvg) / businessContext.revenue30dAvg) * 100
+        } : null
       },
       charts: {
         revenueTrend: [
