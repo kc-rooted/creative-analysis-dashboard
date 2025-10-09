@@ -1,8 +1,10 @@
 import { NextResponse } from 'next/server';
-import { getPutterGripPricingModel, getSwingGripPricingModel } from '@/lib/bigquery';
+import { initializeCurrentClient, getPutterGripPricingModel, getSwingGripPricingModel } from '@/lib/bigquery';
 
 export async function GET(request: Request) {
   try {
+    // CRITICAL: Initialize current client cache before BigQuery operations
+    await initializeCurrentClient();
     const [putterGripPricing, swingGripPricing] = await Promise.all([
       getPutterGripPricingModel(),
       getSwingGripPricingModel()

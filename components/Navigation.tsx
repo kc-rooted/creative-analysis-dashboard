@@ -7,7 +7,7 @@ import { UserMenu } from './auth/user-menu';
 export function Navigation() {
   const pathname = usePathname();
   const router = useRouter();
-  
+
   const isCreative = pathname === '/' || pathname.startsWith('/creative');
   const isConversation = pathname.startsWith('/conversation');
   const isInfluencer = pathname.startsWith('/influencer');

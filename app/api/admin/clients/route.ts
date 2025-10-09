@@ -33,10 +33,12 @@ export async function GET() {
       dashboard: row.dashboard_config ? JSON.parse(row.dashboard_config) : undefined,
     }));
 
+    console.log('Returning clients from DB:', clients.map(c => c.id));
     return NextResponse.json(clients);
   } catch (error) {
     console.error('Error fetching client configurations:', error);
-    
+    console.log('Using fallback configs...');
+
     // Fallback to hardcoded config if table doesn't exist yet
     const fallbackConfigs = [
       {
@@ -60,6 +62,41 @@ export async function GET() {
         analysis: {
           focusAreas: ['performance', 'brand_compliance', 'golf_appeal'],
           customPromptAdditions: 'Focus specifically on golf equipment marketing appeal.',
+        },
+        dashboard: {
+          monthlyRevenueTargets: [300000, 300000, 300000, 300000, 300000, 300000, 300000, 300000, 300000, 300000, 300000, 300000],
+          monthlyRoasTarget: 6.5,
+          currency: 'USD',
+          currencySymbol: '$',
+        },
+      },
+      {
+        id: 'puttout',
+        name: 'PuttOut',
+        bigquery: { dataset: 'puttout_analytics' },
+        brand: {
+          colors: [
+            { name: 'PuttOut Red', hex: '#DF2A3F', description: 'Primary brand red - bold and energetic', usage: 'primary_brand' },
+            { name: 'Black', hex: '#111111', description: 'Secondary brand color - premium and modern', usage: 'accent' },
+            { name: 'White', hex: '#FFFFFF', description: 'Clean background and text contrast', usage: 'background' },
+            { name: 'Dark Gray', hex: '#2C3E50', description: 'Primary text and strong contrast', usage: 'text' },
+            { name: 'Light Gray', hex: '#95A5A6', description: 'Secondary text and subtle elements', usage: 'secondary_text' },
+          ],
+          industry: 'golf_training_equipment',
+          targetAudience: ['golf_enthusiasts', 'practice_focused_golfers', 'skill_improvement_seekers'],
+          productCategories: ['putting_trainers', 'golf_training_aids', 'golf_accessories'],
+          brandPersonality: 'innovative_fun_performance_focused',
+          competitiveContext: 'leading_golf_training_equipment_brand',
+        },
+        analysis: {
+          focusAreas: ['performance', 'brand_compliance', 'golf_appeal', 'training_focus'],
+          customPromptAdditions: 'Focus on golf training and skill improvement messaging. Emphasize how the creative appeals to golfers looking to improve their putting game.',
+        },
+        dashboard: {
+          monthlyRevenueTargets: [250000, 250000, 250000, 250000, 250000, 250000, 250000, 250000, 250000, 250000, 250000, 250000],
+          monthlyRoasTarget: 5.0,
+          currency: 'GBP',
+          currencySymbol: '£',
         },
       }
     ];

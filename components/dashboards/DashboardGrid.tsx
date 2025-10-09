@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { DateRange } from '@/types/dashboard';
 import KPICard from './widgets/KPICard';
 import ChartCard from './widgets/ChartCard';
@@ -13,8 +13,11 @@ import ProductAlsoBought from './widgets/ProductAlsoBought';
 import GripSwitchingSankey from './widgets/GripSwitchingSankey';
 import PutterGripSwitchingSankey from './widgets/PutterGripSwitchingSankey';
 import CustomerCLVDashboard from './widgets/CustomerCLVDashboard';
+import CustomerOverviewKPIs from './widgets/CustomerOverviewKPIs';
+import LTVIntelligence from './widgets/LTVIntelligence';
+import CustomerJourneyAnalysis from './widgets/CustomerJourneyAnalysis';
 import { Loader2, FrownIcon } from 'lucide-react';
-import { formatCurrency, formatNumber } from '@/lib/format';
+import { formatCurrency as baseFomatCurrency, formatNumber } from '@/lib/format';
 import { LineChart, Line, CartesianGrid, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 
 interface DashboardGridProps {
@@ -38,10 +41,18 @@ interface DashboardData {
 }
 
 export default function DashboardGrid({ section, dateRange }: DashboardGridProps) {
+  const [currentClient, setCurrentClient] = useState<string>('jumbomax');
+  const [currencySymbol, setCurrencySymbol] = useState<string>('$');
+  const [currencyLoaded, setCurrencyLoaded] = useState(false);
   const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [emailData, setEmailData] = useState<any>(null);
+
+  // Funnel optimization state
+  const [funnelData, setFunnelData] = useState<any>({});
+  const [funnelLoading, setFunnelLoading] = useState(true);
+  const [funnelCountry, setFunnelCountry] = useState<string>('United States');
   const [emailLoading, setEmailLoading] = useState(true);
   const [emailError, setEmailError] = useState<string | null>(null);
   const [emailDatePreset, setEmailDatePreset] = useState<DatePreset>('mtd');
@@ -74,9 +85,53 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
   const [forecastData, setForecastData] = useState<any>(null);
   const [forecastLoading, setForecastLoading] = useState(true);
   const [forecastError, setForecastError] = useState<string | null>(null);
+  const [metaRoasPredictions, setMetaRoasPredictions] = useState<any>(null);
+  const [metaRoasLoading, setMetaRoasLoading] = useState(true);
 
-  // Fetch dashboard data on mount only
+  // Currency-aware formatCurrency wrapper
+  const formatCurrency = useCallback((value: number | null | undefined, decimals: number = 1): string => {
+    console.log('[formatCurrency] Using currency symbol:', currencySymbol);
+    return baseFomatCurrency(value, decimals, currencySymbol);
+  }, [currencySymbol]);
+
+  // Fetch current client on mount - MUST complete before rendering
   useEffect(() => {
+    const fetchCurrentClient = async () => {
+      try {
+        const response = await fetch('/api/admin/current-client');
+        if (response.ok) {
+          const data = await response.json();
+          console.log('[DashboardGrid] Current client:', data.clientId);
+          setCurrentClient(data.clientId);
+
+          // Fetch client config to get currency symbol
+          const configResponse = await fetch('/api/admin/clients');
+          if (configResponse.ok) {
+            const clients = await configResponse.json();
+            console.log('[DashboardGrid] All clients:', clients);
+            const client = clients.find((c: any) => c.id === data.clientId);
+            console.log('[DashboardGrid] Found client config:', client);
+            if (client?.dashboard?.currencySymbol) {
+              console.log('[DashboardGrid] Setting currency symbol to:', client.dashboard.currencySymbol);
+              setCurrencySymbol(client.dashboard.currencySymbol);
+            } else {
+              console.log('[DashboardGrid] No currency symbol found in client config');
+            }
+          }
+        }
+      } catch (error) {
+        console.error('Error fetching current client:', error);
+      } finally {
+        setCurrencyLoaded(true); // Currency is now loaded
+      }
+    };
+    fetchCurrentClient();
+  }, []);
+
+  // Fetch dashboard data only after currency is loaded
+  useEffect(() => {
+    if (!currencyLoaded) return; // Wait for currency to load
+
     const fetchDashboardData = async () => {
       try {
         setLoading(true);
@@ -102,11 +157,47 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
     };
 
     fetchDashboardData();
-  }, [overviewPeriod]); // Refetch when period changes
+  }, [overviewPeriod, currencyLoaded]); // Refetch when period changes or currency loads
+
+  // Fetch funnel data when on funnel section - fetch all goals
+  useEffect(() => {
+    if (section !== 'funnel' || !currencyLoaded) return;
+
+    const fetchAllFunnelData = async () => {
+      try {
+        setFunnelLoading(true);
+        const goals = ['awareness', 'efficiency', 'engagement', 'revenue', 'conversion', 'composite', 'allstars'];
+
+        const results = await Promise.all(
+          goals.map(async (goal) => {
+            const response = await fetch(`/api/dashboard/funnel?goal=${goal}&country=${encodeURIComponent(funnelCountry)}`);
+            if (!response.ok) {
+              throw new Error(`Failed to fetch ${goal} data`);
+            }
+            const data = await response.json();
+            return { goal, data };
+          })
+        );
+
+        const allData: any = {};
+        results.forEach(({ goal, data }) => {
+          allData[goal] = data.bundles;
+        });
+
+        setFunnelData(allData);
+      } catch (err) {
+        console.error('Error fetching funnel data:', err);
+      } finally {
+        setFunnelLoading(false);
+      }
+    };
+
+    fetchAllFunnelData();
+  }, [section, funnelCountry, currencyLoaded]);
 
   // Fetch email data when on email section or when date filter changes
   useEffect(() => {
-    if (section !== 'email') return;
+    if (section !== 'email' || !currencyLoaded) return;
 
     const fetchEmailData = async () => {
       try {
@@ -136,7 +227,7 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
       }
     };
     fetchEmailData();
-  }, [section, emailDatePreset, emailCustomDates, emailComparisonType]);
+  }, [section, emailDatePreset, emailCustomDates, emailComparisonType, currencyLoaded]);
 
   // Handle date filter changes
   const handleEmailDateChange = (preset: DatePreset, startDate?: string, endDate?: string) => {
@@ -155,7 +246,7 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
 
   // Fetch product data when on product section or period changes
   useEffect(() => {
-    if (section !== 'product') return;
+    if (section !== 'product' || !currencyLoaded) return;
 
     const fetchProductData = async () => {
       try {
@@ -174,11 +265,11 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
       }
     };
     fetchProductData();
-  }, [section, productPeriod]);
+  }, [section, productPeriod, currencyLoaded]);
 
   // Fetch customer data when on customers section
   useEffect(() => {
-    if (section !== 'customers') return;
+    if (section !== 'customers' || !currencyLoaded) return;
 
     const fetchCustomerData = async () => {
       try {
@@ -197,11 +288,11 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
       }
     };
     fetchCustomerData();
-  }, [section]);
+  }, [section, currencyLoaded]);
 
   // Fetch Facebook data when on facebook section or when date filter changes
   useEffect(() => {
-    if (section !== 'facebook') return;
+    if (section !== 'facebook' || !currencyLoaded) return;
 
     const fetchFacebookData = async () => {
       try {
@@ -223,6 +314,8 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
           throw new Error('Failed to fetch Facebook data');
         }
         const data = await response.json();
+        console.log('Facebook API Response:', data);
+        console.log('Country Performance:', data.countryPerformance);
         setFacebookData(data);
       } catch (err) {
         setFacebookError(err instanceof Error ? err.message : 'Unknown error');
@@ -231,7 +324,31 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
       }
     };
     fetchFacebookData();
-  }, [section, facebookDatePreset, facebookCustomDates, facebookComparisonType]);
+  }, [section, facebookDatePreset, facebookCustomDates, facebookComparisonType, currencyLoaded]);
+
+  // Fetch Meta ROAS Predictions when on facebook section
+  useEffect(() => {
+    if (section !== 'facebook' || !currencyLoaded) return;
+
+    const fetchMetaRoasPredictions = async () => {
+      try {
+        setMetaRoasLoading(true);
+        const response = await fetch('/api/meta-roas-predictions');
+        if (!response.ok) {
+          throw new Error('Failed to fetch Meta ROAS predictions');
+        }
+        const data = await response.json();
+        console.log('Meta ROAS Predictions:', data);
+        setMetaRoasPredictions(data);
+      } catch (err) {
+        console.error('Error fetching Meta ROAS predictions:', err);
+        setMetaRoasPredictions(null);
+      } finally {
+        setMetaRoasLoading(false);
+      }
+    };
+    fetchMetaRoasPredictions();
+  }, [section, currencyLoaded]);
 
   // Handle Facebook date filter changes
   const handleFacebookDateChange = (preset: DatePreset, startDate?: string, endDate?: string) => {
@@ -250,7 +367,7 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
 
   // Fetch Google Ads data when on google section or when date filter changes
   useEffect(() => {
-    if (section !== 'google') return;
+    if (section !== 'google' || !currencyLoaded) return;
 
     const fetchGoogleData = async () => {
       try {
@@ -280,7 +397,7 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
       }
     };
     fetchGoogleData();
-  }, [section, googleDatePreset, googleCustomDates, googleComparisonType]);
+  }, [section, googleDatePreset, googleCustomDates, googleComparisonType, currencyLoaded]);
 
   // Handle Google Ads date filter changes
   const handleGoogleDateChange = (preset: DatePreset, startDate?: string, endDate?: string) => {
@@ -299,7 +416,7 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
 
   // Fetch operational data when on operational section
   useEffect(() => {
-    if (section !== 'operational') return;
+    if (section !== 'operational' || !currencyLoaded) return;
 
     const fetchOperationalData = async () => {
       try {
@@ -318,11 +435,11 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
       }
     };
     fetchOperationalData();
-  }, [section]);
+  }, [section, currencyLoaded]);
 
   // Fetch forecasting data when on forecasting section
   useEffect(() => {
-    if (section !== 'forecasting') return;
+    if (section !== 'forecasting' || !currencyLoaded) return;
 
     const fetchForecastData = async () => {
       try {
@@ -341,7 +458,7 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
       }
     };
     fetchForecastData();
-  }, [section]);
+  }, [section, currencyLoaded]);
 
   // Only show Big 5 KPIs for Business Overview section
   if (section === 'overview') {
@@ -433,7 +550,7 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
           {/* Total Revenue */}
           <KPICard
             title="TOTAL REVENUE"
-            currentValue={`$${(getPeriodData(dashboardData.kpis.totalRevenue).value / 1000).toFixed(1)}K`}
+            currentValue={formatCurrency(getPeriodData(dashboardData.kpis.totalRevenue).value)}
             previousValue={undefined}
             trend={getPeriodData(dashboardData.kpis.totalRevenue).trend || 0}
             subtitle={undefined}
@@ -483,24 +600,24 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
           {/* Paid Media Spend */}
           <KPICard
             title="PAID MEDIA SPEND"
-            currentValue={`$${(getPeriodData(dashboardData.kpis.paidMediaSpend).value / 1000).toFixed(1)}K`}
+            currentValue={formatCurrency(getPeriodData(dashboardData.kpis.paidMediaSpend).value)}
             previousValue={undefined}
             trend={getPeriodData(dashboardData.kpis.paidMediaSpend).trend || 0}
             subtitle={undefined}
             periodData={{
               sevenDay: {
-                value: `$${((dashboardData.kpis.paidMediaSpend.periodData?.sevenDay?.value || 0) / 1000).toFixed(1)}K`,
+                value: formatCurrency(dashboardData.kpis.paidMediaSpend.periodData?.sevenDay?.value || 0),
                 trend: dashboardData.kpis.paidMediaSpend.periodData?.sevenDay?.trend || 0
               },
               thirtyDay: {
-                value: `$${((dashboardData.kpis.paidMediaSpend.periodData?.thirtyDay?.value || 0) / 1000).toFixed(1)}K`,
+                value: formatCurrency(dashboardData.kpis.paidMediaSpend.periodData?.thirtyDay?.value || 0),
                 trend: dashboardData.kpis.paidMediaSpend.periodData?.thirtyDay?.trend || 0
               }
             }}
             gaugeValue={dashboardData.kpis.paidMediaSpend.gaugeValue}
             gaugeMax={dashboardData.kpis.paidMediaSpend.gaugeMax}
             gaugeTarget={dashboardData.kpis.paidMediaSpend.gaugeTarget}
-            gaugeLabel={`${(dashboardData.kpis.paidMediaSpend.gaugeValue / 1000).toFixed(1)}K / ${(dashboardData.kpis.paidMediaSpend.gaugeTarget / 1000).toFixed(0)}K Target`}
+            gaugeLabel={`${formatCurrency(dashboardData.kpis.paidMediaSpend.gaugeValue, 1)} / ${formatCurrency(dashboardData.kpis.paidMediaSpend.gaugeTarget, 0)} Target`}
             status="excellent"
             dateRange={dateRange}
           />
@@ -508,17 +625,17 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
           {/* Email Revenue */}
           <KPICard
             title="EMAIL REVENUE"
-            currentValue={`$${(getPeriodData(dashboardData.kpis.emailPerformance).value / 1000).toFixed(1)}K`}
+            currentValue={formatCurrency(getPeriodData(dashboardData.kpis.emailPerformance).value)}
             previousValue={undefined}
             trend={getPeriodData(dashboardData.kpis.emailPerformance).trend || 0}
             subtitle={undefined}
             periodData={{
               sevenDay: {
-                value: `$${((dashboardData.kpis.emailPerformance.periodData?.sevenDay?.value || 0) / 1000).toFixed(1)}K`,
+                value: formatCurrency(dashboardData.kpis.emailPerformance.periodData?.sevenDay?.value || 0),
                 trend: dashboardData.kpis.emailPerformance.periodData?.sevenDay?.trend || 0
               },
               thirtyDay: {
-                value: `$${((dashboardData.kpis.emailPerformance.periodData?.thirtyDay?.value || 0) / 1000).toFixed(1)}K`,
+                value: formatCurrency(dashboardData.kpis.emailPerformance.periodData?.thirtyDay?.value || 0),
                 trend: dashboardData.kpis.emailPerformance.periodData?.thirtyDay?.trend || 0
               }
             }}
@@ -543,19 +660,19 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
               {/* Main Forecast Value */}
               <div className="space-y-3">
                 <div className="text-4xl font-bold" style={{color: 'var(--text-primary)'}}>
-                  ${(dashboardData.kpis.revenueForecast.totalForecasted / 1000).toFixed(1)}K
+                  {formatCurrency(dashboardData.kpis.revenueForecast.totalForecasted)}
                 </div>
 
                 {/* Range */}
                 <div className="text-sm" style={{color: 'var(--text-secondary)'}}>
-                  Range: ${(dashboardData.kpis.revenueForecast.lowerBound / 1000).toFixed(1)}K - ${(dashboardData.kpis.revenueForecast.upperBound / 1000).toFixed(1)}K
+                  Range: {formatCurrency(dashboardData.kpis.revenueForecast.lowerBound)} - {formatCurrency(dashboardData.kpis.revenueForecast.upperBound)}
                 </div>
 
                 {/* Suggested Spend */}
                 <div className="flex items-center justify-between text-sm">
                   <span style={{color: 'var(--text-muted)'}}>Suggested Spend:</span>
                   <span className="font-semibold" style={{color: 'var(--text-primary)'}}>
-                    ${(dashboardData.kpis.revenueForecast.suggestedSpend / 1000).toFixed(1)}K
+                    {formatCurrency(dashboardData.kpis.revenueForecast.suggestedSpend)}
                   </span>
                 </div>
               </div>
@@ -610,60 +727,60 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
           </div>
         </div>
 
-        {/* Platform Performance - 6 Cards in One Row */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-6">
-          {/* Google Spend */}
-          <KPICard
+        {/* Platform Performance - 6 Cards in One Row (hide Google for PuttOut) */}
+        <div className={`grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 ${currentClient !== 'puttout' ? 'xl:grid-cols-6' : ''}`}>
+          {/* Google Spend - Only show for JumboMax */}
+          {currentClient !== 'puttout' && <KPICard
             title="GOOGLE SPEND"
-            currentValue={`$${(getPeriodData(dashboardData.kpis.googleSpend).value / 1000).toFixed(1)}K`}
+            currentValue={formatCurrency(getPeriodData(dashboardData.kpis.googleSpend).value)}
             previousValue={undefined}
             trend={getPeriodData(dashboardData.kpis.googleSpend).trend || 0}
             subtitle={undefined}
             periodData={{
               sevenDay: {
-                value: `$${((dashboardData.kpis.googleSpend.periodData?.sevenDay?.value || 0) / 1000).toFixed(1)}K`,
+                value: formatCurrency(dashboardData.kpis.googleSpend.periodData?.sevenDay?.value || 0),
                 trend: dashboardData.kpis.googleSpend.periodData?.sevenDay?.trend || 0
               },
               thirtyDay: {
-                value: `$${((dashboardData.kpis.googleSpend.periodData?.thirtyDay?.value || 0) / 1000).toFixed(1)}K`,
+                value: formatCurrency(dashboardData.kpis.googleSpend.periodData?.thirtyDay?.value || 0),
                 trend: dashboardData.kpis.googleSpend.periodData?.thirtyDay?.trend || 0
               }
             }}
             gaugeValue={dashboardData.kpis.googleSpend.gaugeValue}
             gaugeMax={dashboardData.kpis.googleSpend.gaugeMax}
             gaugeTarget={dashboardData.kpis.googleSpend.gaugeTarget}
-            gaugeLabel={`$${(dashboardData.kpis.googleSpend.gaugeValue / 1000).toFixed(1)}K / $${(dashboardData.kpis.googleSpend.gaugeTarget / 1000).toFixed(0)}K Target`}
+            gaugeLabel={`${formatCurrency(dashboardData.kpis.googleSpend.gaugeValue, 1)} / ${formatCurrency(dashboardData.kpis.googleSpend.gaugeTarget, 0)} Target`}
             status="excellent"
             dateRange={dateRange}
-          />
+          />}
 
-          {/* Google Revenue */}
-          <KPICard
+          {/* Google Revenue - Only show for JumboMax */}
+          {currentClient !== 'puttout' && <KPICard
             title="GOOGLE REVENUE"
-            currentValue={`$${(getPeriodData(dashboardData.kpis.googleRevenue).value / 1000).toFixed(1)}K`}
+            currentValue={formatCurrency(getPeriodData(dashboardData.kpis.googleRevenue).value)}
             previousValue={undefined}
             trend={getPeriodData(dashboardData.kpis.googleRevenue).trend || 0}
             subtitle={undefined}
             periodData={{
               sevenDay: {
-                value: `$${((dashboardData.kpis.googleRevenue.periodData?.sevenDay?.value || 0) / 1000).toFixed(1)}K`,
+                value: formatCurrency(dashboardData.kpis.googleRevenue.periodData?.sevenDay?.value || 0),
                 trend: dashboardData.kpis.googleRevenue.periodData?.sevenDay?.trend || 0
               },
               thirtyDay: {
-                value: `$${((dashboardData.kpis.googleRevenue.periodData?.thirtyDay?.value || 0) / 1000).toFixed(1)}K`,
+                value: formatCurrency(dashboardData.kpis.googleRevenue.periodData?.thirtyDay?.value || 0),
                 trend: dashboardData.kpis.googleRevenue.periodData?.thirtyDay?.trend || 0
               }
             }}
             gaugeValue={dashboardData.kpis.googleRevenue.gaugeValue}
             gaugeMax={dashboardData.kpis.googleRevenue.gaugeMax}
             gaugeTarget={dashboardData.kpis.googleRevenue.gaugeTarget}
-            gaugeLabel={`$${(dashboardData.kpis.googleRevenue.gaugeValue / 1000).toFixed(1)}K / $${(dashboardData.kpis.googleRevenue.gaugeTarget / 1000).toFixed(0)}K Target`}
+            gaugeLabel={`${formatCurrency(dashboardData.kpis.googleRevenue.gaugeValue, 1)} / ${formatCurrency(dashboardData.kpis.googleRevenue.gaugeTarget, 0)} Target`}
             status="excellent"
             dateRange={dateRange}
-          />
+          />}
 
-          {/* Google ROAS */}
-          <KPICard
+          {/* Google ROAS - Only show for JumboMax */}
+          {currentClient !== 'puttout' && <KPICard
             title="GOOGLE ROAS"
             currentValue={`${getPeriodData(dashboardData.kpis.googleROAS).value.toFixed(2)}x`}
             previousValue={undefined}
@@ -685,29 +802,29 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
             gaugeLabel={`${dashboardData.kpis.googleROAS.gaugeValue.toFixed(2)}x / ${dashboardData.kpis.googleROAS.gaugeTarget.toFixed(1)}x Target`}
             status="excellent"
             dateRange={dateRange}
-          />
+          />}
 
           {/* Meta Spend */}
           <KPICard
             title="META SPEND"
-            currentValue={`$${(getPeriodData(dashboardData.kpis.metaSpend).value / 1000).toFixed(1)}K`}
+            currentValue={formatCurrency(getPeriodData(dashboardData.kpis.metaSpend).value)}
             previousValue={undefined}
             trend={getPeriodData(dashboardData.kpis.metaSpend).trend || 0}
             subtitle={undefined}
             periodData={{
               sevenDay: {
-                value: `$${((dashboardData.kpis.metaSpend.periodData?.sevenDay?.value || 0) / 1000).toFixed(1)}K`,
+                value: formatCurrency(dashboardData.kpis.metaSpend.periodData?.sevenDay?.value || 0),
                 trend: dashboardData.kpis.metaSpend.periodData?.sevenDay?.trend || 0
               },
               thirtyDay: {
-                value: `$${((dashboardData.kpis.metaSpend.periodData?.thirtyDay?.value || 0) / 1000).toFixed(1)}K`,
+                value: formatCurrency(dashboardData.kpis.metaSpend.periodData?.thirtyDay?.value || 0),
                 trend: dashboardData.kpis.metaSpend.periodData?.thirtyDay?.trend || 0
               }
             }}
             gaugeValue={dashboardData.kpis.metaSpend.gaugeValue}
             gaugeMax={dashboardData.kpis.metaSpend.gaugeMax}
             gaugeTarget={dashboardData.kpis.metaSpend.gaugeTarget}
-            gaugeLabel={`$${(dashboardData.kpis.metaSpend.gaugeValue / 1000).toFixed(1)}K / $${(dashboardData.kpis.metaSpend.gaugeTarget / 1000).toFixed(0)}K Target`}
+            gaugeLabel={`${formatCurrency(dashboardData.kpis.metaSpend.gaugeValue, 1)} / ${formatCurrency(dashboardData.kpis.metaSpend.gaugeTarget, 0)} Target`}
             status="excellent"
             dateRange={dateRange}
           />
@@ -715,24 +832,24 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
           {/* Meta Revenue */}
           <KPICard
             title="META REVENUE"
-            currentValue={`$${(getPeriodData(dashboardData.kpis.metaRevenue).value / 1000).toFixed(1)}K`}
+            currentValue={formatCurrency(getPeriodData(dashboardData.kpis.metaRevenue).value)}
             previousValue={undefined}
             trend={getPeriodData(dashboardData.kpis.metaRevenue).trend || 0}
             subtitle={undefined}
             periodData={{
               sevenDay: {
-                value: `$${((dashboardData.kpis.metaRevenue.periodData?.sevenDay?.value || 0) / 1000).toFixed(1)}K`,
+                value: formatCurrency(dashboardData.kpis.metaRevenue.periodData?.sevenDay?.value || 0),
                 trend: dashboardData.kpis.metaRevenue.periodData?.sevenDay?.trend || 0
               },
               thirtyDay: {
-                value: `$${((dashboardData.kpis.metaRevenue.periodData?.thirtyDay?.value || 0) / 1000).toFixed(1)}K`,
+                value: formatCurrency(dashboardData.kpis.metaRevenue.periodData?.thirtyDay?.value || 0),
                 trend: dashboardData.kpis.metaRevenue.periodData?.thirtyDay?.trend || 0
               }
             }}
             gaugeValue={dashboardData.kpis.metaRevenue.gaugeValue}
             gaugeMax={dashboardData.kpis.metaRevenue.gaugeMax}
             gaugeTarget={dashboardData.kpis.metaRevenue.gaugeTarget}
-            gaugeLabel={`$${(dashboardData.kpis.metaRevenue.gaugeValue / 1000).toFixed(1)}K / $${(dashboardData.kpis.metaRevenue.gaugeTarget / 1000).toFixed(0)}K Target`}
+            gaugeLabel={`${formatCurrency(dashboardData.kpis.metaRevenue.gaugeValue, 1)} / ${formatCurrency(dashboardData.kpis.metaRevenue.gaugeTarget, 0)} Target`}
             status="excellent"
             dateRange={dateRange}
           />
@@ -767,7 +884,7 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
         {dashboardData.kpis.businessHealth && (
           <div>
             <h2 className="text-xl font-bold mb-4" style={{color: 'var(--text-primary)'}}>Business Health & Performance</h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-6">
               {/* Business Health Index */}
               <div className="card p-6">
                 <div className="space-y-4">
@@ -780,9 +897,9 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
                   </div>
 
                   {/* Trend Badges */}
-                  <div className="flex flex-col gap-2">
+                  <div className="flex flex-wrap gap-2">
                     <span
-                      className="px-2 py-1 rounded text-xs font-medium text-center"
+                      className="inline-block px-3 py-1 rounded-full text-xs font-medium"
                       style={{
                         background: dashboardData.kpis.businessHealth.revenueTrend === 'REVENUE_GROWING' ? 'rgba(34, 197, 94, 0.1)' : dashboardData.kpis.businessHealth.revenueTrend === 'REVENUE_DECLINING' ? 'rgba(239, 68, 68, 0.1)' : 'rgba(245, 158, 11, 0.1)',
                         color: dashboardData.kpis.businessHealth.revenueTrend === 'REVENUE_GROWING' ? '#22c55e' : dashboardData.kpis.businessHealth.revenueTrend === 'REVENUE_DECLINING' ? '#ef4444' : '#f59e0b'
@@ -791,7 +908,7 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
                       {dashboardData.kpis.businessHealth.revenueTrend.replace('REVENUE_', '')}
                     </span>
                     <span
-                      className="px-2 py-1 rounded text-xs font-medium text-center"
+                      className="inline-block px-3 py-1 rounded-full text-xs font-medium"
                       style={{
                         background: dashboardData.kpis.businessHealth.demandTrend === 'DEMAND_GROWING' ? 'rgba(34, 197, 94, 0.1)' : dashboardData.kpis.businessHealth.demandTrend === 'DEMAND_DECLINING' ? 'rgba(239, 68, 68, 0.1)' : 'rgba(245, 158, 11, 0.1)',
                         color: dashboardData.kpis.businessHealth.demandTrend === 'DEMAND_GROWING' ? '#22c55e' : dashboardData.kpis.businessHealth.demandTrend === 'DEMAND_DECLINING' ? '#ef4444' : '#f59e0b'
@@ -891,55 +1008,6 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
                 </div>
               )}
 
-              {/* YoY Performance */}
-              {dashboardData.kpis.yoyPerformance && (
-                <div className="card p-6">
-                  <div className="space-y-4">
-                    <div>
-                      <h3 className="text-sm font-medium" style={{color: 'var(--text-muted)'}}>
-                        YOY PERFORMANCE
-                      </h3>
-                      <div className="text-xs mt-1" style={{color: 'var(--text-muted)', opacity: 0.7}}>
-                        Single Day Comparison
-                      </div>
-                    </div>
-
-                    {/* Status Badge */}
-                    <div
-                      className="inline-block px-3 py-2 rounded-lg text-sm font-medium"
-                      style={{
-                        background: dashboardData.kpis.yoyPerformance.status === 'OUTPERFORMING_YOY' ? 'rgba(34, 197, 94, 0.1)' : dashboardData.kpis.yoyPerformance.status === 'UNDERPERFORMING_YOY' ? 'rgba(239, 68, 68, 0.1)' : 'rgba(245, 158, 11, 0.1)',
-                        color: dashboardData.kpis.yoyPerformance.status === 'OUTPERFORMING_YOY' ? '#22c55e' : dashboardData.kpis.yoyPerformance.status === 'UNDERPERFORMING_YOY' ? '#ef4444' : '#f59e0b'
-                      }}
-                    >
-                      {dashboardData.kpis.yoyPerformance.status.replace(/_/g, ' ')}
-                    </div>
-
-                    {/* Metrics */}
-                    <div className="space-y-2 text-sm">
-                      <div className="flex justify-between items-center">
-                        <span style={{color: 'var(--text-muted)'}}>Revenue:</span>
-                        <span className={`font-semibold ${dashboardData.kpis.yoyPerformance.revenueYoyChange >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-                          {dashboardData.kpis.yoyPerformance.revenueYoyChange >= 0 ? '+' : ''}{dashboardData.kpis.yoyPerformance.revenueYoyChange.toFixed(1)}%
-                        </span>
-                      </div>
-                      <div className="flex justify-between items-center">
-                        <span style={{color: 'var(--text-muted)'}}>Orders:</span>
-                        <span className={`font-semibold ${dashboardData.kpis.yoyPerformance.ordersYoyChange >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-                          {dashboardData.kpis.yoyPerformance.ordersYoyChange >= 0 ? '+' : ''}{dashboardData.kpis.yoyPerformance.ordersYoyChange.toFixed(1)}%
-                        </span>
-                      </div>
-                      <div className="flex justify-between items-center">
-                        <span style={{color: 'var(--text-muted)'}}>Search:</span>
-                        <span className={`font-semibold ${dashboardData.kpis.yoyPerformance.searchYoyChange >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-                          {dashboardData.kpis.yoyPerformance.searchYoyChange >= 0 ? '+' : ''}{dashboardData.kpis.yoyPerformance.searchYoyChange.toFixed(1)}%
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
-
               {/* Revenue Momentum */}
               {dashboardData.kpis.revenueMomentum && (
                 <div className="card p-6">
@@ -973,14 +1041,376 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
                     </span>
 
                     <div className="text-xs" style={{color: 'var(--text-muted)'}}>
-                      vs 30D Avg: ${(dashboardData.kpis.revenueMomentum.revenue30dAvg / 1000).toFixed(1)}K
+                      vs 30D Avg: {formatCurrency(dashboardData.kpis.revenueMomentum.revenue30dAvg)}
                     </div>
                   </div>
                 </div>
               )}
+
+              {/* Business Health Calculation */}
+              <div className="card p-6">
+                <div className="space-y-4">
+                  <h3 className="text-sm font-medium mb-4" style={{color: 'var(--text-muted)'}}>
+                    HEALTH CALCULATION
+                  </h3>
+
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr style={{borderBottom: '1px solid var(--border-muted)'}}>
+                          <th className="text-left pb-2 font-semibold" style={{color: 'var(--text-primary)'}}>Metric</th>
+                          <th className="text-left pb-2 font-semibold" style={{color: 'var(--text-primary)'}}>Time Window</th>
+                          <th className="text-left pb-2 font-semibold" style={{color: 'var(--text-primary)'}}>Comparison</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr style={{borderBottom: '1px solid var(--border-muted)'}}>
+                          <td className="py-2" style={{color: 'var(--text-secondary)'}}>business_health_index</td>
+                          <td className="py-2" style={{color: 'var(--text-secondary)'}}>Mixed (7d, 30d, YoY)</td>
+                          <td className="py-2" style={{color: 'var(--text-secondary)'}}>Composite of all trends</td>
+                        </tr>
+                        <tr style={{borderBottom: '1px solid var(--border-muted)'}}>
+                          <td className="py-2" style={{color: 'var(--text-secondary)'}}>business_revenue_trend</td>
+                          <td className="py-2" style={{color: 'var(--text-secondary)'}}>7-day avg vs 30-day avg</td>
+                          <td className="py-2" style={{color: 'var(--text-secondary)'}}>Recent vs baseline</td>
+                        </tr>
+                        <tr style={{borderBottom: '1px solid var(--border-muted)'}}>
+                          <td className="py-2" style={{color: 'var(--text-secondary)'}}>business_demand_trend</td>
+                          <td className="py-2" style={{color: 'var(--text-secondary)'}}>7-day avg vs 7-day avg from 30d ago</td>
+                          <td className="py-2" style={{color: 'var(--text-secondary)'}}>Current vs 1 month ago</td>
+                        </tr>
+                        <tr>
+                          <td className="py-2" style={{color: 'var(--text-secondary)'}}>business_yoy_status</td>
+                          <td className="py-2" style={{color: 'var(--text-secondary)'}}>Today vs 364 days ago</td>
+                          <td className="py-2" style={{color: 'var(--text-secondary)'}}>This year vs last year</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         )}
+      </div>
+    );
+  }
+
+  // Funnel Optimization section
+  if (section === 'funnel') {
+    if (funnelLoading) {
+      return (
+        <div className="flex justify-center items-center py-12">
+          <Loader2 className="h-8 w-8 animate-spin" style={{color: 'var(--accent-primary)'}} />
+        </div>
+      );
+    }
+
+    const goalConfigs = [
+      { key: 'allstars', title: 'ALL-STARS', subtitle: 'Top 3 Per Stage' },
+      { key: 'awareness', title: 'AWARENESS', subtitle: 'Max Clicks + Low CPC' },
+      { key: 'efficiency', title: 'EFFICIENCY', subtitle: 'Lowest CPC' },
+      { key: 'engagement', title: 'ENGAGEMENT', subtitle: 'Highest CTR' },
+      { key: 'revenue', title: 'REVENUE', subtitle: 'Highest ROAS' },
+      { key: 'conversion', title: 'CONVERSION', subtitle: 'Highest Conv Rate' },
+      { key: 'composite', title: 'COMPOSITE', subtitle: 'Balanced Score' }
+    ];
+
+    const countries = ['United States', 'Canada', 'United Kingdom'];
+
+    const renderBundleCard = (bundle: any, rank: number) => {
+      return (
+        <div key={rank} className="p-3 rounded-lg mb-2" style={{background: 'var(--bg-elevated)'}}>
+          <div className="flex items-start justify-between mb-2">
+            <div className="flex-1">
+              <div className="text-xs font-bold mb-1" style={{color: 'var(--text-muted)'}}>
+                #{rank}
+              </div>
+              <div className="text-sm font-medium" style={{color: 'var(--text-primary)'}}>{bundle.adName}</div>
+              {bundle.adsetName && (
+                <div className="text-xs mt-1" style={{color: 'var(--text-muted)'}}>{bundle.adsetName}</div>
+              )}
+            </div>
+            <span className="px-2 py-1 rounded text-xs ml-2" style={{
+              background: 'var(--bg-card)',
+              border: '1px solid var(--border-muted)',
+              color: 'var(--text-secondary)'
+            }}>
+              {bundle.recommendedStage}
+            </span>
+          </div>
+
+          {/* Funnel Scores */}
+          <div className="grid grid-cols-3 gap-2 mb-2 pb-2" style={{borderBottom: '1px solid var(--border-muted)'}}>
+            <div>
+              <div className="text-xs text-center mb-1" style={{color: 'var(--text-muted)'}}>TOFU</div>
+              <div className="text-xs font-bold text-center mb-1" style={{color: 'var(--text-primary)'}}>{bundle.tofuScore?.toFixed(1) || '0.0'}</div>
+              <div className="w-full h-1 rounded-full" style={{background: 'var(--bg-card)'}}>
+                <div
+                  className="h-1 rounded-full"
+                  style={{
+                    width: `${Math.min(Math.abs(bundle.tofuScore || 0) * 20, 100)}%`,
+                    background: (bundle.tofuScore || 0) >= 0 ? '#22c55e' : '#ef4444'
+                  }}
+                />
+              </div>
+            </div>
+            <div>
+              <div className="text-xs text-center mb-1" style={{color: 'var(--text-muted)'}}>MOFU</div>
+              <div className="text-xs font-bold text-center mb-1" style={{color: 'var(--text-primary)'}}>{bundle.mofuScore?.toFixed(1) || '0.0'}</div>
+              <div className="w-full h-1 rounded-full" style={{background: 'var(--bg-card)'}}>
+                <div
+                  className="h-1 rounded-full"
+                  style={{
+                    width: `${Math.min(Math.abs(bundle.mofuScore || 0) * 20, 100)}%`,
+                    background: (bundle.mofuScore || 0) >= 0 ? '#22c55e' : '#ef4444'
+                  }}
+                />
+              </div>
+            </div>
+            <div>
+              <div className="text-xs text-center mb-1" style={{color: 'var(--text-muted)'}}>BOFU</div>
+              <div className="text-xs font-bold text-center mb-1" style={{color: 'var(--text-primary)'}}>{bundle.bofuScore?.toFixed(1) || '0.0'}</div>
+              <div className="w-full h-1 rounded-full" style={{background: 'var(--bg-card)'}}>
+                <div
+                  className="h-1 rounded-full"
+                  style={{
+                    width: `${Math.min(Math.abs(bundle.bofuScore || 0) * 20, 100)}%`,
+                    background: (bundle.bofuScore || 0) >= 0 ? '#22c55e' : '#ef4444'
+                  }}
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-2 text-xs">
+            {bundle.clicks !== undefined && (
+              <div>
+                <span style={{color: 'var(--text-muted)'}}>Clicks: </span>
+                <span style={{color: 'var(--text-primary)'}} className="font-medium">{bundle.clicks.toLocaleString()}</span>
+              </div>
+            )}
+            {bundle.cpc !== undefined && (
+              <div>
+                <span style={{color: 'var(--text-muted)'}}>CPC: </span>
+                <span style={{color: 'var(--text-primary)'}} className="font-medium">{formatCurrency(bundle.cpc, 2)}</span>
+              </div>
+            )}
+            {bundle.ctr !== undefined && (
+              <div>
+                <span style={{color: 'var(--text-muted)'}}>CTR: </span>
+                <span style={{color: 'var(--text-primary)'}} className="font-medium">{bundle.ctr.toFixed(1)}%</span>
+              </div>
+            )}
+            {bundle.roas !== undefined && (
+              <div>
+                <span style={{color: 'var(--text-muted)'}}>ROAS: </span>
+                <span style={{color: 'var(--text-primary)'}} className="font-medium">{bundle.roas.toFixed(2)}x</span>
+              </div>
+            )}
+            {bundle.revenue !== undefined && (
+              <div>
+                <span style={{color: 'var(--text-muted)'}}>Revenue: </span>
+                <span style={{color: 'var(--text-primary)'}} className="font-medium">{formatCurrency(bundle.revenue, 0)}</span>
+              </div>
+            )}
+            {bundle.purchases !== undefined && (
+              <div>
+                <span style={{color: 'var(--text-muted)'}}>Purchases: </span>
+                <span style={{color: 'var(--text-primary)'}} className="font-medium">{bundle.purchases}</span>
+              </div>
+            )}
+            {bundle.conversionRate !== undefined && (
+              <div>
+                <span style={{color: 'var(--text-muted)'}}>Conv: </span>
+                <span style={{color: 'var(--text-primary)'}} className="font-medium">{bundle.conversionRate.toFixed(1)}%</span>
+              </div>
+            )}
+            {bundle.cpa !== undefined && (
+              <div>
+                <span style={{color: 'var(--text-muted)'}}>CPA: </span>
+                <span style={{color: 'var(--text-primary)'}} className="font-medium">{formatCurrency(bundle.cpa, 2)}</span>
+              </div>
+            )}
+            <div className="col-span-2">
+              <span style={{color: 'var(--text-muted)'}}>Spend: </span>
+              <span style={{color: 'var(--text-primary)'}} className="font-medium">{formatCurrency(bundle.spend, 0)}</span>
+            </div>
+          </div>
+        </div>
+      );
+    };
+
+    return (
+      <div className="space-y-8">
+        <div className="flex items-center justify-between mb-6">
+          <div>
+            <h2 className="text-2xl font-bold" style={{color: 'var(--text-primary)'}}>Funnel Optimization</h2>
+            <p className="text-sm mt-1" style={{color: 'var(--text-secondary)'}}>
+              All-Star Ad Bundles by Optimization Goal
+            </p>
+          </div>
+
+          {/* Country Selector */}
+          <div className="flex gap-2">
+            {countries.map((country) => (
+              <button
+                key={country}
+                onClick={() => setFunnelCountry(country)}
+                className="px-4 py-2 rounded-lg text-sm font-medium"
+                style={{
+                  background: funnelCountry === country ? 'var(--accent-primary)' : 'var(--bg-elevated)',
+                  color: funnelCountry === country ? 'white' : 'var(--text-secondary)'
+                }}
+              >
+                {country === 'United States' ? 'USA' : country === 'United Kingdom' ? 'UK' : country}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* All-Stars Section (Full Width) */}
+        {(() => {
+          const allStarsConfig = goalConfigs.find(c => c.key === 'allstars');
+          const allStarsBundles = funnelData['allstars'] || [];
+
+          // Group bundles by recommended stage
+          const tofuBundles = allStarsBundles.filter((b: any) => b.recommendedStage === 'TOFU');
+          const mofuBundles = allStarsBundles.filter((b: any) => b.recommendedStage === 'MOFU');
+          const bofuBundles = allStarsBundles.filter((b: any) => b.recommendedStage === 'BOFU');
+
+          return (
+            <div className="card p-6 mb-6">
+              <h3 className="text-sm font-medium mb-4" style={{color: 'var(--text-muted)'}}>{allStarsConfig?.title}</h3>
+              <p className="text-xs mb-4" style={{color: 'var(--text-secondary)'}}>{allStarsConfig?.subtitle}</p>
+              {allStarsBundles.length > 0 ? (
+                <div className="space-y-6">
+                  {/* TOFU Section */}
+                  {tofuBundles.length > 0 && (
+                    <div>
+                      <h4 className="text-sm font-medium mb-3" style={{color: 'var(--text-muted)'}}>
+                        TOFU
+                      </h4>
+                      <div className="grid grid-cols-3 gap-4">
+                        {tofuBundles.slice(0, 3).map((bundle: any, idx: number) => renderBundleCard(bundle, idx + 1))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* MOFU Section */}
+                  {mofuBundles.length > 0 && (
+                    <div>
+                      <h4 className="text-sm font-medium mb-3" style={{color: 'var(--text-muted)'}}>
+                        MOFU
+                      </h4>
+                      <div className="grid grid-cols-3 gap-4">
+                        {mofuBundles.slice(0, 3).map((bundle: any, idx: number) => renderBundleCard(bundle, idx + 1))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* BOFU Section */}
+                  {bofuBundles.length > 0 && (
+                    <div>
+                      <h4 className="text-sm font-medium mb-3" style={{color: 'var(--text-muted)'}}>
+                        BOFU
+                      </h4>
+                      <div className="grid grid-cols-3 gap-4">
+                        {bofuBundles.slice(0, 3).map((bundle: any, idx: number) => renderBundleCard(bundle, idx + 1))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="text-center py-8">
+                  <p className="text-sm" style={{color: 'var(--text-muted)'}}>No ads found</p>
+                </div>
+              )}
+            </div>
+          );
+        })()}
+
+        {/* Other Goals in One Row */}
+        <div className="grid grid-cols-6 gap-6">
+          {goalConfigs.filter(c => c.key !== 'allstars').map((config) => {
+            const bundles = funnelData[config.key] || [];
+            return (
+              <div key={config.key} className="card p-6">
+                <h3 className="text-sm font-medium mb-4" style={{color: 'var(--text-muted)'}}>{config.title}</h3>
+                <p className="text-xs mb-4" style={{color: 'var(--text-secondary)'}}>{config.subtitle}</p>
+                {bundles.length > 0 ? (
+                  <div>
+                    {bundles.slice(0, 3).map((bundle: any, idx: number) => renderBundleCard(bundle, idx + 1))}
+                  </div>
+                ) : (
+                  <div className="text-center py-8">
+                    <p className="text-sm" style={{color: 'var(--text-muted)'}}>No ads found</p>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Funnel Stage Distribution Card */}
+        {(() => {
+          const allStarsBundles = funnelData['allstars'] || [];
+
+          // Count by recommended stage (AI inferred)
+          const recommendedTofu = allStarsBundles.filter((b: any) => b.recommendedStage === 'TOFU').length;
+          const recommendedMofu = allStarsBundles.filter((b: any) => b.recommendedStage === 'MOFU').length;
+          const recommendedBofu = allStarsBundles.filter((b: any) => b.recommendedStage === 'BOFU').length;
+
+          // Count by current stage (from ad names)
+          const currentTofu = allStarsBundles.filter((b: any) => b.currentStage === 'TOFU').length;
+          const currentMofu = allStarsBundles.filter((b: any) => b.currentStage === 'MOFU').length;
+          const currentBofu = allStarsBundles.filter((b: any) => b.currentStage === 'BOFU').length;
+
+          return (
+            <div className="card p-6">
+              <h3 className="text-sm font-medium mb-4" style={{color: 'var(--text-muted)'}}>FUNNEL STAGE DISTRIBUTION</h3>
+              <div className="grid grid-cols-2 gap-6">
+                {/* Current Stage (from names) */}
+                <div>
+                  <div className="text-xs mb-3" style={{color: 'var(--text-secondary)'}}>CURRENT STAGE (FROM NAMES)</div>
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm" style={{color: 'var(--text-muted)'}}>TOFU</span>
+                      <span className="text-lg font-bold" style={{color: 'var(--text-primary)'}}>{currentTofu}</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm" style={{color: 'var(--text-muted)'}}>MOFU</span>
+                      <span className="text-lg font-bold" style={{color: 'var(--text-primary)'}}>{currentMofu}</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm" style={{color: 'var(--text-muted)'}}>BOFU</span>
+                      <span className="text-lg font-bold" style={{color: 'var(--text-primary)'}}>{currentBofu}</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Recommended Stage (AI inferred) */}
+                <div>
+                  <div className="text-xs mb-3" style={{color: 'var(--text-secondary)'}}>RECOMMENDED STAGE (AI INFERRED)</div>
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm" style={{color: 'var(--text-muted)'}}>TOFU</span>
+                      <span className="text-lg font-bold" style={{color: 'var(--text-primary)'}}>{recommendedTofu}</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm" style={{color: 'var(--text-muted)'}}>MOFU</span>
+                      <span className="text-lg font-bold" style={{color: 'var(--text-primary)'}}>{recommendedMofu}</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm" style={{color: 'var(--text-muted)'}}>BOFU</span>
+                      <span className="text-lg font-bold" style={{color: 'var(--text-primary)'}}>{recommendedBofu}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
       </div>
     );
   }
@@ -1247,6 +1677,27 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
 
     return (
       <div className="space-y-8">
+        {/* Section 1: Customer Overview KPIs */}
+        {customerData.overviewKPIs && (
+          <div>
+            <h2 className="text-xl font-bold mb-6" style={{color: 'var(--text-primary)'}}>Customer Overview</h2>
+            <CustomerOverviewKPIs data={customerData.overviewKPIs} />
+          </div>
+        )}
+
+        {/* Section 4: LTV Intelligence */}
+        {customerData.ltvIntelligence && (
+          <LTVIntelligence data={customerData.ltvIntelligence} />
+        )}
+
+        {/* Section 5: Customer Journey Analysis */}
+        {customerData.journeyAnalysis && customerData.journeyAnalysis.length > 0 && (
+          <div>
+            <h2 className="text-xl font-bold mb-6" style={{color: 'var(--text-primary)'}}>Customer Journey Analysis</h2>
+            <CustomerJourneyAnalysis data={customerData.journeyAnalysis} />
+          </div>
+        )}
+
         {/* CLV & Churn Risk Dashboard */}
         <div className="card p-6">
           <h3 className="text-lg font-semibold mb-8" style={{color: 'var(--text-primary)'}}>CLV & Churn Risk Dashboard</h3>
@@ -1598,71 +2049,209 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
           />
         </div>
 
-        {/* Efficiency Metrics Row */}
-        <div className="card p-6">
-          <h3 className="text-lg font-semibold mb-6" style={{color: 'var(--text-primary)'}}>Efficiency Metrics</h3>
-          <div className="grid grid-cols-5 gap-6">
-            {/* CTR */}
-            <div>
-              <div className="text-sm mb-2" style={{color: 'var(--text-muted)'}}>CTR (Click-Through Rate)</div>
-              <div className="text-2xl font-bold" style={{color: 'var(--text-primary)'}}>{facebookData.ctr.current}%</div>
-              <div className="text-sm mt-1" style={{color: 'var(--text-muted)'}}>
-                Previous: {facebookData.ctr.previous}%
+        {/* Efficiency Metrics Row with Meta ROAS Predictions */}
+        <div className="grid grid-cols-4 gap-6">
+          {/* Efficiency Metrics - 3/4 width */}
+          <div className="col-span-3 card p-6">
+            <h3 className="text-lg font-semibold mb-6" style={{color: 'var(--text-primary)'}}>Efficiency Metrics</h3>
+            <div className="grid grid-cols-5 gap-6">
+              {/* CTR */}
+              <div>
+                <div className="text-sm mb-2" style={{color: 'var(--text-muted)'}}>CTR (Click-Through Rate)</div>
+                <div className="text-2xl font-bold" style={{color: 'var(--text-primary)'}}>{facebookData.ctr.current}%</div>
+                <div className="text-sm mt-1" style={{color: 'var(--text-muted)'}}>
+                  Previous: {facebookData.ctr.previous}%
+                </div>
+                <div className={`text-sm font-semibold mt-1 ${facebookData.ctr.change >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                  {facebookData.ctr.change >= 0 ? '↑' : '↓'} {Math.abs(facebookData.ctr.change).toFixed(1)}%
+                </div>
               </div>
-              <div className={`text-sm font-semibold mt-1 ${facebookData.ctr.change >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-                {facebookData.ctr.change >= 0 ? '↑' : '↓'} {Math.abs(facebookData.ctr.change).toFixed(1)}%
-              </div>
-            </div>
 
-            {/* Conversion Rate */}
-            <div>
-              <div className="text-sm mb-2" style={{color: 'var(--text-muted)'}}>Conversion Rate</div>
-              <div className="text-2xl font-bold" style={{color: 'var(--text-primary)'}}>{facebookData.conversionRate.current}%</div>
-              <div className="text-sm mt-1" style={{color: 'var(--text-muted)'}}>
-                Previous: {facebookData.conversionRate.previous}%
+              {/* Conversion Rate */}
+              <div>
+                <div className="text-sm mb-2" style={{color: 'var(--text-muted)'}}>Conversion Rate</div>
+                <div className="text-2xl font-bold" style={{color: 'var(--text-primary)'}}>{facebookData.conversionRate.current}%</div>
+                <div className="text-sm mt-1" style={{color: 'var(--text-muted)'}}>
+                  Previous: {facebookData.conversionRate.previous}%
+                </div>
+                <div className={`text-sm font-semibold mt-1 ${facebookData.conversionRate.change >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                  {facebookData.conversionRate.change >= 0 ? '↑' : '↓'} {Math.abs(facebookData.conversionRate.change).toFixed(1)}%
+                </div>
               </div>
-              <div className={`text-sm font-semibold mt-1 ${facebookData.conversionRate.change >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-                {facebookData.conversionRate.change >= 0 ? '↑' : '↓'} {Math.abs(facebookData.conversionRate.change).toFixed(1)}%
-              </div>
-            </div>
 
-            {/* CPA */}
-            <div>
-              <div className="text-sm mb-2" style={{color: 'var(--text-muted)'}}>CPA (Cost/Conversion)</div>
-              <div className="text-2xl font-bold" style={{color: 'var(--text-primary)'}}>${facebookData.cpa.current.toFixed(2)}</div>
-              <div className="text-sm mt-1" style={{color: 'var(--text-muted)'}}>
-                Previous: ${facebookData.cpa.previous.toFixed(2)}
+              {/* CPA */}
+              <div>
+                <div className="text-sm mb-2" style={{color: 'var(--text-muted)'}}>CPA (Cost/Conversion)</div>
+                <div className="text-2xl font-bold" style={{color: 'var(--text-primary)'}}>{currencySymbol}{facebookData.cpa.current.toFixed(2)}</div>
+                <div className="text-sm mt-1" style={{color: 'var(--text-muted)'}}>
+                  Previous: {currencySymbol}{facebookData.cpa.previous.toFixed(2)}
+                </div>
+                <div className={`text-sm font-semibold mt-1 ${facebookData.cpa.change <= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                  {facebookData.cpa.change <= 0 ? '↓' : '↑'} {Math.abs(facebookData.cpa.change).toFixed(1)}%
+                </div>
               </div>
-              <div className={`text-sm font-semibold mt-1 ${facebookData.cpa.change <= 0 ? 'text-green-500' : 'text-red-500'}`}>
-                {facebookData.cpa.change <= 0 ? '↓' : '↑'} {Math.abs(facebookData.cpa.change).toFixed(1)}%
-              </div>
-            </div>
 
-            {/* CPC */}
-            <div>
-              <div className="text-sm mb-2" style={{color: 'var(--text-muted)'}}>CPC (Cost per Click)</div>
-              <div className="text-2xl font-bold" style={{color: 'var(--text-primary)'}}>${facebookData.cpc.current.toFixed(2)}</div>
-              <div className="text-sm mt-1" style={{color: 'var(--text-muted)'}}>
-                Previous: ${facebookData.cpc.previous.toFixed(2)}
+              {/* CPC */}
+              <div>
+                <div className="text-sm mb-2" style={{color: 'var(--text-muted)'}}>CPC (Cost per Click)</div>
+                <div className="text-2xl font-bold" style={{color: 'var(--text-primary)'}}>{currencySymbol}{facebookData.cpc.current.toFixed(2)}</div>
+                <div className="text-sm mt-1" style={{color: 'var(--text-muted)'}}>
+                  Previous: {currencySymbol}{facebookData.cpc.previous.toFixed(2)}
+                </div>
+                <div className={`text-sm font-semibold mt-1 ${facebookData.cpc.change <= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                  {facebookData.cpc.change <= 0 ? '↓' : '↑'} {Math.abs(facebookData.cpc.change).toFixed(1)}%
+                </div>
               </div>
-              <div className={`text-sm font-semibold mt-1 ${facebookData.cpc.change <= 0 ? 'text-green-500' : 'text-red-500'}`}>
-                {facebookData.cpc.change <= 0 ? '↓' : '↑'} {Math.abs(facebookData.cpc.change).toFixed(1)}%
-              </div>
-            </div>
 
-            {/* CPM */}
-            <div>
-              <div className="text-sm mb-2" style={{color: 'var(--text-muted)'}}>CPM (Cost per 1K Impr.)</div>
-              <div className="text-2xl font-bold" style={{color: 'var(--text-primary)'}}>${facebookData.cpm.current.toFixed(2)}</div>
-              <div className="text-sm mt-1" style={{color: 'var(--text-muted)'}}>
-                Previous: ${facebookData.cpm.previous.toFixed(2)}
-              </div>
-              <div className={`text-sm font-semibold mt-1 ${facebookData.cpm.change <= 0 ? 'text-green-500' : 'text-red-500'}`}>
-                {facebookData.cpm.change <= 0 ? '↓' : '↑'} {Math.abs(facebookData.cpm.change).toFixed(1)}%
+              {/* CPM */}
+              <div>
+                <div className="text-sm mb-2" style={{color: 'var(--text-muted)'}}>CPM (Cost per 1K Impr.)</div>
+                <div className="text-2xl font-bold" style={{color: 'var(--text-primary)'}}>{currencySymbol}{facebookData.cpm.current.toFixed(2)}</div>
+                <div className="text-sm mt-1" style={{color: 'var(--text-muted)'}}>
+                  Previous: {currencySymbol}{facebookData.cpm.previous.toFixed(2)}
+                </div>
+                <div className={`text-sm font-semibold mt-1 ${facebookData.cpm.change <= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                  {facebookData.cpm.change <= 0 ? '↓' : '↑'} {Math.abs(facebookData.cpm.change).toFixed(1)}%
+                </div>
               </div>
             </div>
           </div>
+
+          {/* Meta ROAS Predictions - 1/4 width */}
+          {metaRoasPredictions && !metaRoasLoading && (
+            <div className="col-span-1 card p-6">
+            <div className="space-y-6">
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-medium" style={{color: 'var(--text-muted)'}}>
+                  META ROAS PREDICTION
+                </h3>
+                <span className="text-xs px-2 py-1 rounded" style={{
+                  background: 'var(--bg-elevated)',
+                  color: 'var(--text-secondary)'
+                }}>
+                  {metaRoasPredictions.predictionMethod}
+                </span>
+              </div>
+
+              {/* Main Prediction Value */}
+              <div className="space-y-3">
+                <div className="text-4xl font-bold" style={{color: 'var(--text-primary)'}}>
+                  {metaRoasPredictions.predictedMetaRoas.toFixed(2)}x
+                </div>
+
+                {/* Range */}
+                <div className="text-sm" style={{color: 'var(--text-secondary)'}}>
+                  Range: {metaRoasPredictions.lowerBound.toFixed(2)}x - {metaRoasPredictions.upperBound.toFixed(2)}x
+                </div>
+              </div>
+
+              {/* Visual Bar for Range */}
+              <div className="space-y-2">
+                <div className="relative h-3 rounded-full" style={{background: 'var(--border-muted)'}}>
+                  {/* Lower to Upper Range */}
+                  <div
+                    className="absolute h-3 rounded-full"
+                    style={{
+                      left: `${(metaRoasPredictions.lowerBound / metaRoasPredictions.upperBound) * 100}%`,
+                      right: '0%',
+                      background: 'linear-gradient(90deg, var(--accent-secondary) 0%, var(--accent-primary) 100%)',
+                      opacity: 0.3
+                    }}
+                  />
+                  {/* Predicted Point */}
+                  <div
+                    className="absolute h-3 w-1 rounded-full"
+                    style={{
+                      left: `${(metaRoasPredictions.predictedMetaRoas / metaRoasPredictions.upperBound) * 100}%`,
+                      background: 'var(--accent-primary)',
+                      transform: 'translateX(-50%)'
+                    }}
+                  />
+                </div>
+
+                {/* Labels */}
+                <div className="flex justify-between text-xs" style={{color: 'var(--text-muted)'}}>
+                  <span>{metaRoasPredictions.lowerBound.toFixed(2)}x</span>
+                  <span>{metaRoasPredictions.upperBound.toFixed(2)}x</span>
+                </div>
+              </div>
+            </div>
+            </div>
+          )}
         </div>
+
+        {/* Country Performance */}
+        {facebookData?.countryPerformance && facebookData.countryPerformance.length > 0 && (
+          <div className="space-y-4">
+            <h3 className="text-lg font-semibold" style={{color: 'var(--text-primary)'}}>Performance by Country</h3>
+            <div className="grid grid-cols-3 gap-4">
+              {facebookData.countryPerformance.slice(0, 3).map((country: any, idx: number) => (
+                <div key={idx} className="card p-6">
+                  <div className="space-y-4">
+                    <h3 className="text-sm font-medium" style={{color: 'var(--text-muted)'}}>
+                      {country.country}
+                    </h3>
+
+                    <div className="space-y-3">
+                      {/* Revenue */}
+                      <div>
+                        <div className="text-xs mb-1" style={{color: 'var(--text-muted)'}}>Revenue</div>
+                        <div className="text-2xl font-bold" style={{color: 'var(--text-primary)'}}>
+                          {formatCurrency(country.revenue)}
+                        </div>
+                        <div className="text-xs mt-1" style={{color: 'var(--text-muted)'}}>
+                          vs {formatCurrency(country.previousRevenue)}
+                        </div>
+                        <div className={`text-sm font-semibold ${country.revenueChange >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                          {country.revenueChange >= 0 ? '↑' : '↓'} {Math.abs(country.revenueChange).toFixed(1)}%
+                        </div>
+                      </div>
+
+                      {/* ROAS */}
+                      <div>
+                        <div className="text-xs mb-1" style={{color: 'var(--text-muted)'}}>ROAS</div>
+                        <div className="text-xl font-bold" style={{color: country.roas >= roasTarget ? 'var(--color-success)' : 'var(--text-primary)'}}>
+                          {country.roas.toFixed(2)}x
+                        </div>
+                        <div className="text-xs mt-1" style={{color: 'var(--text-muted)'}}>
+                          vs {country.previousRoas.toFixed(2)}x
+                        </div>
+                      </div>
+
+                      {/* Spend & Purchases */}
+                      <div className="grid grid-cols-2 gap-3 pt-2" style={{borderTop: '1px solid var(--border-muted)'}}>
+                        <div>
+                          <div className="text-xs" style={{color: 'var(--text-muted)'}}>Spend</div>
+                          <div className="text-sm font-semibold" style={{color: 'var(--text-primary)'}}>
+                            {formatCurrency(country.spend)}
+                          </div>
+                        </div>
+                        <div>
+                          <div className="text-xs" style={{color: 'var(--text-muted)'}}>Purchases</div>
+                          <div className="text-sm font-semibold" style={{color: 'var(--text-primary)'}}>
+                            {country.purchases.toLocaleString()}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Trailing periods */}
+                      <div className="text-xs pt-2" style={{borderTop: '1px solid var(--border-muted)', color: 'var(--text-muted)'}}>
+                        <div className="flex justify-between mb-1">
+                          <span>7d:</span>
+                          <span>{formatCurrency(country.trailing7d.revenue)} ({country.trailing7d.roas.toFixed(2)}x)</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span>30d:</span>
+                          <span>{formatCurrency(country.trailing30d.revenue)} ({country.trailing30d.roas.toFixed(2)}x)</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Performance Chart */}
         <ChartCard
@@ -1737,7 +2326,15 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
                   <tr key={idx} style={{borderBottom: '1px solid var(--border-muted)'}}>
                     <td className="py-3 px-2" style={{color: 'var(--text-secondary)'}}>{ad.campaignName}</td>
                     <td className="py-3 px-2" style={{color: 'var(--text-secondary)'}}>{ad.adsetName}</td>
-                    <td className="py-3 px-2" style={{color: 'var(--text-primary)'}}>{ad.adName}</td>
+                    <td className="py-3 px-2">
+                      <a
+                        href={`/ad/${encodeURIComponent(ad.adName)}?adset=${encodeURIComponent(ad.adsetName)}&preset=${facebookDatePreset}`}
+                        className="hover:underline"
+                        style={{color: 'var(--accent-primary)'}}
+                      >
+                        {ad.adName}
+                      </a>
+                    </td>
                     <td className="text-right py-3 px-2" style={{color: 'var(--text-primary)'}}>{formatCurrency(ad.spend)}</td>
                     <td className="text-right py-3 px-2" style={{color: 'var(--text-primary)'}}>{formatCurrency(ad.revenue)}</td>
                     <td className="text-right py-3 px-2" style={{color: ad.roas >= roasTarget ? 'var(--color-success)' : 'var(--text-primary)'}}>{ad.roas.toFixed(2)}x</td>
@@ -1855,7 +2452,7 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
                       </td>
                       <td className="text-right py-3 px-2">
                         <div className="flex flex-col items-end">
-                          <span style={{color: 'var(--text-primary)'}}>${product.revenue.toLocaleString()}</span>
+                          <span style={{color: 'var(--text-primary)'}}>{currencySymbol}{product.revenue.toLocaleString()}</span>
                           <span className={`text-xs ${product.revenueChangePct >= 0 ? 'text-green-500' : 'text-red-500'}`}>
                             {product.revenueChangePct >= 0 ? '↑' : '↓'} {Math.abs(product.revenueChangePct).toFixed(1)}%
                           </span>
@@ -1874,10 +2471,13 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
               </tbody>
             </table>
           </div>
+          <div className="mt-4 text-xs" style={{color: 'var(--text-muted)', opacity: 0.8}}>
+            40% Revenue Score - Business impact. 25% Velocity Score - Sales momentum. 20% Growth Score - Trajectory. 15% Margin Score - Profitability proxy
+          </div>
         </div>
 
-        {/* Grip Customer Behavior Analysis - 2/3 and 1/3 split */}
-        <div className="grid grid-cols-3 gap-6">
+        {/* Grip Customer Behavior Analysis - 2/3 and 1/3 split (JumboMax only) */}
+        {currentClient !== 'puttout' && <div className="grid grid-cols-3 gap-6">
           {/* Grip Switching Patterns - 2/3 width */}
           <div className="col-span-2 card p-6">
             <h3 className="text-lg font-semibold mb-8" style={{color: 'var(--text-primary)'}}>Grip Switching & Loyalty Patterns</h3>
@@ -1943,13 +2543,13 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
               </p>
             </div>
           </div>
-        </div>
+        </div>}
 
-        {/* Putter Grip Switching & Loyalty Patterns */}
-        <div className="card p-6">
+        {/* Putter Grip Switching & Loyalty Patterns (JumboMax only) */}
+        {currentClient !== 'puttout' && <div className="card p-6">
           <h3 className="text-lg font-semibold mb-8" style={{color: 'var(--text-primary)'}}>Putter Grip Switching & Loyalty Patterns</h3>
           <PutterGripSwitchingSankey data={productData.putterGripSwitching || []} />
-        </div>
+        </div>}
 
         {/* Product Affinity - Three columns */}
         <div className="grid grid-cols-3 gap-6">
@@ -1957,6 +2557,9 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
           <div className="card p-6">
             <h3 className="text-lg font-semibold mb-6" style={{color: 'var(--text-primary)'}}>Top Products by Revenue</h3>
             <ProductRankings data={productData.rankings} />
+            <div className="mt-4 text-xs" style={{color: 'var(--text-muted)', opacity: 0.8}}>
+              Rolling 30-Day Period
+            </div>
           </div>
 
           {/* Bundle Recommendations */}
@@ -1998,10 +2601,10 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
                   {productData.geoPerformance.slice(0, 10).map((geo: any, idx: number) => (
                     <tr key={idx} style={{borderBottom: '1px solid var(--border-muted)'}}>
                       <td className="py-3 px-2" style={{color: 'var(--text-primary)'}}>{geo.state}</td>
-                      <td className="text-right py-3 px-2" style={{color: 'var(--text-primary)'}}>${geo.revenue.toLocaleString()}</td>
+                      <td className="text-right py-3 px-2" style={{color: 'var(--text-primary)'}}>{currencySymbol}{geo.revenue.toLocaleString()}</td>
                       <td className="text-right py-3 px-2" style={{color: 'var(--text-primary)'}}>{geo.units.toLocaleString()}</td>
                       <td className="py-3 px-2" style={{color: 'var(--text-secondary)'}}>{geo.topProduct}</td>
-                      <td className="text-right py-3 px-2" style={{color: 'var(--text-primary)'}}>${geo.topProductRevenue.toLocaleString()}</td>
+                      <td className="text-right py-3 px-2" style={{color: 'var(--text-primary)'}}>{currencySymbol}{geo.topProductRevenue.toLocaleString()}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -2214,9 +2817,9 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
             {/* CPA */}
             <div>
               <div className="text-sm mb-2" style={{color: 'var(--text-muted)'}}>CPA (Cost/Conversion)</div>
-              <div className="text-2xl font-bold" style={{color: 'var(--text-primary)'}}>${googleData.cpa.current.toFixed(2)}</div>
+              <div className="text-2xl font-bold" style={{color: 'var(--text-primary)'}}>{currencySymbol}{googleData.cpa.current.toFixed(2)}</div>
               <div className="text-sm mt-1" style={{color: 'var(--text-muted)'}}>
-                Previous: ${googleData.cpa.previous.toFixed(2)}
+                Previous: {currencySymbol}{googleData.cpa.previous.toFixed(2)}
               </div>
               <div className={`text-sm font-semibold mt-1 ${googleData.cpa.change <= 0 ? 'text-green-500' : 'text-red-500'}`}>
                 {googleData.cpa.change <= 0 ? '↓' : '↑'} {Math.abs(googleData.cpa.change).toFixed(1)}%
@@ -2226,9 +2829,9 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
             {/* CPC */}
             <div>
               <div className="text-sm mb-2" style={{color: 'var(--text-muted)'}}>CPC (Cost per Click)</div>
-              <div className="text-2xl font-bold" style={{color: 'var(--text-primary)'}}>${googleData.cpc.current.toFixed(2)}</div>
+              <div className="text-2xl font-bold" style={{color: 'var(--text-primary)'}}>{currencySymbol}{googleData.cpc.current.toFixed(2)}</div>
               <div className="text-sm mt-1" style={{color: 'var(--text-muted)'}}>
-                Previous: ${googleData.cpc.previous.toFixed(2)}
+                Previous: {currencySymbol}{googleData.cpc.previous.toFixed(2)}
               </div>
               <div className={`text-sm font-semibold mt-1 ${googleData.cpc.change <= 0 ? 'text-green-500' : 'text-red-500'}`}>
                 {googleData.cpc.change <= 0 ? '↓' : '↑'} {Math.abs(googleData.cpc.change).toFixed(1)}%
@@ -2238,9 +2841,9 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
             {/* CPM */}
             <div>
               <div className="text-sm mb-2" style={{color: 'var(--text-muted)'}}>CPM (Cost per 1K Impr.)</div>
-              <div className="text-2xl font-bold" style={{color: 'var(--text-primary)'}}>${googleData.cpm.current.toFixed(2)}</div>
+              <div className="text-2xl font-bold" style={{color: 'var(--text-primary)'}}>{currencySymbol}{googleData.cpm.current.toFixed(2)}</div>
               <div className="text-sm mt-1" style={{color: 'var(--text-muted)'}}>
-                Previous: ${googleData.cpm.previous.toFixed(2)}
+                Previous: {currencySymbol}{googleData.cpm.previous.toFixed(2)}
               </div>
               <div className={`text-sm font-semibold mt-1 ${googleData.cpm.change <= 0 ? 'text-green-500' : 'text-red-500'}`}>
                 {googleData.cpm.change <= 0 ? '↓' : '↑'} {Math.abs(googleData.cpm.change).toFixed(1)}%
@@ -2727,7 +3330,7 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
         {forecastData.daily && (
           <div className="card p-6">
             <h3 className="text-lg font-semibold mb-6" style={{color: 'var(--text-primary)'}}>
-              Q4 2025 Daily Revenue Forecast
+              Q4 2025 Daily Revenue Forecast vs Actual
             </h3>
             <div className="h-96">
               <ResponsiveContainer width="100%" height="100%">
@@ -2737,7 +3340,12 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
                     dataKey="date"
                     stroke="var(--text-muted)"
                     tick={{ fill: 'var(--text-muted)', fontSize: 12 }}
-                    tickFormatter={(value) => new Date(value).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                    tickFormatter={(value) => {
+                      // Parse as local date to avoid timezone issues
+                      const [year, month, day] = value.split('-');
+                      const date = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
+                      return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                    }}
                   />
                   <YAxis
                     stroke="var(--text-muted)"
@@ -2752,20 +3360,35 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
                       color: 'var(--text-primary)'
                     }}
                     formatter={(value: number) => formatCurrency(value, 1)}
-                    labelFormatter={(label) => new Date(label).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
+                    labelFormatter={(label) => {
+                      // Parse as local date to avoid timezone issues
+                      const [year, month, day] = label.split('-');
+                      const date = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
+                      return date.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+                    }}
                     itemSorter={(item: any) => {
-                      // Sort in descending order: optimistic (highest), forecast (middle), conservative (lowest)
-                      const order: {[key: string]: number} = { optimistic: 0, forecast: 1, conservative: 2 };
+                      // Sort in descending order: actual (highest), optimistic, forecast, conservative (lowest)
+                      const order: {[key: string]: number} = { actual: 0, optimistic: 1, forecast: 2, conservative: 3 };
                       return order[item.dataKey] ?? 999;
                     }}
                   />
                   <Legend
                     wrapperStyle={{ color: 'var(--text-primary)' }}
                     payload={[
+                      { value: 'Actual', type: 'line', color: '#89cdee' },
                       { value: 'Optimistic', type: 'line', color: '#9CA3AF' },
                       { value: 'Forecast', type: 'line', color: '#22c55e' },
                       { value: 'Conservative', type: 'line', color: '#6B7280' }
                     ]}
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="actual"
+                    stroke="#89cdee"
+                    strokeWidth={3}
+                    dot={false}
+                    name="Actual"
+                    connectNulls={false}
                   />
                   <Line
                     type="monotone"
@@ -2781,6 +3404,7 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
                     dataKey="forecast"
                     stroke="#22c55e"
                     strokeWidth={3}
+                    strokeDasharray="5 5"
                     dot={false}
                     name="Forecast"
                   />
@@ -2805,7 +3429,7 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
             <h3 className="text-lg font-semibold mb-4" style={{color: 'var(--text-primary)'}}>
               BFCM Impact Analysis (Forecast)
             </h3>
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               <div>
                 <div className="text-sm mb-2" style={{color: 'var(--text-muted)'}}>
                   BFCM Total Revenue
@@ -2820,14 +3444,6 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
                 </div>
                 <div className="text-2xl font-bold" style={{color: 'var(--text-primary)'}}>
                   {((bfcmData.scenarios.forecast.total / q4Data.scenarios.forecast.total) * 100).toFixed(1)}%
-                </div>
-              </div>
-              <div>
-                <div className="text-sm mb-2" style={{color: 'var(--text-muted)'}}>
-                  Daily Revenue vs Q4 Avg
-                </div>
-                <div className="text-2xl font-bold" style={{color: 'var(--accent-success)'}}>
-                  +{(((bfcmData.scenarios.forecast.avg / q4Data.scenarios.forecast.avg) - 1) * 100).toFixed(0)}%
                 </div>
               </div>
               <div>

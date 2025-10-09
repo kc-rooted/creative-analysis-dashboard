@@ -720,17 +720,17 @@ export async function getProductIntelligence(period: string = '30d'): Promise<an
   const query = `
     SELECT
       product_title,
-      units_sold_${period},
-      revenue_${period},
-      units_sold_prev_${period},
-      revenue_prev_${period},
-      units_change_pct_${period},
-      revenue_change_pct_${period},
+      units_sold_30d,
+      revenue_30d,
+      growth_pct_30d,
+      revenue_contribution_pct,
       total_inventory_quantity,
       inventory_status,
-      performance_category_30d
-    FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${getCurrentDatasetName()}.product_intelligence\`
-    ORDER BY revenue_${period} DESC
+      smart_performance_category,
+      composite_performance_score,
+      product_lifecycle_stage
+    FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${getCurrentDatasetName()}.product_performance_score\`
+    ORDER BY revenue_30d DESC
     LIMIT 20
   `;
 
@@ -742,14 +742,15 @@ export async function getProductIntelligence(period: string = '30d'): Promise<an
 
     return rows.map(row => ({
       productName: row.product_title,
-      unitsSold: row[`units_sold_${period}`],
-      revenue: Math.round(row[`revenue_${period}`] || 0),
-      unitsSoldPrev: row[`units_sold_prev_${period}`],
-      revenuePrev: Math.round(row[`revenue_prev_${period}`] || 0),
-      unitsChangePct: parseFloat(row[`units_change_pct_${period}`] || 0),
-      revenueChangePct: parseFloat(row[`revenue_change_pct_${period}`] || 0),
+      unitsSold: row.units_sold_30d,
+      revenue: Math.round(row.revenue_30d || 0),
+      unitsChangePct: parseFloat(row.growth_pct_30d || 0),
+      revenueChangePct: parseFloat(row.growth_pct_30d || 0),
+      revenueContribution: parseFloat(row.revenue_contribution_pct || 0),
       inventory: row.total_inventory_quantity,
-      performance: row.performance_category_30d,
+      performance: row.smart_performance_category,
+      performanceScore: parseFloat(row.composite_performance_score || 0),
+      lifecycle: row.product_lifecycle_stage,
       status: row.inventory_status
     }));
   } catch (error) {
@@ -972,6 +973,222 @@ export async function getCustomerCLVData(): Promise<any> {
   }
 }
 
+// Get customer overview KPIs
+export async function getCustomerOverviewKPIs(): Promise<any> {
+  const query = `
+    WITH current_metrics AS (
+      SELECT
+        COUNT(DISTINCT customer_id) as total_customers,
+        COUNT(DISTINCT CASE WHEN total_orders = 1 THEN customer_id END) as new_customers,
+        COUNT(DISTINCT CASE WHEN total_orders > 1 THEN customer_id END) as returning_customers,
+        ROUND(AVG(lifetime_value), 2) as avg_ltv,
+        ROUND(AVG(average_order_value), 2) as avg_aov,
+        ROUND(SUM(lifetime_value), 2) as total_customer_revenue,
+        COUNT(DISTINCT CASE WHEN days_since_last_order <= 30 THEN customer_id END) as active_30d,
+        COUNT(DISTINCT CASE WHEN days_since_last_order <= 90 THEN customer_id END) as active_90d
+      FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${getCurrentDatasetName()}.shopify_customer_360\`
+      WHERE customer_id IS NOT NULL
+    ),
+    churn_metrics AS (
+      SELECT
+        AVG(churn_probability_30d) as avg_churn_probability,
+        COUNT(CASE WHEN churn_probability_30d >= 0.7 THEN 1 END) as high_risk_customers
+      FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${getCurrentDatasetName()}.clv_prediction_advanced\`
+    )
+    SELECT
+      cm.*,
+      COALESCE(ch.avg_churn_probability, 0) as avg_churn_probability,
+      COALESCE(ch.high_risk_customers, 0) as high_risk_customers
+    FROM current_metrics cm
+    CROSS JOIN churn_metrics ch
+  `;
+
+  try {
+    const [rows] = await bigquery.query({
+      query,
+      timeoutMs: 30000,
+    });
+
+    if (rows.length === 0) {
+      return {
+        totalCustomers: 0,
+        newCustomers: 0,
+        returningCustomers: 0,
+        avgLTV: 0,
+        avgAOV: 0,
+        totalRevenue: 0,
+        active30d: 0,
+        active90d: 0,
+        avgChurnProbability: 0,
+        highRiskCustomers: 0
+      };
+    }
+
+    const row = rows[0];
+    return {
+      totalCustomers: parseInt(row.total_customers || 0),
+      newCustomers: parseInt(row.new_customers || 0),
+      returningCustomers: parseInt(row.returning_customers || 0),
+      avgLTV: parseFloat(row.avg_ltv || 0),
+      avgAOV: parseFloat(row.avg_aov || 0),
+      totalRevenue: parseFloat(row.total_customer_revenue || 0),
+      active30d: parseInt(row.active_30d || 0),
+      active90d: parseInt(row.active_90d || 0),
+      avgChurnProbability: parseFloat(row.avg_churn_probability || 0),
+      highRiskCustomers: parseInt(row.high_risk_customers || 0),
+      newVsReturningRatio: row.total_customers > 0 ? (parseInt(row.returning_customers || 0) / parseInt(row.total_customers || 1)) * 100 : 0
+    };
+  } catch (error) {
+    console.error('Error fetching customer overview KPIs:', error);
+    return {
+      totalCustomers: 0,
+      newCustomers: 0,
+      returningCustomers: 0,
+      avgLTV: 0,
+      avgAOV: 0,
+      totalRevenue: 0,
+      active30d: 0,
+      active90d: 0,
+      avgChurnProbability: 0,
+      highRiskCustomers: 0,
+      newVsReturningRatio: 0
+    };
+  }
+}
+
+// Get LTV intelligence data
+export async function getLTVIntelligence(): Promise<any> {
+  const query = `
+    WITH ltv_distribution AS (
+      SELECT
+        cp.value_tier,
+        COUNT(*) as customer_count,
+        ROUND(AVG(sc.lifetime_value), 2) as avg_ltv,
+        ROUND(MIN(sc.lifetime_value), 2) as min_ltv,
+        ROUND(MAX(sc.lifetime_value), 2) as max_ltv,
+        ROUND(SUM(sc.lifetime_value), 2) as total_ltv
+      FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${getCurrentDatasetName()}.clv_prediction_advanced\` cp
+      LEFT JOIN \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${getCurrentDatasetName()}.shopify_customer_360\` sc
+        ON cp.unified_email = sc.email
+      WHERE cp.value_tier IS NOT NULL
+      GROUP BY cp.value_tier
+    ),
+    geographic_ltv AS (
+      SELECT
+        country,
+        COUNT(*) as customer_count,
+        ROUND(AVG(lifetime_value), 2) as avg_ltv,
+        ROUND(SUM(lifetime_value), 2) as total_revenue
+      FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${getCurrentDatasetName()}.shopify_customer_360\`
+      WHERE country IS NOT NULL AND country != ''
+      GROUP BY country
+      HAVING customer_count >= 10
+      ORDER BY total_revenue DESC
+      LIMIT 15
+    ),
+    predicted_vs_actual AS (
+      SELECT
+        cp.value_tier,
+        COUNT(*) as customer_count,
+        ROUND(AVG(cp.predicted_clv_12m), 2) as avg_predicted_clv,
+        ROUND(AVG(sc.lifetime_value), 2) as avg_actual_ltv
+      FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${getCurrentDatasetName()}.clv_prediction_advanced\` cp
+      LEFT JOIN \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${getCurrentDatasetName()}.shopify_customer_360\` sc
+        ON cp.unified_email = sc.email
+      WHERE cp.value_tier IS NOT NULL
+      GROUP BY cp.value_tier
+    )
+    SELECT
+      (SELECT ARRAY_AGG(STRUCT(value_tier, customer_count, avg_ltv, min_ltv, max_ltv, total_ltv) ORDER BY
+        CASE value_tier
+          WHEN 'VIP' THEN 1
+          WHEN 'High Value' THEN 2
+          WHEN 'Medium Value' THEN 3
+          WHEN 'Low Value' THEN 4
+          ELSE 5
+        END) FROM ltv_distribution) as ltv_by_tier,
+      (SELECT ARRAY_AGG(STRUCT(country, customer_count, avg_ltv, total_revenue) ORDER BY total_revenue DESC) FROM geographic_ltv) as ltv_by_country,
+      (SELECT ARRAY_AGG(STRUCT(value_tier, customer_count, avg_predicted_clv, avg_actual_ltv) ORDER BY
+        CASE value_tier
+          WHEN 'VIP' THEN 1
+          WHEN 'High Value' THEN 2
+          WHEN 'Medium Value' THEN 3
+          WHEN 'Low Value' THEN 4
+          ELSE 5
+        END) FROM predicted_vs_actual) as predicted_vs_actual
+  `;
+
+  try {
+    const [rows] = await bigquery.query({
+      query,
+      timeoutMs: 30000,
+    });
+
+    if (rows.length === 0) {
+      return {
+        ltvByTier: [],
+        ltvByCountry: [],
+        predictedVsActual: []
+      };
+    }
+
+    const row = rows[0];
+    return {
+      ltvByTier: row.ltv_by_tier || [],
+      ltvByCountry: row.ltv_by_country || [],
+      predictedVsActual: row.predicted_vs_actual || []
+    };
+  } catch (error) {
+    console.error('Error fetching LTV intelligence:', error);
+    return {
+      ltvByTier: [],
+      ltvByCountry: [],
+      predictedVsActual: []
+    };
+  }
+}
+
+// Get customer journey analysis
+export async function getCustomerJourneyAnalysis(): Promise<any> {
+  const query = `
+    SELECT
+      journey_pattern,
+      customer_count,
+      avg_touchpoints,
+      avg_days_to_purchase,
+      conversion_rate,
+      total_revenue,
+      avg_order_value,
+      first_touch_channel,
+      last_touch_channel
+    FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${getCurrentDatasetName()}.customer_journey_path_analysis\`
+    ORDER BY customer_count DESC
+    LIMIT 20
+  `;
+
+  try {
+    const [rows] = await bigquery.query({
+      query,
+      timeoutMs: 30000,
+    });
+
+    return rows.map(row => ({
+      journeyPattern: row.journey_pattern,
+      customerCount: parseInt(row.customer_count || 0),
+      avgTouchpoints: parseFloat(row.avg_touchpoints || 0),
+      avgDaysToPurchase: parseFloat(row.avg_days_to_purchase || 0),
+      conversionRate: parseFloat(row.conversion_rate || 0),
+      totalRevenue: parseFloat(row.total_revenue || 0),
+      avgOrderValue: parseFloat(row.avg_order_value || 0),
+      firstTouchChannel: row.first_touch_channel,
+      lastTouchChannel: row.last_touch_channel
+    }));
+  } catch (error) {
+    console.error('Error fetching customer journey analysis:', error);
+    return [];
+  }
+}
+
 // Get platform performance data
 export async function getPlatformPerformanceData(period: string = '30d'): Promise<any> {
   const daysMap: { [key: string]: number } = {
@@ -1174,6 +1391,15 @@ export async function getFacebookPerformanceData(preset: string = 'mtd', startDa
   const filters = getPaidMediaDateFilterSQL(preset, startDate, endDate, comparisonType);
   const comparisonDateFilter = comparisonType === 'previous-year' ? filters.prevYearDateFilter : filters.prevDateFilter;
 
+  // Define trailing comparison filters based on comparison type
+  const trailing7dComparisonFilter = comparisonType === 'previous-year'
+    ? 'date >= DATE_SUB(DATE_SUB(CURRENT_DATE(), INTERVAL 1 YEAR), INTERVAL 7 DAY) AND date < DATE_SUB(CURRENT_DATE(), INTERVAL 1 YEAR)'
+    : 'date >= DATE_SUB(CURRENT_DATE(), INTERVAL 14 DAY) AND date < DATE_SUB(CURRENT_DATE(), INTERVAL 7 DAY)';
+
+  const trailing30dComparisonFilter = comparisonType === 'previous-year'
+    ? 'date >= DATE_SUB(DATE_SUB(CURRENT_DATE(), INTERVAL 1 YEAR), INTERVAL 30 DAY) AND date < DATE_SUB(CURRENT_DATE(), INTERVAL 1 YEAR)'
+    : 'date >= DATE_SUB(CURRENT_DATE(), INTERVAL 60 DAY) AND date < DATE_SUB(CURRENT_DATE(), INTERVAL 30 DAY)';
+
   const query = `
     WITH current_period AS (
       SELECT
@@ -1236,7 +1462,7 @@ export async function getFacebookPerformanceData(preset: string = 'mtd', startDa
         AND date >= DATE_SUB(CURRENT_DATE(), INTERVAL 7 DAY)
         AND date < CURRENT_DATE()
     ),
-    trailing_7d_prev_year AS (
+    trailing_7d_comparison AS (
       SELECT
         SUM(spend) as total_spend,
         SUM(revenue) as total_revenue,
@@ -1246,8 +1472,7 @@ export async function getFacebookPerformanceData(preset: string = 'mtd', startDa
         SUM(purchases) as total_purchases
       FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${getCurrentDatasetName()}.paid_media_performance\`
       WHERE platform = 'Facebook'
-        AND date >= DATE_SUB(DATE_SUB(CURRENT_DATE(), INTERVAL 1 YEAR), INTERVAL 7 DAY)
-        AND date < DATE_SUB(CURRENT_DATE(), INTERVAL 1 YEAR)
+        AND ${trailing7dComparisonFilter}
     ),
     trailing_30d AS (
       SELECT
@@ -1262,7 +1487,7 @@ export async function getFacebookPerformanceData(preset: string = 'mtd', startDa
         AND date >= DATE_SUB(CURRENT_DATE(), INTERVAL 30 DAY)
         AND date < CURRENT_DATE()
     ),
-    trailing_30d_prev_year AS (
+    trailing_30d_comparison AS (
       SELECT
         SUM(spend) as total_spend,
         SUM(revenue) as total_revenue,
@@ -1272,8 +1497,7 @@ export async function getFacebookPerformanceData(preset: string = 'mtd', startDa
         SUM(purchases) as total_purchases
       FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${getCurrentDatasetName()}.paid_media_performance\`
       WHERE platform = 'Facebook'
-        AND date >= DATE_SUB(DATE_SUB(CURRENT_DATE(), INTERVAL 1 YEAR), INTERVAL 30 DAY)
-        AND date < DATE_SUB(CURRENT_DATE(), INTERVAL 1 YEAR)
+        AND ${trailing30dComparisonFilter}
     )
     SELECT
       (SELECT total_spend FROM current_period) as spend,
@@ -1295,24 +1519,24 @@ export async function getFacebookPerformanceData(preset: string = 'mtd', startDa
       (SELECT total_impressions FROM trailing_7d) as trailing_7d_impressions,
       (SELECT total_clicks FROM trailing_7d) as trailing_7d_clicks,
       (SELECT total_purchases FROM trailing_7d) as trailing_7d_purchases,
-      (SELECT total_spend FROM trailing_7d_prev_year) as trailing_7d_prev_spend,
-      (SELECT total_revenue FROM trailing_7d_prev_year) as trailing_7d_prev_revenue,
-      (SELECT roas FROM trailing_7d_prev_year) as trailing_7d_prev_roas,
-      (SELECT total_impressions FROM trailing_7d_prev_year) as trailing_7d_prev_impressions,
-      (SELECT total_clicks FROM trailing_7d_prev_year) as trailing_7d_prev_clicks,
-      (SELECT total_purchases FROM trailing_7d_prev_year) as trailing_7d_prev_purchases,
+      (SELECT total_spend FROM trailing_7d_comparison) as trailing_7d_prev_spend,
+      (SELECT total_revenue FROM trailing_7d_comparison) as trailing_7d_prev_revenue,
+      (SELECT roas FROM trailing_7d_comparison) as trailing_7d_prev_roas,
+      (SELECT total_impressions FROM trailing_7d_comparison) as trailing_7d_prev_impressions,
+      (SELECT total_clicks FROM trailing_7d_comparison) as trailing_7d_prev_clicks,
+      (SELECT total_purchases FROM trailing_7d_comparison) as trailing_7d_prev_purchases,
       (SELECT total_spend FROM trailing_30d) as trailing_30d_spend,
       (SELECT total_revenue FROM trailing_30d) as trailing_30d_revenue,
       (SELECT roas FROM trailing_30d) as trailing_30d_roas,
       (SELECT total_impressions FROM trailing_30d) as trailing_30d_impressions,
       (SELECT total_clicks FROM trailing_30d) as trailing_30d_clicks,
       (SELECT total_purchases FROM trailing_30d) as trailing_30d_purchases,
-      (SELECT total_spend FROM trailing_30d_prev_year) as trailing_30d_prev_spend,
-      (SELECT total_revenue FROM trailing_30d_prev_year) as trailing_30d_prev_revenue,
-      (SELECT roas FROM trailing_30d_prev_year) as trailing_30d_prev_roas,
-      (SELECT total_impressions FROM trailing_30d_prev_year) as trailing_30d_prev_impressions,
-      (SELECT total_clicks FROM trailing_30d_prev_year) as trailing_30d_prev_clicks,
-      (SELECT total_purchases FROM trailing_30d_prev_year) as trailing_30d_prev_purchases,
+      (SELECT total_spend FROM trailing_30d_comparison) as trailing_30d_prev_spend,
+      (SELECT total_revenue FROM trailing_30d_comparison) as trailing_30d_prev_revenue,
+      (SELECT roas FROM trailing_30d_comparison) as trailing_30d_prev_roas,
+      (SELECT total_impressions FROM trailing_30d_comparison) as trailing_30d_prev_impressions,
+      (SELECT total_clicks FROM trailing_30d_comparison) as trailing_30d_prev_clicks,
+      (SELECT total_purchases FROM trailing_30d_comparison) as trailing_30d_prev_purchases,
       ARRAY_AGG(STRUCT(date, revenue_current, revenue_comparison) ORDER BY date) as daily_metrics
     FROM daily_metrics
     LIMIT 1
@@ -1451,6 +1675,122 @@ export async function getFacebookPerformanceData(preset: string = 'mtd', startDa
   } catch (error) {
     console.error('Error fetching Facebook performance data:', error);
     throw error;
+  }
+}
+
+// Get Facebook performance by country
+export async function getFacebookPerformanceByCountry(preset: string = 'mtd', startDate?: string, endDate?: string, comparisonType: string = 'previous-period'): Promise<any[]> {
+  const filters = getPaidMediaDateFilterSQL(preset, startDate, endDate, comparisonType);
+  const comparisonDateFilter = comparisonType === 'previous-year' ? filters.prevYearDateFilter : filters.prevDateFilter;
+
+  const query = `
+    WITH current_period AS (
+      SELECT
+        country,
+        SUM(spend) as spend,
+        SUM(revenue) as revenue,
+        SAFE_DIVIDE(SUM(revenue), SUM(spend)) as roas,
+        SUM(impressions) as impressions,
+        SUM(clicks) as clicks,
+        SUM(purchases) as purchases,
+        SAFE_DIVIDE(SUM(clicks), SUM(impressions)) * 100 as ctr
+      FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${getCurrentDatasetName()}.paid_media_performance_by_country\`
+      WHERE platform = 'Facebook' AND ${filters.dateFilter}
+      GROUP BY country
+    ),
+    comparison_period AS (
+      SELECT
+        country,
+        SUM(spend) as spend,
+        SUM(revenue) as revenue,
+        SAFE_DIVIDE(SUM(revenue), SUM(spend)) as roas,
+        SUM(purchases) as purchases
+      FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${getCurrentDatasetName()}.paid_media_performance_by_country\`
+      WHERE platform = 'Facebook' AND ${comparisonDateFilter}
+      GROUP BY country
+    ),
+    trailing_7d AS (
+      SELECT
+        country,
+        SUM(spend) as spend,
+        SUM(revenue) as revenue,
+        SAFE_DIVIDE(SUM(revenue), SUM(spend)) as roas
+      FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${getCurrentDatasetName()}.paid_media_performance_by_country\`
+      WHERE platform = 'Facebook' AND date >= DATE_SUB(CURRENT_DATE(), INTERVAL 7 DAY)
+      GROUP BY country
+    ),
+    trailing_30d AS (
+      SELECT
+        country,
+        SUM(spend) as spend,
+        SUM(revenue) as revenue,
+        SAFE_DIVIDE(SUM(revenue), SUM(spend)) as roas
+      FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${getCurrentDatasetName()}.paid_media_performance_by_country\`
+      WHERE platform = 'Facebook' AND date >= DATE_SUB(CURRENT_DATE(), INTERVAL 30 DAY)
+      GROUP BY country
+    )
+    SELECT
+      c.country,
+      c.spend as current_spend,
+      c.revenue as current_revenue,
+      c.roas as current_roas,
+      c.impressions,
+      c.clicks,
+      c.purchases as current_purchases,
+      c.ctr,
+      COALESCE(p.spend, 0) as previous_spend,
+      COALESCE(p.revenue, 0) as previous_revenue,
+      COALESCE(p.roas, 0) as previous_roas,
+      COALESCE(p.purchases, 0) as previous_purchases,
+      COALESCE(t7.spend, 0) as trailing_7d_spend,
+      COALESCE(t7.revenue, 0) as trailing_7d_revenue,
+      COALESCE(t7.roas, 0) as trailing_7d_roas,
+      COALESCE(t30.spend, 0) as trailing_30d_spend,
+      COALESCE(t30.revenue, 0) as trailing_30d_revenue,
+      COALESCE(t30.roas, 0) as trailing_30d_roas
+    FROM current_period c
+    LEFT JOIN comparison_period p ON c.country = p.country
+    LEFT JOIN trailing_7d t7 ON c.country = t7.country
+    LEFT JOIN trailing_30d t30 ON c.country = t30.country
+    ORDER BY c.revenue DESC
+  `;
+
+  try {
+    const [rows] = await bigquery.query({
+      query,
+      timeoutMs: 30000,
+    });
+
+    return rows.map(row => ({
+      country: row.country,
+      spend: parseFloat(row.current_spend || 0),
+      revenue: parseFloat(row.current_revenue || 0),
+      roas: parseFloat(row.current_roas || 0),
+      impressions: parseInt(row.impressions || 0),
+      clicks: parseInt(row.clicks || 0),
+      purchases: parseInt(row.current_purchases || 0),
+      ctr: parseFloat(row.ctr || 0),
+      previousSpend: parseFloat(row.previous_spend || 0),
+      previousRevenue: parseFloat(row.previous_revenue || 0),
+      previousRoas: parseFloat(row.previous_roas || 0),
+      previousPurchases: parseInt(row.previous_purchases || 0),
+      spendChange: row.previous_spend > 0 ? ((parseFloat(row.current_spend || 0) - parseFloat(row.previous_spend || 0)) / parseFloat(row.previous_spend || 0)) * 100 : 0,
+      revenueChange: row.previous_revenue > 0 ? ((parseFloat(row.current_revenue || 0) - parseFloat(row.previous_revenue || 0)) / parseFloat(row.previous_revenue || 0)) * 100 : 0,
+      roasChange: row.previous_roas > 0 ? ((parseFloat(row.current_roas || 0) - parseFloat(row.previous_roas || 0)) / parseFloat(row.previous_roas || 0)) * 100 : 0,
+      trailing7d: {
+        spend: parseFloat(row.trailing_7d_spend || 0),
+        revenue: parseFloat(row.trailing_7d_revenue || 0),
+        roas: parseFloat(row.trailing_7d_roas || 0)
+      },
+      trailing30d: {
+        spend: parseFloat(row.trailing_30d_spend || 0),
+        revenue: parseFloat(row.trailing_30d_revenue || 0),
+        roas: parseFloat(row.trailing_30d_roas || 0)
+      }
+    }));
+  } catch (error) {
+    console.error('Error fetching Facebook performance by country:', error);
+    return [];
   }
 }
 
@@ -1635,7 +1975,7 @@ export async function getGoogleAdsPerformanceData(preset: string = 'mtd', startD
         AND date >= DATE_SUB(CURRENT_DATE(), INTERVAL 7 DAY)
         AND date < CURRENT_DATE()
     ),
-    trailing_7d_prev_year AS (
+    trailing_7d_comparison AS (
       SELECT
         SUM(spend) as total_spend,
         SUM(revenue) as total_revenue,
@@ -1661,7 +2001,7 @@ export async function getGoogleAdsPerformanceData(preset: string = 'mtd', startD
         AND date >= DATE_SUB(CURRENT_DATE(), INTERVAL 30 DAY)
         AND date < CURRENT_DATE()
     ),
-    trailing_30d_prev_year AS (
+    trailing_30d_comparison AS (
       SELECT
         SUM(spend) as total_spend,
         SUM(revenue) as total_revenue,
@@ -1694,24 +2034,24 @@ export async function getGoogleAdsPerformanceData(preset: string = 'mtd', startD
       (SELECT total_impressions FROM trailing_7d) as trailing_7d_impressions,
       (SELECT total_clicks FROM trailing_7d) as trailing_7d_clicks,
       (SELECT total_purchases FROM trailing_7d) as trailing_7d_purchases,
-      (SELECT total_spend FROM trailing_7d_prev_year) as trailing_7d_prev_spend,
-      (SELECT total_revenue FROM trailing_7d_prev_year) as trailing_7d_prev_revenue,
-      (SELECT roas FROM trailing_7d_prev_year) as trailing_7d_prev_roas,
-      (SELECT total_impressions FROM trailing_7d_prev_year) as trailing_7d_prev_impressions,
-      (SELECT total_clicks FROM trailing_7d_prev_year) as trailing_7d_prev_clicks,
-      (SELECT total_purchases FROM trailing_7d_prev_year) as trailing_7d_prev_purchases,
+      (SELECT total_spend FROM trailing_7d_comparison) as trailing_7d_prev_spend,
+      (SELECT total_revenue FROM trailing_7d_comparison) as trailing_7d_prev_revenue,
+      (SELECT roas FROM trailing_7d_comparison) as trailing_7d_prev_roas,
+      (SELECT total_impressions FROM trailing_7d_comparison) as trailing_7d_prev_impressions,
+      (SELECT total_clicks FROM trailing_7d_comparison) as trailing_7d_prev_clicks,
+      (SELECT total_purchases FROM trailing_7d_comparison) as trailing_7d_prev_purchases,
       (SELECT total_spend FROM trailing_30d) as trailing_30d_spend,
       (SELECT total_revenue FROM trailing_30d) as trailing_30d_revenue,
       (SELECT roas FROM trailing_30d) as trailing_30d_roas,
       (SELECT total_impressions FROM trailing_30d) as trailing_30d_impressions,
       (SELECT total_clicks FROM trailing_30d) as trailing_30d_clicks,
       (SELECT total_purchases FROM trailing_30d) as trailing_30d_purchases,
-      (SELECT total_spend FROM trailing_30d_prev_year) as trailing_30d_prev_spend,
-      (SELECT total_revenue FROM trailing_30d_prev_year) as trailing_30d_prev_revenue,
-      (SELECT roas FROM trailing_30d_prev_year) as trailing_30d_prev_roas,
-      (SELECT total_impressions FROM trailing_30d_prev_year) as trailing_30d_prev_impressions,
-      (SELECT total_clicks FROM trailing_30d_prev_year) as trailing_30d_prev_clicks,
-      (SELECT total_purchases FROM trailing_30d_prev_year) as trailing_30d_prev_purchases,
+      (SELECT total_spend FROM trailing_30d_comparison) as trailing_30d_prev_spend,
+      (SELECT total_revenue FROM trailing_30d_comparison) as trailing_30d_prev_revenue,
+      (SELECT roas FROM trailing_30d_comparison) as trailing_30d_prev_roas,
+      (SELECT total_impressions FROM trailing_30d_comparison) as trailing_30d_prev_impressions,
+      (SELECT total_clicks FROM trailing_30d_comparison) as trailing_30d_prev_clicks,
+      (SELECT total_purchases FROM trailing_30d_comparison) as trailing_30d_prev_purchases,
       ARRAY_AGG(STRUCT(date, revenue_current, revenue_comparison) ORDER BY date) as daily_metrics
     FROM daily_metrics
     LIMIT 1
@@ -2126,6 +2466,495 @@ export async function getContextualizedCampaignPerformance(campaignName: string)
   }
 }
 
+// Get ad intelligent analysis
+export async function getAdIntelligentAnalysis(adName: string, adsetName: string): Promise<any> {
+  const query = `
+    SELECT
+      ai.*,
+      -- Add funnel intelligence fields from paid_media_performance (optimized subquery)
+      (SELECT current_funnel_stage FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${getCurrentDatasetName()}.paid_media_performance\`
+       WHERE ad_name = @ad_name AND current_funnel_stage IS NOT NULL
+       ORDER BY date DESC LIMIT 1) as current_funnel_stage,
+      (SELECT inferred_funnel_stage FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${getCurrentDatasetName()}.paid_media_performance\`
+       WHERE ad_name = @ad_name AND inferred_funnel_stage IS NOT NULL
+       ORDER BY date DESC LIMIT 1) as inferred_funnel_stage,
+      (SELECT is_misclassified FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${getCurrentDatasetName()}.paid_media_performance\`
+       WHERE ad_name = @ad_name AND is_misclassified IS NOT NULL
+       ORDER BY date DESC LIMIT 1) as is_misclassified,
+      (SELECT AVG(tofu_score) FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${getCurrentDatasetName()}.paid_media_performance\`
+       WHERE ad_name = @ad_name AND date >= DATE_SUB(CURRENT_DATE(), INTERVAL 30 DAY)) as tofu_score,
+      (SELECT AVG(mofu_score) FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${getCurrentDatasetName()}.paid_media_performance\`
+       WHERE ad_name = @ad_name AND date >= DATE_SUB(CURRENT_DATE(), INTERVAL 30 DAY)) as mofu_score,
+      (SELECT AVG(bofu_score) FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${getCurrentDatasetName()}.paid_media_performance\`
+       WHERE ad_name = @ad_name AND date >= DATE_SUB(CURRENT_DATE(), INTERVAL 30 DAY)) as bofu_score
+    FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${getCurrentDatasetName()}.ai_intelligent_ad_analysis\` ai
+    WHERE ai.ad_name = @ad_name
+    LIMIT 1
+  `;
+
+  try {
+    const [rows] = await bigquery.query({
+      query,
+      params: { ad_name: adName },
+      timeoutMs: 30000,
+    });
+
+    if (rows.length === 0) return null;
+
+    const row = rows[0];
+    return {
+      adName: row.ad_name,
+      campaignName: row.campaign_name,
+      spend30d: parseFloat(row.spend_30d || 0),
+      revenue30d: parseFloat(row.revenue_30d || 0),
+      purchases30d: parseInt(row.purchases_30d || 0),
+      roas30d: parseFloat(row.roas_30d || 0),
+      ctr30d: parseFloat(row.ctr_30d || 0),
+      cpa30d: parseFloat(row.cpa_30d || 0),
+      lifetimeSpend: parseFloat(row.lifetime_spend || 0),
+      lifetimeRoas: parseFloat(row.lifetime_roas || 0),
+      totalDaysActive: parseInt(row.total_days_active || 0),
+      adAgeDays: parseInt(row.ad_age_days || 0),
+      firstSeenDate: row.first_seen_date,
+      lastSeenDate: row.last_seen_date,
+      statisticalConfidence: row.statistical_confidence,
+      roasVolatility: parseFloat(row.roas_volatility || 0),
+      worstDayRoas: parseFloat(row.worst_day_roas || 0),
+      bestDayRoas: parseFloat(row.best_day_roas || 0),
+      coefficientOfVariation: parseFloat(row.coefficient_of_variation || 0),
+      performanceTrend: row.performance_trend,
+      week1Roas: parseFloat(row.week1_roas || 0),
+      week2Roas: parseFloat(row.week2_roas || 0),
+      week3Roas: parseFloat(row.week3_roas || 0),
+      week4Roas: parseFloat(row.week4_roas || 0),
+      roasChange4wk: parseFloat(row.roas_change_4wk || 0),
+      roasChangeVsPrev: parseFloat(row.roas_change_vs_prev || 0),
+      spendChangePct: parseFloat(row.spend_change_pct || 0),
+      revenueChangePct: parseFloat(row.revenue_change_pct || 0),
+      lowSpendRoas: parseFloat(row.low_spend_roas || 0),
+      highSpendRoas: parseFloat(row.high_spend_roas || 0),
+      scalingEfficiency: parseFloat(row.scaling_efficiency || 0),
+      scalingCategory: row.scaling_category,
+      roasVsAccountAvg: parseFloat(row.roas_vs_account_avg || 0),
+      roasIndexVsAccount: parseFloat(row.roas_index_vs_account || 0),
+      shareOfSpend: parseFloat(row.share_of_spend || 0),
+      shareOfRevenue: parseFloat(row.share_of_revenue || 0),
+      efficiencyIndex: parseFloat(row.efficiency_index || 0),
+      avgFrequency: parseFloat(row.avg_frequency || 0),
+      fatigueRisk: row.fatigue_risk,
+      healthScore: parseInt(row.health_score || 0),
+      recommendedAction: row.recommended_action,
+      riskFlags: row.risk_flags,
+      // Funnel intelligence fields
+      currentFunnelStage: row.current_funnel_stage || null,
+      inferredFunnelStage: row.inferred_funnel_stage || null,
+      isMisclassified: row.is_misclassified || false,
+      tofuScore: parseFloat(row.tofu_score || 0),
+      mofuScore: parseFloat(row.mofu_score || 0),
+      bofuScore: parseFloat(row.bofu_score || 0)
+    };
+  } catch (error) {
+    console.error('Error fetching ad intelligent analysis:', error);
+    throw error;
+  }
+}
+
+// Get ad performance timeseries
+export async function getAdPerformanceTimeseries(adName: string, adsetName: string, days: number = 30): Promise<any[]> {
+  const query = `
+    SELECT
+      date,
+      spend,
+      revenue,
+      SAFE_DIVIDE(revenue, spend) as roas
+    FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${getCurrentDatasetName()}.paid_media_performance\`
+    WHERE ad_name = @ad_name
+      AND adset_name = @adset_name
+      AND platform = 'Facebook'
+      AND date >= DATE_SUB(CURRENT_DATE(), INTERVAL @days DAY)
+    ORDER BY date ASC
+  `;
+
+  try {
+    const [rows] = await bigquery.query({
+      query,
+      params: { ad_name: adName, adset_name: adsetName, days },
+      timeoutMs: 30000,
+    });
+
+    // Calculate rolling averages
+    const data = rows.map(row => ({
+      date: row.date?.value || row.date,
+      spend: parseFloat(row.spend || 0),
+      revenue: parseFloat(row.revenue || 0),
+      roas: parseFloat(row.roas || 0)
+    }));
+
+    // Add rolling averages
+    return data.map((row, idx) => {
+      const window7 = data.slice(Math.max(0, idx - 6), idx + 1);
+      const window30 = data.slice(Math.max(0, idx - 29), idx + 1);
+
+      const roas7dAvg = window7.reduce((sum, r) => sum + r.roas, 0) / window7.length;
+      const roas30dAvg = window30.reduce((sum, r) => sum + r.roas, 0) / window30.length;
+
+      return {
+        date: row.date,
+        dailySpend: row.spend,
+        dailyRevenue: row.revenue,
+        dailyRoas: row.roas,
+        roas7dAvg,
+        roas30dAvg
+      };
+    });
+  } catch (error) {
+    console.error('Error fetching ad performance timeseries:', error);
+    return [];
+  }
+}
+
+// Get ad performance distribution within campaign
+export async function getAdDistributionForCampaign(campaignName: string): Promise<any> {
+  const query = `
+    SELECT
+      campaign_name,
+
+      -- Campaign metrics
+      MAX(CASE WHEN rn = 1 THEN campaign_roas END) as campaign_roas,
+      MAX(CASE WHEN rn = 1 THEN campaign_health END) as campaign_health,
+
+      -- Ad distribution
+      COUNT(DISTINCT ad_name) as total_ads,
+      AVG(ad_health) as avg_ad_health,
+      MIN(ad_health) as worst_ad_health,
+      MAX(ad_health) as best_ad_health,
+
+      -- Performance buckets
+      SUM(CASE WHEN ad_health >= 80 THEN 1 ELSE 0 END) as excellent_ads,
+      SUM(CASE WHEN ad_health BETWEEN 60 AND 79 THEN 1 ELSE 0 END) as good_ads,
+      SUM(CASE WHEN ad_health BETWEEN 40 AND 59 THEN 1 ELSE 0 END) as fair_ads,
+      SUM(CASE WHEN ad_health < 40 THEN 1 ELSE 0 END) as poor_ads,
+
+      -- Action summary
+      SUM(CASE WHEN ad_recommended_action LIKE '%SCALE%' THEN 1 ELSE 0 END) as ads_to_scale,
+      SUM(CASE WHEN ad_recommended_action LIKE '%PAUSE%' THEN 1 ELSE 0 END) as ads_to_pause,
+      SUM(CASE WHEN ad_recommended_action LIKE '%REFRESH%' THEN 1 ELSE 0 END) as ads_to_refresh
+
+    FROM (
+      SELECT
+        c.campaign_name,
+        c.roas_30d as campaign_roas,
+        c.health_score as campaign_health,
+        a.ad_name,
+        a.health_score as ad_health,
+        a.recommended_action as ad_recommended_action,
+        ROW_NUMBER() OVER (PARTITION BY c.campaign_name ORDER BY a.spend_30d DESC) as rn
+      FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${getCurrentDatasetName()}.ai_intelligent_campaign_analysis\` c
+      LEFT JOIN \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${getCurrentDatasetName()}.ai_intelligent_ad_analysis\` a
+        ON c.campaign_name = a.campaign_name
+      WHERE c.campaign_name = @campaign_name
+    )
+    GROUP BY campaign_name
+    HAVING COUNT(DISTINCT ad_name) > 0
+  `;
+
+  try {
+    const [rows] = await bigquery.query({
+      query,
+      params: { campaign_name: campaignName },
+      timeoutMs: 30000,
+    });
+
+    if (rows.length === 0) return null;
+
+    const row = rows[0];
+    return {
+      campaignName: row.campaign_name,
+      campaignRoas: parseFloat(row.campaign_roas || 0),
+      campaignHealth: parseInt(row.campaign_health || 0),
+      totalAds: parseInt(row.total_ads || 0),
+      avgAdHealth: parseFloat(row.avg_ad_health || 0),
+      worstAdHealth: parseFloat(row.worst_ad_health || 0),
+      bestAdHealth: parseFloat(row.best_ad_health || 0),
+      excellentAds: parseInt(row.excellent_ads || 0),
+      goodAds: parseInt(row.good_ads || 0),
+      fairAds: parseInt(row.fair_ads || 0),
+      poorAds: parseInt(row.poor_ads || 0),
+      adsToScale: parseInt(row.ads_to_scale || 0),
+      adsToPause: parseInt(row.ads_to_pause || 0),
+      adsToRefresh: parseInt(row.ads_to_refresh || 0)
+    };
+  } catch (error) {
+    console.error('Error fetching ad distribution for campaign:', error);
+    return null;
+  }
+}
+
+// Get list of ads in campaign
+export async function getCampaignAdsList(campaignName: string): Promise<any[]> {
+  const query = `
+    SELECT
+      ad_name,
+      health_score,
+      roas_30d,
+      spend_30d,
+      recommended_action,
+      performance_trend
+    FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${getCurrentDatasetName()}.ai_intelligent_ad_analysis\`
+    WHERE campaign_name = @campaign_name
+    ORDER BY health_score DESC, spend_30d DESC
+  `;
+
+  try {
+    const [rows] = await bigquery.query({
+      query,
+      params: { campaign_name: campaignName },
+      timeoutMs: 30000,
+    });
+
+    return rows.map(row => ({
+      adName: row.ad_name,
+      healthScore: parseInt(row.health_score || 0),
+      roas30d: parseFloat(row.roas_30d || 0),
+      spend30d: parseFloat(row.spend_30d || 0),
+      recommendedAction: row.recommended_action,
+      performanceTrend: row.performance_trend
+    }));
+  } catch (error) {
+    console.error('Error fetching campaign ads list:', error);
+    return [];
+  }
+}
+
+// Funnel Optimization: Get all-star bundles by optimization goal and country
+export async function getAllStarBundlesByGoal(goal: string = 'composite', country: string = 'United States'): Promise<any[]> {
+  let query = '';
+
+  switch(goal) {
+    case 'awareness':
+      // TOFU - Maximize Clicks + Low CPC
+      query = `
+        SELECT
+          'AWARENESS_OPTIMIZED' as bundle_goal,
+          country,
+          recommended_stage,
+          ad_name,
+          current_funnel_stage,
+          stage_transition,
+          clicks_rank as rank,
+          total_clicks,
+          ROUND(cpc, 2) as cpc,
+          ROUND(ctr_percent, 1) as ctr_pct,
+          ROUND(total_spend, 2) as spend,
+          ROUND(roas, 2) as roas,
+          ROUND(tofu_score, 2) as tofu_score,
+          ROUND(mofu_score, 2) as mofu_score,
+          ROUND(bofu_score, 2) as bofu_score
+        FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${getCurrentDatasetName()}.ai_allstar_ad_bundles_by_country\`
+        WHERE country = @country
+          AND recommended_stage = 'TOFU'
+          AND clicks_rank <= 3
+        ORDER BY clicks_rank
+      `;
+      break;
+
+    case 'efficiency':
+      // TOFU - Lowest CPC
+      query = `
+        SELECT
+          'EFFICIENCY_OPTIMIZED' as bundle_goal,
+          country,
+          recommended_stage,
+          ad_name,
+          current_funnel_stage,
+          stage_transition,
+          efficiency_rank as rank,
+          ROUND(cpc, 2) as cpc,
+          total_clicks,
+          ROUND(ctr_percent, 1) as ctr_pct,
+          ROUND(total_spend, 2) as spend,
+          ROUND(roas, 2) as roas,
+          ROUND(tofu_score, 2) as tofu_score,
+          ROUND(mofu_score, 2) as mofu_score,
+          ROUND(bofu_score, 2) as bofu_score
+        FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${getCurrentDatasetName()}.ai_allstar_ad_bundles_by_country\`
+        WHERE country = @country
+          AND recommended_stage = 'TOFU'
+          AND efficiency_rank <= 3
+        ORDER BY efficiency_rank
+      `;
+      break;
+
+    case 'engagement':
+      // Highest CTR across all stages
+      query = `
+        SELECT
+          'ENGAGEMENT_OPTIMIZED' as bundle_goal,
+          country,
+          recommended_stage,
+          ad_name,
+          current_funnel_stage,
+          stage_transition,
+          ctr_rank as rank,
+          ROUND(ctr_percent, 1) as ctr_pct,
+          total_clicks,
+          ROUND(cpc, 2) as cpc,
+          ROUND(total_spend, 2) as spend,
+          ROUND(roas, 2) as roas,
+          ROUND(tofu_score, 2) as tofu_score,
+          ROUND(mofu_score, 2) as mofu_score,
+          ROUND(bofu_score, 2) as bofu_score
+        FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${getCurrentDatasetName()}.ai_allstar_ad_bundles_by_country\`
+        WHERE country = @country
+          AND ctr_rank <= 3
+        ORDER BY ctr_rank
+      `;
+      break;
+
+    case 'revenue':
+      // BOFU - Highest ROAS
+      query = `
+        SELECT
+          'ROAS_OPTIMIZED' as bundle_goal,
+          country,
+          recommended_stage,
+          ad_name,
+          current_funnel_stage,
+          stage_transition,
+          roas_rank as rank,
+          ROUND(roas, 2) as roas,
+          ROUND(total_spend, 2) as spend,
+          total_purchases,
+          ROUND(conversion_rate_percent, 1) as conv_rate_pct,
+          ROUND(tofu_score, 2) as tofu_score,
+          ROUND(mofu_score, 2) as mofu_score,
+          ROUND(bofu_score, 2) as bofu_score
+        FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${getCurrentDatasetName()}.ai_allstar_ad_bundles_by_country\`
+        WHERE country = @country
+          AND recommended_stage = 'BOFU'
+          AND roas_rank <= 3
+        ORDER BY roas_rank
+      `;
+      break;
+
+    case 'conversion':
+      // BOFU - Highest Conversion Rate
+      query = `
+        SELECT
+          'CONVERSION_OPTIMIZED' as bundle_goal,
+          country,
+          recommended_stage,
+          ad_name,
+          current_funnel_stage,
+          stage_transition,
+          conversion_rank as rank,
+          ROUND(conversion_rate_percent, 1) as conv_rate_pct,
+          total_purchases,
+          ROUND(roas, 2) as roas,
+          ROUND(total_spend, 2) as spend,
+          ROUND(tofu_score, 2) as tofu_score,
+          ROUND(mofu_score, 2) as mofu_score,
+          ROUND(bofu_score, 2) as bofu_score
+        FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${getCurrentDatasetName()}.ai_allstar_ad_bundles_by_country\`
+        WHERE country = @country
+          AND recommended_stage = 'BOFU'
+          AND conversion_rank <= 3
+        ORDER BY conversion_rank
+      `;
+      break;
+
+    case 'allstars':
+      // All-Star Bundles - Top 3 per stage
+      query = `
+        SELECT
+          'ALL_STARS' as bundle_goal,
+          country,
+          recommended_stage,
+          ad_name,
+          current_funnel_stage,
+          stage_transition,
+          all_star_rank as rank,
+          ROUND(roas, 2) as roas,
+          total_clicks,
+          ROUND(ctr_percent, 1) as ctr_pct,
+          ROUND(cpc, 2) as cpc,
+          ROUND(total_spend, 2) as spend,
+          ROUND(tofu_score, 2) as tofu_score,
+          ROUND(mofu_score, 2) as mofu_score,
+          ROUND(bofu_score, 2) as bofu_score
+        FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${getCurrentDatasetName()}.ai_allstar_ad_bundles_by_country\`
+        WHERE country = @country
+          AND is_all_star = TRUE
+          AND all_star_rank <= 3
+        ORDER BY recommended_stage, all_star_rank
+      `;
+      break;
+
+    case 'composite':
+    default:
+      // Balanced Score - Top 3 per stage
+      query = `
+        SELECT
+          'COMPOSITE_OPTIMIZED' as bundle_goal,
+          country,
+          recommended_stage,
+          ad_name,
+          current_funnel_stage,
+          stage_transition,
+          all_star_rank as rank,
+          ROUND(roas, 2) as roas,
+          total_clicks,
+          ROUND(ctr_percent, 1) as ctr_pct,
+          ROUND(cpc, 2) as cpc,
+          ROUND(total_spend, 2) as spend,
+          ROUND(tofu_score, 2) as tofu_score,
+          ROUND(mofu_score, 2) as mofu_score,
+          ROUND(bofu_score, 2) as bofu_score
+        FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${getCurrentDatasetName()}.ai_allstar_ad_bundles_by_country\`
+        WHERE country = @country
+          AND all_star_rank <= 3
+        ORDER BY recommended_stage, all_star_rank
+      `;
+      break;
+  }
+
+  try {
+    const [rows] = await bigquery.query({
+      query,
+      params: { country },
+      timeoutMs: 30000,
+    });
+
+    return rows.map((row: any) => ({
+      bundleGoal: row.bundle_goal,
+      country: row.country,
+      recommendedStage: row.recommended_stage,
+      adName: row.ad_name,
+      adsetName: row.adset_name || null,
+      currentStage: row.current_funnel_stage,
+      stageTransition: row.stage_transition,
+      rank: parseInt(row.rank || 0),
+      // Funnel scores (always included)
+      tofuScore: row.tofu_score ? parseFloat(row.tofu_score) : 0,
+      mofuScore: row.mofu_score ? parseFloat(row.mofu_score) : 0,
+      bofuScore: row.bofu_score ? parseFloat(row.bofu_score) : 0,
+      // Conditional fields based on goal
+      clicks: row.total_clicks ? parseInt(row.total_clicks) : undefined,
+      cpc: row.cpc ? parseFloat(row.cpc) : undefined,
+      ctr: row.ctr_pct ? parseFloat(row.ctr_pct) : undefined,
+      spend: row.spend ? parseFloat(row.spend) : undefined,
+      roas: row.roas ? parseFloat(row.roas) : undefined,
+      revenue: row.revenue ? parseFloat(row.revenue) : undefined,
+      purchases: row.total_purchases ? parseInt(row.total_purchases) : undefined,
+      conversionRate: row.conv_rate_pct ? parseFloat(row.conv_rate_pct) : undefined,
+      cpa: row.cpa ? parseFloat(row.cpa) : undefined,
+    }));
+  } catch (error) {
+    console.error(`Error fetching ${goal} all-star bundles for ${country}:`, error);
+    return [];
+  }
+}
+
 // Get audience overlap analysis
 export async function getAudienceOverlapAnalysis(): Promise<any[]> {
   const query = `
@@ -2428,9 +3257,68 @@ export async function getShopifyRevenueYoY(days: number = 30): Promise<any[]> {
   }
 }
 
+// Cache for current client ID
+let cachedCurrentClientIdForBQ: string | null = null;
+
+// Server-side helper to get current client ID from BigQuery
+async function getCurrentClientIdFromDB(): Promise<string> {
+  // Check cache first
+  if (cachedCurrentClientIdForBQ) {
+    console.log('[BigQuery] Using cached client ID:', cachedCurrentClientIdForBQ);
+    return cachedCurrentClientIdForBQ;
+  }
+
+  try {
+    const query = `
+      SELECT client_id
+      FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.admin_configs.current_client_setting\`
+      ORDER BY updated_at DESC
+      LIMIT 1
+    `;
+
+    const [rows] = await bigquery.query({
+      query,
+      timeoutMs: 10000,
+    });
+
+    if (rows.length > 0) {
+      console.log('[BigQuery] Current client from DB:', rows[0].client_id);
+      cachedCurrentClientIdForBQ = rows[0].client_id;
+
+      // Also populate the client-config cache
+      const { setCachedClientId } = await import('./client-config');
+      setCachedClientId(rows[0].client_id);
+
+      return cachedCurrentClientIdForBQ;
+    }
+  } catch (error) {
+    console.error('[BigQuery] Error fetching current client:', error);
+  }
+
+  // Fallback to environment variable or default
+  const fallback = process.env.CURRENT_CLIENT_ID || 'jumbomax';
+  console.log('[BigQuery] Using fallback client:', fallback);
+  cachedCurrentClientIdForBQ = fallback;
+  return fallback;
+}
+
+// Export function to initialize current client (must be called before any BigQuery operations)
+export async function initializeCurrentClient(): Promise<void> {
+  await getCurrentClientIdFromDB();
+  console.log('[BigQuery] Client initialized for this request');
+}
+
+// Export function to clear BQ cache (called when client switches)
+export function clearBigQueryClientCache() {
+  cachedCurrentClientIdForBQ = null;
+  console.log('[BigQuery] Cache cleared');
+}
+
 // Get client dashboard configuration
 export async function getClientDashboardConfig(): Promise<any> {
-  const clientId = process.env.CURRENT_CLIENT_ID || 'jumbomax';
+  const clientId = await getCurrentClientIdFromDB();
+  console.log('[BigQuery] Fetching dashboard config for client:', clientId);
+
   const query = `
     SELECT dashboard_config
     FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.admin_configs.client_configurations\`
@@ -2445,8 +3333,11 @@ export async function getClientDashboardConfig(): Promise<any> {
     });
 
     if (rows.length > 0 && rows[0].dashboard_config) {
-      return JSON.parse(rows[0].dashboard_config);
+      const config = JSON.parse(rows[0].dashboard_config);
+      console.log('[BigQuery] Dashboard config for', clientId, ':', config);
+      return config;
     }
+    console.log('[BigQuery] No dashboard config found for client:', clientId);
     return null;
   } catch (error) {
     console.error('Error fetching client dashboard config:', error);
@@ -2678,6 +3569,266 @@ export async function getForecastDaily(): Promise<any[]> {
     }));
   } catch (error) {
     console.error('Error fetching forecast daily:', error);
+    throw error;
+  }
+}
+
+// Get actual revenue data for Q4 2025 to overlay with forecast
+export async function getForecastActuals(): Promise<any[]> {
+  const query = `
+    SELECT
+      date,
+      revenue as actual
+    FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${getCurrentDatasetName()}.daily_business_metrics\`
+    WHERE date >= '2025-10-01' AND date <= '2025-12-31'
+    ORDER BY date
+  `;
+
+  try {
+    const [rows] = await bigquery.query({
+      query,
+      timeoutMs: 30000,
+    });
+
+    return rows.map(row => ({
+      date: row.date.value,
+      actual: parseFloat(row.actual || 0)
+    }));
+  } catch (error) {
+    console.error('Error fetching forecast actuals:', error);
+    throw error;
+  }
+}
+
+// Meta ROAS Predictions
+export async function getMetaRoasPredictions() {
+  console.log('[getMetaRoasPredictions] Fetching Meta ROAS predictions');
+
+  const query = `
+    SELECT
+      week_start_date,
+      API_Spend as api_spend,
+      API_ROAS as api_roas,
+      Predicted_Meta_ROAS as predicted_meta_roas,
+      Lower_Bound as lower_bound,
+      Upper_Bound as upper_bound,
+      Purchases as purchases,
+      Predicted_Multiplier as predicted_multiplier,
+      Prediction_Method as prediction_method,
+      Days_Ago as days_ago
+    FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${getCurrentDatasetName()}.meta_roas_predictions_live\`
+    WHERE Days_Ago <= 7
+    ORDER BY week_start_date DESC
+    LIMIT 1
+  `;
+
+  try {
+    const [rows] = await bigquery.query({
+      query,
+      timeoutMs: 30000,
+    });
+
+    if (rows.length === 0) {
+      return null;
+    }
+
+    const row = rows[0];
+    return {
+      weekStartDate: row.week_start_date?.value || null,
+      apiSpend: parseFloat(row.api_spend || 0),
+      apiRoas: parseFloat(row.api_roas || 0),
+      predictedMetaRoas: parseFloat(row.predicted_meta_roas || 0),
+      lowerBound: parseFloat(row.lower_bound || 0),
+      upperBound: parseFloat(row.upper_bound || 0),
+      purchases: parseInt(row.purchases || 0),
+      predictedMultiplier: parseFloat(row.predicted_multiplier || 0),
+      predictionMethod: row.prediction_method || 'Unknown',
+      daysAgo: parseInt(row.days_ago || 0)
+    };
+  } catch (error) {
+    console.error('Error fetching Meta ROAS predictions:', error);
+    throw error;
+  }
+}
+
+// Ad Performance Details
+export async function getAdPerformance(adName: string, adsetName: string, preset: string = 'last-30-days') {
+  console.log(`[getAdPerformance] Fetching performance for ad: ${adName}, adset: ${adsetName}, preset: ${preset}`);
+
+  const filters = getPaidMediaDateFilterSQL(preset, undefined, undefined, 'previous-period');
+
+  const whereClause = `platform = 'Facebook' AND ad_name = @ad_name AND adset_name = @adset_name AND ${filters.dateFilter}`;
+  const prevWhereClause = `platform = 'Facebook' AND ad_name = @ad_name AND adset_name = @adset_name AND ${filters.prevDateFilter}`;
+
+  const summaryQuery = `
+    WITH current_period AS (
+      SELECT
+        ad_name,
+        campaign_name,
+        adset_name,
+        SUM(spend) as total_spend,
+        SUM(revenue) as total_revenue,
+        SAFE_DIVIDE(SUM(revenue), SUM(spend)) as roas,
+        SUM(purchases) as total_purchases,
+        SUM(impressions) as total_impressions,
+        SUM(clicks) as total_clicks,
+        SAFE_DIVIDE(SUM(clicks), SUM(impressions)) * 100 as ctr,
+        SAFE_DIVIDE(SUM(spend), SUM(purchases)) as cpa,
+        SAFE_DIVIDE(SUM(spend), SUM(clicks)) as cpc,
+        SAFE_DIVIDE(SUM(spend), SUM(impressions)) * 1000 as cpm,
+        SAFE_DIVIDE(SUM(purchases), SUM(clicks)) * 100 as conversion_rate,
+        SAFE_DIVIDE(SUM(revenue), SUM(purchases)) as avg_order_value,
+        -- Funnel intelligence fields (take most recent non-null values)
+        ARRAY_AGG(current_funnel_stage IGNORE NULLS ORDER BY date DESC LIMIT 1)[SAFE_OFFSET(0)] as current_funnel_stage,
+        ARRAY_AGG(inferred_funnel_stage IGNORE NULLS ORDER BY date DESC LIMIT 1)[SAFE_OFFSET(0)] as inferred_funnel_stage,
+        ARRAY_AGG(is_misclassified IGNORE NULLS ORDER BY date DESC LIMIT 1)[SAFE_OFFSET(0)] as is_misclassified,
+        AVG(tofu_score) as tofu_score,
+        AVG(mofu_score) as mofu_score,
+        AVG(bofu_score) as bofu_score
+      FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${getCurrentDatasetName()}.paid_media_performance\`
+      WHERE ${whereClause}
+      GROUP BY ad_name, campaign_name, adset_name
+    ),
+    previous_period AS (
+      SELECT
+        SUM(spend) as total_spend,
+        SUM(revenue) as total_revenue,
+        SAFE_DIVIDE(SUM(revenue), SUM(spend)) as roas,
+        SUM(purchases) as total_purchases,
+        SUM(impressions) as total_impressions,
+        SUM(clicks) as total_clicks,
+        SAFE_DIVIDE(SUM(clicks), SUM(impressions)) * 100 as ctr,
+        SAFE_DIVIDE(SUM(spend), SUM(purchases)) as cpa,
+        SAFE_DIVIDE(SUM(spend), SUM(clicks)) as cpc,
+        SAFE_DIVIDE(SUM(spend), SUM(impressions)) * 1000 as cpm,
+        SAFE_DIVIDE(SUM(purchases), SUM(clicks)) * 100 as conversion_rate,
+        SAFE_DIVIDE(SUM(revenue), SUM(purchases)) as avg_order_value
+      FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${getCurrentDatasetName()}.paid_media_performance\`
+      WHERE ${prevWhereClause}
+    )
+    SELECT
+      cp.*,
+      pp.total_spend as prev_total_spend,
+      pp.total_revenue as prev_total_revenue,
+      pp.roas as prev_roas,
+      pp.total_purchases as prev_total_purchases,
+      pp.total_impressions as prev_total_impressions,
+      pp.total_clicks as prev_total_clicks,
+      pp.ctr as prev_ctr,
+      pp.cpa as prev_cpa,
+      pp.cpc as prev_cpc,
+      pp.cpm as prev_cpm,
+      pp.conversion_rate as prev_conversion_rate,
+      pp.avg_order_value as prev_avg_order_value
+    FROM current_period cp
+    CROSS JOIN previous_period pp
+  `;
+
+  const timeseriesQuery = `
+    SELECT
+      date,
+      SUM(spend) as spend,
+      SUM(revenue) as revenue,
+      SAFE_DIVIDE(SUM(revenue), SUM(spend)) as roas,
+      SUM(purchases) as purchases
+    FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${getCurrentDatasetName()}.paid_media_performance\`
+    WHERE ${whereClause}
+    GROUP BY date
+    ORDER BY date ASC
+  `;
+
+  try {
+    const params = {
+      ad_name: adName,
+      adset_name: adsetName
+    };
+
+    console.log(`[getAdPerformance] Query params:`, params);
+    console.log(`[getAdPerformance] Dataset: ${getCurrentDatasetName()}`);
+    console.log(`[getAdPerformance] Date filter: ${filters.dateFilter}`);
+
+    const [summaryRows] = await bigquery.query({
+      query: summaryQuery,
+      params,
+      timeoutMs: 30000,
+    });
+
+    console.log(`[getAdPerformance] Summary rows returned: ${summaryRows.length}`);
+
+    const [timeseriesRows] = await bigquery.query({
+      query: timeseriesQuery,
+      params,
+      timeoutMs: 30000,
+    });
+
+    console.log(`[getAdPerformance] Timeseries rows returned: ${timeseriesRows.length}`);
+
+    if (summaryRows.length === 0) {
+      console.log(`[getAdPerformance] No data found for ad: ${adName}`);
+      throw new Error('Ad not found');
+    }
+
+    const summary = summaryRows[0];
+
+    const calculateChange = (current: number, previous: number) => {
+      if (!previous || previous === 0) return 0;
+      return ((current - previous) / previous) * 100;
+    };
+
+    return {
+      summary: {
+        adName: summary.ad_name,
+        campaignName: summary.campaign_name,
+        adsetName: summary.adset_name,
+        totalSpend: parseFloat(summary.total_spend || 0),
+        totalRevenue: parseFloat(summary.total_revenue || 0),
+        roas: parseFloat(summary.roas || 0),
+        totalPurchases: parseInt(summary.total_purchases || 0),
+        totalImpressions: parseInt(summary.total_impressions || 0),
+        totalClicks: parseInt(summary.total_clicks || 0),
+        ctr: parseFloat(summary.ctr || 0),
+        cpa: parseFloat(summary.cpa || 0),
+        cpc: parseFloat(summary.cpc || 0),
+        cpm: parseFloat(summary.cpm || 0),
+        conversionRate: parseFloat(summary.conversion_rate || 0),
+        avgOrderValue: parseFloat(summary.avg_order_value || 0),
+        // Previous period values
+        prevTotalSpend: parseFloat(summary.prev_total_spend || 0),
+        prevTotalRevenue: parseFloat(summary.prev_total_revenue || 0),
+        prevRoas: parseFloat(summary.prev_roas || 0),
+        prevTotalPurchases: parseInt(summary.prev_total_purchases || 0),
+        prevTotalImpressions: parseInt(summary.prev_total_impressions || 0),
+        prevTotalClicks: parseInt(summary.prev_total_clicks || 0),
+        prevCtr: parseFloat(summary.prev_ctr || 0),
+        prevCpa: parseFloat(summary.prev_cpa || 0),
+        prevCpc: parseFloat(summary.prev_cpc || 0),
+        prevCpm: parseFloat(summary.prev_cpm || 0),
+        prevConversionRate: parseFloat(summary.prev_conversion_rate || 0),
+        prevAvgOrderValue: parseFloat(summary.prev_avg_order_value || 0),
+        // Percentage changes
+        spendChange: calculateChange(parseFloat(summary.total_spend || 0), parseFloat(summary.prev_total_spend || 0)),
+        revenueChange: calculateChange(parseFloat(summary.total_revenue || 0), parseFloat(summary.prev_total_revenue || 0)),
+        roasChange: calculateChange(parseFloat(summary.roas || 0), parseFloat(summary.prev_roas || 0)),
+        purchasesChange: calculateChange(parseInt(summary.total_purchases || 0), parseInt(summary.prev_total_purchases || 0)),
+        impressionsChange: calculateChange(parseInt(summary.total_impressions || 0), parseInt(summary.prev_total_impressions || 0)),
+        clicksChange: calculateChange(parseInt(summary.total_clicks || 0), parseInt(summary.prev_total_clicks || 0)),
+        ctrChange: calculateChange(parseFloat(summary.ctr || 0), parseFloat(summary.prev_ctr || 0)),
+        cpaChange: calculateChange(parseFloat(summary.cpa || 0), parseFloat(summary.prev_cpa || 0)),
+        cpcChange: calculateChange(parseFloat(summary.cpc || 0), parseFloat(summary.prev_cpc || 0)),
+        cpmChange: calculateChange(parseFloat(summary.cpm || 0), parseFloat(summary.prev_cpm || 0)),
+        conversionRateChange: calculateChange(parseFloat(summary.conversion_rate || 0), parseFloat(summary.prev_conversion_rate || 0)),
+        avgOrderValueChange: calculateChange(parseFloat(summary.avg_order_value || 0), parseFloat(summary.prev_avg_order_value || 0))
+      },
+      timeseries: timeseriesRows.map(row => ({
+        date: row.date?.value || row.date,
+        spend: parseFloat(row.spend || 0),
+        revenue: parseFloat(row.revenue || 0),
+        roas: parseFloat(row.roas || 0),
+        purchases: parseInt(row.purchases || 0)
+      }))
+    };
+  } catch (error) {
+    console.error('Error fetching ad performance:', error);
     throw error;
   }
 }

@@ -32,6 +32,8 @@ interface ClientConfig {
   dashboard?: {
     monthlyRevenueTargets?: number[];
     monthlyRoasTarget?: number;
+    currency?: string;
+    currencySymbol?: string;
   };
 }
 
@@ -566,12 +568,13 @@ function ClientEditModal({
                   type="text"
                   value={editedClient.dashboard?.monthlyRevenueTargets?.join(',') || ''}
                   onChange={(e) => {
-                    const values = e.target.value.split(',').map(v => parseFloat(v.trim())).filter(v => !isNaN(v));
+                    const rawValues = e.target.value.split(',').map(v => v.trim());
+                    const values = rawValues.map(v => parseFloat(v)).filter(v => !isNaN(v));
                     setEditedClient(prev => ({
                       ...prev,
                       dashboard: {
                         ...prev.dashboard,
-                        monthlyRevenueTargets: values.length === 12 ? values : prev.dashboard?.monthlyRevenueTargets
+                        monthlyRevenueTargets: values
                       }
                     }));
                   }}
@@ -579,8 +582,8 @@ function ClientEditModal({
                   style={{background: 'var(--bg-elevated)', border: '1px solid var(--border-muted)', color: 'var(--text-primary)'}}
                   placeholder="300000,300000,300000,300000,300000,300000,300000,300000,300000,300000,300000,300000"
                 />
-                <p className="text-xs mt-1" style={{color: 'var(--text-muted)'}}>
-                  Enter exactly 12 comma-separated values (one for each month)
+                <p className="text-xs mt-1" style={{color: editedClient.dashboard?.monthlyRevenueTargets?.length === 12 ? 'var(--text-muted)' : 'var(--status-warning)'}}>
+                  {editedClient.dashboard?.monthlyRevenueTargets?.length || 0} of 12 values entered
                 </p>
               </div>
 
@@ -602,6 +605,46 @@ function ClientEditModal({
                   className="w-full px-3 py-2 rounded-md focus:outline-none"
                   style={{background: 'var(--bg-elevated)', border: '1px solid var(--border-muted)', color: 'var(--text-primary)'}}
                   placeholder="6.5"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium mb-1" style={{color: 'var(--text-secondary)'}}>
+                  Currency Code
+                </label>
+                <input
+                  type="text"
+                  value={editedClient.dashboard?.currency || ''}
+                  onChange={(e) => setEditedClient(prev => ({
+                    ...prev,
+                    dashboard: {
+                      ...prev.dashboard,
+                      currency: e.target.value
+                    }
+                  }))}
+                  className="w-full px-3 py-2 rounded-md focus:outline-none"
+                  style={{background: 'var(--bg-elevated)', border: '1px solid var(--border-muted)', color: 'var(--text-primary)'}}
+                  placeholder="USD, GBP, EUR, etc."
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium mb-1" style={{color: 'var(--text-secondary)'}}>
+                  Currency Symbol
+                </label>
+                <input
+                  type="text"
+                  value={editedClient.dashboard?.currencySymbol || ''}
+                  onChange={(e) => setEditedClient(prev => ({
+                    ...prev,
+                    dashboard: {
+                      ...prev.dashboard,
+                      currencySymbol: e.target.value
+                    }
+                  }))}
+                  className="w-full px-3 py-2 rounded-md focus:outline-none"
+                  style={{background: 'var(--bg-elevated)', border: '1px solid var(--border-muted)', color: 'var(--text-primary)'}}
+                  placeholder="$, £, €, etc."
                 />
               </div>
             </div>

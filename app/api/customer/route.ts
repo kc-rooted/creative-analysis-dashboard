@@ -1,16 +1,31 @@
 import { NextResponse } from 'next/server';
-import { getCustomerCLVData, getAudienceOverlapAnalysis } from '@/lib/bigquery';
+import {
+  initializeCurrentClient,
+  getCustomerCLVData,
+  getAudienceOverlapAnalysis,
+  getCustomerOverviewKPIs,
+  getLTVIntelligence,
+  getCustomerJourneyAnalysis
+} from '@/lib/bigquery';
 
 export async function GET(request: Request) {
   try {
-    const [clvData, audienceOverlap] = await Promise.all([
+    // CRITICAL: Initialize current client cache before BigQuery operations
+    await initializeCurrentClient();
+    const [clvData, audienceOverlap, overviewKPIs, ltvIntelligence, journeyAnalysis] = await Promise.all([
       getCustomerCLVData(),
-      getAudienceOverlapAnalysis()
+      getAudienceOverlapAnalysis(),
+      getCustomerOverviewKPIs(),
+      getLTVIntelligence(),
+      getCustomerJourneyAnalysis()
     ]);
 
     return NextResponse.json({
       clvData,
-      audienceOverlap
+      audienceOverlap,
+      overviewKPIs,
+      ltvIntelligence,
+      journeyAnalysis
     });
   } catch (error) {
     console.error('Error in customer API:', error);

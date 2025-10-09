@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getDeduplicatedCreatives } from '@/lib/bigquery';
+import { initializeCurrentClient, getDeduplicatedCreatives } from '@/lib/bigquery';
 import { mockCreatives } from '@/lib/mock-data';
 
 export async function GET(request: NextRequest) {
   try {
+    // CRITICAL: Initialize current client cache before BigQuery operations
+    await initializeCurrentClient();
     const searchParams = request.nextUrl.searchParams;
     const status = searchParams.get('status') || undefined;
     const limit = parseInt(searchParams.get('limit') || '50');

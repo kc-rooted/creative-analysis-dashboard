@@ -1,8 +1,12 @@
 import { NextResponse } from 'next/server';
-import { getExecutiveSummary, getPaidMediaTrend, getShopifyRevenueYoY, getRevenueForecast7Day, getClientDashboardConfig, getBusinessContextIndex } from '@/lib/bigquery';
+import { getExecutiveSummary, getPaidMediaTrend, getShopifyRevenueYoY, getRevenueForecast7Day, getClientDashboardConfig, getBusinessContextIndex, initializeCurrentClient } from '@/lib/bigquery';
 
 export async function GET(request: Request) {
   try {
+    // CRITICAL: Initialize current client BEFORE any BigQuery operations
+    // This ensures the cache is populated before sync functions run
+    await initializeCurrentClient();
+
     // Get period from query params (7d, mtd, or 30d)
     const { searchParams } = new URL(request.url);
     const period = searchParams.get('period') || '7d';

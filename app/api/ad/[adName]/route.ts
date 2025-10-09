@@ -1,0 +1,53 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { initializeCurrentClient, getAdIntelligentAnalysis, getAdPerformanceTimeseries } from '@/lib/bigquery';
+
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
+export async function GET(
+  request: NextRequest,
+  { params }: { params: Promise<{ adName: string }> }
+) {
+  try {
+    // CRITICAL: Initialize current client cache before BigQuery operations
+    await initializeCurrentClient();
+
+    const { adName: rawAdName } = await params;
+    const adName = decodeURIComponent(rawAdName);
+    const searchParams = request.nextUrl.searchParams;
+    const adsetName = searchParams.get('adset');
+    const days = parseInt(searchParams.get('days') || '30');
+
+    if (!adsetName) {
+      return NextResponse.json(
+        { error: 'adset parameter is required' },
+        { status: 400 }
+      );
+    }
+
+    console.log(`[AD API] Fetching data for ad: ${adName}, adset: ${adsetName}, days: ${days}`);
+
+    const [analysis, timeseries] = await Promise.all([
+      getAdIntelligentAnalysis(adName, adsetName),
+      getAdPerformanceTimeseries(adName, adsetName, days)
+    ]);
+
+    if (!analysis) {
+      return NextResponse.json(
+        { error: 'Ad not found' },
+        { status: 404 }
+      );
+    }
+
+    return NextResponse.json({
+      analysis,
+      timeseries
+    });
+  } catch (error) {
+    console.error('[AD API] Error:', error);
+    return NextResponse.json(
+      { error: 'Failed to fetch ad performance data' },
+      { status: 500 }
+    );
+  }
+}

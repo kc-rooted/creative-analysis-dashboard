@@ -1,20 +1,34 @@
 import { NextResponse } from 'next/server';
-import { getForecastScenarios, getForecastDaily } from '@/lib/bigquery';
+import { initializeCurrentClient, getForecastScenarios, getForecastDaily, getForecastActuals } from '@/lib/bigquery';
 
 export async function GET() {
   try {
-    const [scenarios, daily] = await Promise.all([
+    // CRITICAL: Initialize current client cache before BigQuery operations
+    await initializeCurrentClient();
+    const [scenarios, daily, actuals] = await Promise.all([
       getForecastScenarios(),
-      getForecastDaily()
+      getForecastDaily(),
+      getForecastActuals()
     ]);
 
     // Find BFCM and Q4 data
     const bfcmScenarios = scenarios.find(s => s.period.includes('BFCM'));
     const q4Scenarios = scenarios.find(s => s.period.includes('Q4'));
 
+    // Create a map of actuals by date string for efficient lookup
+    const actualsMap = new Map(
+      actuals.map(a => [a.date, a.actual])
+    );
+
+    // Merge actuals with daily forecast data
+    const dailyWithActuals = daily.map(day => ({
+      ...day,
+      actual: actualsMap.get(day.date) || null
+    }));
+
     return NextResponse.json({
       scenarios,
-      daily,
+      daily: dailyWithActuals,
       bfcm: bfcmScenarios,
       q4: q4Scenarios
     });

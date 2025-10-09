@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { BigQuery } from '@google-cloud/bigquery';
+import { clearClientCache } from '@/lib/client-config';
+import { clearBigQueryClientCache } from '@/lib/bigquery';
 
 const bigquery = new BigQuery({
   projectId: process.env.GOOGLE_CLOUD_PROJECT_ID,
@@ -70,6 +72,11 @@ export async function POST(request: NextRequest) {
       `,
       params: { client_id: clientId },
     });
+
+    // Clear both caches so next requests pick up new client
+    clearClientCache();
+    clearBigQueryClientCache();
+    console.log(`Switched to client: ${clientId}, all caches cleared`);
 
     return NextResponse.json({ success: true, clientId });
   } catch (error) {

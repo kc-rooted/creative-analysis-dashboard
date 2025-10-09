@@ -1,19 +1,23 @@
 import { NextResponse } from 'next/server';
-import { getCampaignIntelligentAnalysis, getCampaignPerformanceTimeseries, getContextualizedCampaignPerformance } from '@/lib/bigquery';
+import { initializeCurrentClient, getCampaignIntelligentAnalysis, getCampaignPerformanceTimeseries, getContextualizedCampaignPerformance, getAdDistributionForCampaign, getCampaignAdsList } from '@/lib/bigquery';
 
 export async function GET(
   request: Request,
   { params }: { params: { campaignName: string } }
 ) {
   try {
+    // CRITICAL: Initialize current client cache before BigQuery operations
+    await initializeCurrentClient();
     const campaignName = decodeURIComponent(params.campaignName);
     const { searchParams } = new URL(request.url);
     const days = parseInt(searchParams.get('days') || '30');
 
-    const [analysis, timeseries, contextualData] = await Promise.all([
+    const [analysis, timeseries, contextualData, adDistribution, adsList] = await Promise.all([
       getCampaignIntelligentAnalysis(campaignName),
       getCampaignPerformanceTimeseries(campaignName, days),
-      getContextualizedCampaignPerformance(campaignName)
+      getContextualizedCampaignPerformance(campaignName),
+      getAdDistributionForCampaign(campaignName),
+      getCampaignAdsList(campaignName)
     ]);
 
     if (!analysis) {
@@ -26,7 +30,9 @@ export async function GET(
     return NextResponse.json({
       analysis,
       timeseries,
-      contextualData
+      contextualData,
+      adDistribution,
+      adsList
     });
   } catch (error) {
     console.error('Error in Campaign API:', error);
