@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server';
 import {
-  initializeCurrentClient,
   getCustomerCLVData,
   getAudienceOverlapAnalysis,
   getCustomerOverviewKPIs,
@@ -10,8 +9,6 @@ import {
 
 export async function GET(request: Request) {
   try {
-    // CRITICAL: Initialize current client cache before BigQuery operations
-    await initializeCurrentClient();
     const [clvData, audienceOverlap, overviewKPIs, ltvIntelligence, journeyAnalysis] = await Promise.all([
       getCustomerCLVData(),
       getAudienceOverlapAnalysis(),

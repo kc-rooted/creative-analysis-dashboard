@@ -1,11 +1,13 @@
 import { NextResponse } from 'next/server';
-import { getExecutiveSummary, getPaidMediaTrend, getShopifyRevenueYoY, getRevenueForecast7Day, getClientDashboardConfig, getBusinessContextIndex, initializeCurrentClient } from '@/lib/bigquery';
+import { getExecutiveSummary, getPaidMediaTrend, getShopifyRevenueYoY, getRevenueForecast7Day, getClientDashboardConfig, getBusinessContextIndex, initializeCurrentClient, getCurrentClientId } from '@/lib/bigquery';
 
 export async function GET(request: Request) {
   try {
-    // CRITICAL: Initialize current client BEFORE any BigQuery operations
-    // This ensures the cache is populated before sync functions run
+    // Initialize client cache once per function instance
     await initializeCurrentClient();
+
+    // Get current client ID to determine which features to include
+    const currentClientId = await getCurrentClientId();
 
     // Get period from query params (7d, mtd, or 30d)
     const { searchParams } = new URL(request.url);
@@ -59,6 +61,10 @@ export async function GET(request: Request) {
     console.log('[Dashboard API] Using revenue target:', revenueTarget);
     console.log('[Dashboard API] Using ROAS target:', roasTarget);
 
+    // Determine which clients have Klaviyo integration
+    const hasKlaviyo = currentClientId !== 'hb'; // HB doesn't have Klaviyo
+    console.log('[Dashboard API] Client has Klaviyo:', hasKlaviyo, 'for client:', currentClientId);
+
     return NextResponse.json({
       kpis: {
         totalRevenue: {
@@ -106,31 +112,33 @@ export async function GET(request: Request) {
             sevenDay: blended_spend_7d
           }
         },
-        emailPerformance: {
-          current: data.klaviyo_total_revenue_mtd || 0,
-          periodData: {
-            monthToDate: {
-              value: data.klaviyo_total_revenue_mtd || 0,
-              trend: data.klaviyo_total_revenue_mtd_yoy_growth_pct || 0
+        ...(hasKlaviyo ? {
+          emailPerformance: {
+            current: data.klaviyo_total_revenue_mtd || 0,
+            periodData: {
+              monthToDate: {
+                value: data.klaviyo_total_revenue_mtd || 0,
+                trend: data.klaviyo_total_revenue_mtd_yoy_growth_pct || 0
+              },
+              thirtyDay: {
+                value: data.klaviyo_total_revenue_30d || 0,
+                trend: data.klaviyo_total_revenue_30d_yoy_growth_pct || 0
+              },
+              sevenDay: {
+                value: data.klaviyo_total_revenue_7d || 0,
+                trend: data.klaviyo_total_revenue_7d_yoy_growth_pct || 0
+              }
             },
-            thirtyDay: {
-              value: data.klaviyo_total_revenue_30d || 0,
-              trend: data.klaviyo_total_revenue_30d_yoy_growth_pct || 0
-            },
-            sevenDay: {
-              value: data.klaviyo_total_revenue_7d || 0,
-              trend: data.klaviyo_total_revenue_7d_yoy_growth_pct || 0
-            }
-          },
-          revenuePerSend: data.klaviyo_revenue_per_send_mtd || 0,
-          openRate: 0,
-          clickRate: 0,
-          // Calculate email as % of total revenue
-          gaugeValue: ((data.klaviyo_total_revenue_mtd || 0) / revenue_mtd) * 100, // Actual percentage
-          gaugeMin: 25, // Low bound at 25%
-          gaugeMax: 45, // High bound at 45%
-          gaugeTarget: 35 // Target at 35%
-        },
+            revenuePerSend: data.klaviyo_revenue_per_send_mtd || 0,
+            openRate: 0,
+            clickRate: 0,
+            // Calculate email as % of total revenue
+            gaugeValue: ((data.klaviyo_total_revenue_mtd || 0) / revenue_mtd) * 100, // Actual percentage
+            gaugeMin: 25, // Low bound at 25%
+            gaugeMax: 45, // High bound at 45%
+            gaugeTarget: 35 // Target at 35%
+          }
+        } : {}),
         paidMediaSpend: {
           current: blended_spend_mtd,
           periodData: {

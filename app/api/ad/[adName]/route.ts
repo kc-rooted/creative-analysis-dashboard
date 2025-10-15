@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { initializeCurrentClient, getAdIntelligentAnalysis, getAdPerformanceTimeseries } from '@/lib/bigquery';
+import { getAdIntelligentAnalysis, getAdPerformanceTimeseries } from '@/lib/bigquery';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -9,9 +9,6 @@ export async function GET(
   { params }: { params: Promise<{ adName: string }> }
 ) {
   try {
-    // CRITICAL: Initialize current client cache before BigQuery operations
-    await initializeCurrentClient();
-
     const { adName: rawAdName } = await params;
     const adName = decodeURIComponent(rawAdName);
     const searchParams = request.nextUrl.searchParams;

@@ -1,10 +1,8 @@
 import { NextResponse } from 'next/server';
-import { initializeCurrentClient, getEmailDashboardData, getEmailCampaignsTable, getEmailFlowsTable } from '@/lib/bigquery';
+import { getEmailDashboardData, getEmailCampaignsTable, getEmailFlowsTable } from '@/lib/bigquery';
 
 export async function GET(request: Request) {
   try {
-    // CRITICAL: Initialize current client cache before BigQuery operations
-    await initializeCurrentClient();
     // Extract date parameters from URL
     const { searchParams } = new URL(request.url);
     const preset = searchParams.get('preset') || 'mtd';

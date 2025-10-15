@@ -1,10 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { initializeCurrentClient, getCampaignUsage } from '@/lib/bigquery';
+import { getCampaignUsage } from '@/lib/bigquery';
 
 export async function GET(request: NextRequest) {
   try {
-    // CRITICAL: Initialize current client cache before BigQuery operations
-    await initializeCurrentClient();
     const searchParams = request.nextUrl.searchParams;
     const imageUrl = searchParams.get('imageUrl');
 

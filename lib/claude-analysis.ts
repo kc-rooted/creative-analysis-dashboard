@@ -3,6 +3,8 @@ import { getCurrentClientConfigSync, generateClientContext } from './client-conf
 
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY!,
+  maxRetries: 3, // Retry up to 3 times for 529 errors
+  timeout: 60000, // 60 second timeout
 });
 
 export interface ColorDetail {

@@ -326,9 +326,9 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
     fetchFacebookData();
   }, [section, facebookDatePreset, facebookCustomDates, facebookComparisonType, currencyLoaded]);
 
-  // Fetch Meta ROAS Predictions when on facebook section
+  // Fetch Meta ROAS Predictions when on facebook or overview section
   useEffect(() => {
-    if (section !== 'facebook' || !currencyLoaded) return;
+    if ((section !== 'facebook' && section !== 'overview') || !currencyLoaded) return;
 
     const fetchMetaRoasPredictions = async () => {
       try {
@@ -622,31 +622,33 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
             dateRange={dateRange}
           />
 
-          {/* Email Revenue */}
-          <KPICard
-            title="EMAIL REVENUE"
-            currentValue={formatCurrency(getPeriodData(dashboardData.kpis.emailPerformance).value)}
-            previousValue={undefined}
-            trend={getPeriodData(dashboardData.kpis.emailPerformance).trend || 0}
-            subtitle={undefined}
-            periodData={{
-              sevenDay: {
-                value: formatCurrency(dashboardData.kpis.emailPerformance.periodData?.sevenDay?.value || 0),
-                trend: dashboardData.kpis.emailPerformance.periodData?.sevenDay?.trend || 0
-              },
-              thirtyDay: {
-                value: formatCurrency(dashboardData.kpis.emailPerformance.periodData?.thirtyDay?.value || 0),
-                trend: dashboardData.kpis.emailPerformance.periodData?.thirtyDay?.trend || 0
-              }
-            }}
-            gaugeValue={dashboardData.kpis.emailPerformance.gaugeValue}
-            gaugeMin={dashboardData.kpis.emailPerformance.gaugeMin}
-            gaugeMax={dashboardData.kpis.emailPerformance.gaugeMax}
-            gaugeTarget={dashboardData.kpis.emailPerformance.gaugeTarget}
-            gaugeLabel={`${dashboardData.kpis.emailPerformance.gaugeMin}% - ${dashboardData.kpis.emailPerformance.gaugeMax}% of Total Revenue`}
-            status="excellent"
-            dateRange={dateRange}
-          />
+          {/* Email Revenue - Hidden for HB (no Klaviyo) */}
+          {currentClient !== 'hb' && dashboardData.kpis.emailPerformance && (
+            <KPICard
+              title="EMAIL REVENUE"
+              currentValue={formatCurrency(getPeriodData(dashboardData.kpis.emailPerformance).value)}
+              previousValue={undefined}
+              trend={getPeriodData(dashboardData.kpis.emailPerformance).trend || 0}
+              subtitle={undefined}
+              periodData={{
+                sevenDay: {
+                  value: formatCurrency(dashboardData.kpis.emailPerformance.periodData?.sevenDay?.value || 0),
+                  trend: dashboardData.kpis.emailPerformance.periodData?.sevenDay?.trend || 0
+                },
+                thirtyDay: {
+                  value: formatCurrency(dashboardData.kpis.emailPerformance.periodData?.thirtyDay?.value || 0),
+                  trend: dashboardData.kpis.emailPerformance.periodData?.thirtyDay?.trend || 0
+                }
+              }}
+              gaugeValue={dashboardData.kpis.emailPerformance.gaugeValue}
+              gaugeMin={dashboardData.kpis.emailPerformance.gaugeMin}
+              gaugeMax={dashboardData.kpis.emailPerformance.gaugeMax}
+              gaugeTarget={dashboardData.kpis.emailPerformance.gaugeTarget}
+              gaugeLabel={`${dashboardData.kpis.emailPerformance.gaugeMin}% - ${dashboardData.kpis.emailPerformance.gaugeMax}% of Total Revenue`}
+              status="excellent"
+              dateRange={dateRange}
+            />
+          )}
 
           {/* 7-Day Revenue Forecast */}
           <div className="card p-6">
@@ -706,6 +708,68 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
               </div>
             </div>
           </div>
+
+          {/* Meta ROAS Prediction */}
+          {metaRoasPredictions && !metaRoasLoading && (
+            <div className="card p-6">
+              <div className="space-y-6">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-sm font-medium" style={{color: 'var(--text-muted)'}}>
+                    META ROAS PREDICTION
+                  </h3>
+                  <span className="text-xs px-2 py-1 rounded" style={{
+                    background: 'var(--bg-elevated)',
+                    color: 'var(--text-secondary)'
+                  }}>
+                    {metaRoasPredictions.predictionMethod}
+                  </span>
+                </div>
+
+                {/* Main Prediction Value */}
+                <div className="space-y-3">
+                  <div className="text-4xl font-bold" style={{color: 'var(--text-primary)'}}>
+                    {metaRoasPredictions.predictedMetaRoas.toFixed(2)}x
+                  </div>
+
+                  {/* Range */}
+                  <div className="text-sm" style={{color: 'var(--text-secondary)'}}>
+                    Range: {metaRoasPredictions.lowerBound.toFixed(2)}x - {metaRoasPredictions.upperBound.toFixed(2)}x
+                  </div>
+                </div>
+
+                {/* Visual Bar for Range */}
+                <div className="space-y-2">
+                  <div className="relative h-3 rounded-full" style={{background: 'var(--border-muted)'}}>
+                    {/* Lower to Upper Range */}
+                    <div
+                      className="absolute h-3 rounded-full"
+                      style={{
+                        left: `${(metaRoasPredictions.lowerBound / metaRoasPredictions.upperBound) * 100}%`,
+                        right: '0%',
+                        background: 'linear-gradient(90deg, var(--accent-secondary) 0%, var(--accent-primary) 100%)',
+                        opacity: 0.3
+                      }}
+                    />
+                    {/* Predicted Point */}
+                    <div
+                      className="absolute h-3 w-1 rounded-full"
+                      style={{
+                        left: `${(metaRoasPredictions.predictedMetaRoas / metaRoasPredictions.upperBound) * 100}%`,
+                        background: 'var(--accent-primary)',
+                        transform: 'translateX(-50%)'
+                      }}
+                    />
+                  </div>
+
+                  {/* Labels */}
+                  <div className="flex justify-between text-xs" style={{color: 'var(--text-muted)'}}>
+                    <span>{metaRoasPredictions.lowerBound.toFixed(2)}x</span>
+                    <span>{metaRoasPredictions.upperBound.toFixed(2)}x</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Key Charts */}
@@ -885,7 +949,8 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
           <div>
             <h2 className="text-xl font-bold mb-4" style={{color: 'var(--text-primary)'}}>Business Health & Performance</h2>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-6">
-              {/* Business Health Index */}
+              {/* Business Health Index - Hidden for HB */}
+              {currentClient !== 'hb' && (
               <div className="card p-6">
                 <div className="space-y-4">
                   <h3 className="text-sm font-medium" style={{color: 'var(--text-muted)'}}>
@@ -937,9 +1002,10 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
                   </div>
                 </div>
               </div>
+              )}
 
-              {/* Search Demand */}
-              {dashboardData.kpis.searchDemand && (
+              {/* Search Demand - Hidden for HB */}
+              {currentClient !== 'hb' && dashboardData.kpis.searchDemand && (
                 <div className="card p-6">
                   <div className="space-y-4">
                     <h3 className="text-sm font-medium" style={{color: 'var(--text-muted)'}}>
@@ -973,8 +1039,8 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
                 </div>
               )}
 
-              {/* Brand Awareness */}
-              {dashboardData.kpis.brandAwareness && (
+              {/* Brand Awareness - Hidden for HB */}
+              {currentClient !== 'hb' && dashboardData.kpis.brandAwareness && (
                 <div className="card p-6">
                   <div className="space-y-4">
                     <h3 className="text-sm font-medium" style={{color: 'var(--text-muted)'}}>
@@ -2477,7 +2543,7 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
         </div>
 
         {/* Grip Customer Behavior Analysis - 2/3 and 1/3 split (JumboMax only) */}
-        {currentClient !== 'puttout' && <div className="grid grid-cols-3 gap-6">
+        {currentClient !== 'puttout' && currentClient !== 'hb' && <div className="grid grid-cols-3 gap-6">
           {/* Grip Switching Patterns - 2/3 width */}
           <div className="col-span-2 card p-6">
             <h3 className="text-lg font-semibold mb-8" style={{color: 'var(--text-primary)'}}>Grip Switching & Loyalty Patterns</h3>
@@ -2546,7 +2612,7 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
         </div>}
 
         {/* Putter Grip Switching & Loyalty Patterns (JumboMax only) */}
-        {currentClient !== 'puttout' && <div className="card p-6">
+        {currentClient !== 'puttout' && currentClient !== 'hb' && <div className="card p-6">
           <h3 className="text-lg font-semibold mb-8" style={{color: 'var(--text-primary)'}}>Putter Grip Switching & Loyalty Patterns</h3>
           <PutterGripSwitchingSankey data={productData.putterGripSwitching || []} />
         </div>}

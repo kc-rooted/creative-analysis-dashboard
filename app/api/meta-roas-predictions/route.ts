@@ -1,14 +1,11 @@
 import { NextResponse } from 'next/server';
-import { getMetaRoasPredictions, initializeCurrentClient } from '@/lib/bigquery';
+import { getMetaRoasPredictions } from '@/lib/bigquery';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
 export async function GET() {
   try {
-    // CRITICAL: Initialize current client cache before BigQuery operations
-    await initializeCurrentClient();
-
     const predictions = await getMetaRoasPredictions();
     return NextResponse.json(predictions);
   } catch (error) {

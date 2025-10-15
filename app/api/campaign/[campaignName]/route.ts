@@ -1,14 +1,13 @@
 import { NextResponse } from 'next/server';
-import { initializeCurrentClient, getCampaignIntelligentAnalysis, getCampaignPerformanceTimeseries, getContextualizedCampaignPerformance, getAdDistributionForCampaign, getCampaignAdsList } from '@/lib/bigquery';
+import { getCampaignIntelligentAnalysis, getCampaignPerformanceTimeseries, getContextualizedCampaignPerformance, getAdDistributionForCampaign, getCampaignAdsList } from '@/lib/bigquery';
 
 export async function GET(
   request: Request,
-  { params }: { params: { campaignName: string } }
+  { params }: { params: Promise<{ campaignName: string }> }
 ) {
   try {
-    // CRITICAL: Initialize current client cache before BigQuery operations
-    await initializeCurrentClient();
-    const campaignName = decodeURIComponent(params.campaignName);
+    const { campaignName: rawCampaignName } = await params;
+    const campaignName = decodeURIComponent(rawCampaignName);
     const { searchParams } = new URL(request.url);
     const days = parseInt(searchParams.get('days') || '30');
 

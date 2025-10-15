@@ -7,8 +7,10 @@ import { FilterBar } from '@/components/FilterBar';
 import { Loader2, Settings, Search, Filter, SortAsc, TrendingUp, ChevronDown, ChevronUp, Play, Activity, CheckCircle } from 'lucide-react';
 import { formatNumber } from '@/lib/utils';
 import type { Creative, AnalysisStats } from '@/lib/bigquery';
+import { useClient } from '@/components/client-provider';
 
 export default function Dashboard() {
+  const { currentClient } = useClient();
   const [creatives, setCreatives] = useState<Creative[]>([]);
   const [stats, setStats] = useState<AnalysisStats[]>([]);
   const [loading, setLoading] = useState(true);
@@ -80,7 +82,7 @@ export default function Dashboard() {
       setLoading(false);
     };
     loadData();
-  }, [statusFilter, platformFilter, sortBy, page]);
+  }, [statusFilter, platformFilter, sortBy, page, currentClient]);
 
   const handleAnalyze = async (contentId: string) => {
     try {

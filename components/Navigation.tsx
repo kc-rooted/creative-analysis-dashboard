@@ -72,23 +72,26 @@ export function Navigation() {
               <LayoutGrid className="w-4 h-4" />
               CREATIVE
             </button>
-            
-            <button
-              onClick={() => router.push('/influencer')}
-              className={`px-4 py-2 rounded-lg font-medium transition-all duration-200 flex items-center gap-2 ${
-                isInfluencer ? 'btn-primary' : ''
-              }`}
-              style={!isInfluencer ? {
-                background: 'var(--bg-elevated)',
-                border: '1px solid var(--border-muted)',
-                color: 'var(--text-secondary)'
-              } : {}}
-              onMouseEnter={(e) => !isInfluencer && (e.currentTarget.style.background = 'var(--bg-card)')}
-              onMouseLeave={(e) => !isInfluencer && (e.currentTarget.style.background = 'var(--bg-elevated)')}
-            >
-              <Users className="w-4 h-4" />
-              INFLUENCERS
-            </button>
+
+            {/* Hidden but not removed - Influencers section */}
+            {false && (
+              <button
+                onClick={() => router.push('/influencer')}
+                className={`px-4 py-2 rounded-lg font-medium transition-all duration-200 flex items-center gap-2 ${
+                  isInfluencer ? 'btn-primary' : ''
+                }`}
+                style={!isInfluencer ? {
+                  background: 'var(--bg-elevated)',
+                  border: '1px solid var(--border-muted)',
+                  color: 'var(--text-secondary)'
+                } : {}}
+                onMouseEnter={(e) => !isInfluencer && (e.currentTarget.style.background = 'var(--bg-card)')}
+                onMouseLeave={(e) => !isInfluencer && (e.currentTarget.style.background = 'var(--bg-elevated)')}
+              >
+                <Users className="w-4 h-4" />
+                INFLUENCERS
+              </button>
+            )}
 
             <button
               onClick={() => router.push('/dashboards')}

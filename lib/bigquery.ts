@@ -16,15 +16,40 @@ function getCurrentDataset() {
   return bigquery.dataset(clientConfig.bigquery.dataset);
 }
 
+// Track if we've initialized at least once in this function instance
+let hasInitialized = false;
+
 // Helper to get current dataset name safely
-function getCurrentDatasetName(): string {
+async function getCurrentDatasetNameAsync(): Promise<string> {
+  // If we haven't initialized yet in this function instance, do it once
+  if (!hasInitialized) {
+    await getCurrentClientId();
+    hasInitialized = true;
+  }
+
+  const clientId = cachedCurrentClientIdForBQ || process.env.CURRENT_CLIENT_ID || 'jumbomax';
+
+  const { getClientConfig } = require('./client-config');
   try {
-    const clientConfig = getCurrentClientConfigSync();
+    const clientConfig = getClientConfig(clientId);
     return clientConfig.bigquery.dataset;
   } catch (error) {
-    console.error('Error getting client config, falling back to environment variable:', error);
-    // Fallback to hardcoded dataset if client config fails
-    return process.env.BIGQUERY_DATASET || 'jumbomax_analytics';
+    console.error('[getCurrentDatasetName] Error getting client config for', clientId, error);
+    return 'jumbomax_analytics'; // Safe fallback
+  }
+}
+
+// Synchronous version for backwards compatibility - uses cached value only
+function getCurrentDatasetName(): string {
+  const clientId = cachedCurrentClientIdForBQ || process.env.CURRENT_CLIENT_ID || 'jumbomax';
+
+  const { getClientConfig } = require('./client-config');
+  try {
+    const clientConfig = getClientConfig(clientId);
+    return clientConfig.bigquery.dataset;
+  } catch (error) {
+    console.error('[getCurrentDatasetName] Error getting client config for', clientId, error);
+    return 'jumbomax_analytics'; // Safe fallback
   }
 }
 
@@ -3261,7 +3286,7 @@ export async function getShopifyRevenueYoY(days: number = 30): Promise<any[]> {
 let cachedCurrentClientIdForBQ: string | null = null;
 
 // Server-side helper to get current client ID from BigQuery
-async function getCurrentClientIdFromDB(): Promise<string> {
+export async function getCurrentClientId(): Promise<string> {
   // Check cache first
   if (cachedCurrentClientIdForBQ) {
     console.log('[BigQuery] Using cached client ID:', cachedCurrentClientIdForBQ);
@@ -3303,20 +3328,31 @@ async function getCurrentClientIdFromDB(): Promise<string> {
 }
 
 // Export function to initialize current client (must be called before any BigQuery operations)
+// This only runs ONCE per function instance, not on every request
 export async function initializeCurrentClient(): Promise<void> {
-  await getCurrentClientIdFromDB();
-  console.log('[BigQuery] Client initialized for this request');
+  if (!hasInitialized) {
+    await getCurrentClientId();
+    hasInitialized = true;
+    console.log('[BigQuery] Client initialized for this function instance');
+  }
 }
 
 // Export function to clear BQ cache (called when client switches)
 export function clearBigQueryClientCache() {
   cachedCurrentClientIdForBQ = null;
+  hasInitialized = false; // Reset so next request re-initializes
   console.log('[BigQuery] Cache cleared');
+}
+
+// Export function to directly set BQ cache (bypasses DB read to avoid race conditions)
+export function setBigQueryClientCache(clientId: string) {
+  cachedCurrentClientIdForBQ = clientId;
+  console.log('[BigQuery] Cache set directly to:', clientId);
 }
 
 // Get client dashboard configuration
 export async function getClientDashboardConfig(): Promise<any> {
-  const clientId = await getCurrentClientIdFromDB();
+  const clientId = await getCurrentClientId();
   console.log('[BigQuery] Fetching dashboard config for client:', clientId);
 
   const query = `
@@ -3347,6 +3383,31 @@ export async function getClientDashboardConfig(): Promise<any> {
 
 // Get executive summary data for dashboard
 export async function getExecutiveSummary(): Promise<ExecutiveSummary | null> {
+  // Determine which clients have Klaviyo
+  const currentClientId = cachedCurrentClientIdForBQ || process.env.CURRENT_CLIENT_ID || 'jumbomax';
+  const hasKlaviyo = currentClientId !== 'hb';
+
+  // Build Klaviyo fields conditionally
+  const klaviyoFields = hasKlaviyo ? `
+      klaviyo_total_revenue_mtd,
+      klaviyo_total_revenue_7d,
+      klaviyo_total_revenue_30d,
+      klaviyo_total_revenue_mtd_yoy_growth_pct,
+      klaviyo_total_revenue_7d_yoy_growth_pct,
+      klaviyo_total_revenue_30d_yoy_growth_pct,
+      klaviyo_revenue_per_send_mtd,
+      klaviyo_revenue_per_send_7d,
+      klaviyo_revenue_per_send_30d,` : `
+      0 as klaviyo_total_revenue_mtd,
+      0 as klaviyo_total_revenue_7d,
+      0 as klaviyo_total_revenue_30d,
+      0 as klaviyo_total_revenue_mtd_yoy_growth_pct,
+      0 as klaviyo_total_revenue_7d_yoy_growth_pct,
+      0 as klaviyo_total_revenue_30d_yoy_growth_pct,
+      0 as klaviyo_revenue_per_send_mtd,
+      0 as klaviyo_revenue_per_send_7d,
+      0 as klaviyo_revenue_per_send_30d,`;
+
   const query = `
     SELECT
       revenue_mtd,
@@ -3370,15 +3431,7 @@ export async function getExecutiveSummary(): Promise<ExecutiveSummary | null> {
       SAFE_DIVIDE((blended_spend_mtd - blended_spend_mtd_yoy), blended_spend_mtd_yoy) * 100 as blended_spend_mtd_yoy_growth_pct,
       SAFE_DIVIDE((blended_spend_7d - blended_spend_7d_yoy), blended_spend_7d_yoy) * 100 as blended_spend_7d_yoy_growth_pct,
       SAFE_DIVIDE((blended_spend_30d - blended_spend_30d_yoy), blended_spend_30d_yoy) * 100 as blended_spend_30d_yoy_growth_pct,
-      klaviyo_total_revenue_mtd,
-      klaviyo_total_revenue_7d,
-      klaviyo_total_revenue_30d,
-      klaviyo_total_revenue_mtd_yoy_growth_pct,
-      klaviyo_total_revenue_7d_yoy_growth_pct,
-      klaviyo_total_revenue_30d_yoy_growth_pct,
-      klaviyo_revenue_per_send_mtd,
-      klaviyo_revenue_per_send_7d,
-      klaviyo_revenue_per_send_30d,
+      ${klaviyoFields}
       google_spend_mtd,
       google_spend_7d,
       google_spend_30d,
@@ -3420,15 +3473,20 @@ export async function getExecutiveSummary(): Promise<ExecutiveSummary | null> {
     LIMIT 1
   `;
 
+  const datasetName = getCurrentDatasetName();
+  console.log('[getExecutiveSummary] Querying dataset:', datasetName);
+  console.log('[getExecutiveSummary] Full table reference:', `${process.env.GOOGLE_CLOUD_PROJECT_ID}.${datasetName}.ai_executive_summary`);
+
   try {
     const [rows] = await bigquery.query({
       query,
       timeoutMs: 30000,
     });
 
+    console.log('[getExecutiveSummary] Query succeeded, rows:', rows.length);
     return rows.length > 0 ? (rows[0] as ExecutiveSummary) : null;
   } catch (error) {
-    console.error('Error fetching executive summary:', error);
+    console.error('[getExecutiveSummary] Error querying dataset:', datasetName, error);
     throw error;
   }
 }

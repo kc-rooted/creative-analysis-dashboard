@@ -73,10 +73,20 @@ export async function POST(request: NextRequest) {
       params: { client_id: clientId },
     });
 
-    // Clear both caches so next requests pick up new client
+    // CRITICAL: Clear caches first, then set new client
+    const { clearClientCache } = await import('@/lib/client-config');
+    const { clearBigQueryClientCache } = await import('@/lib/bigquery');
     clearClientCache();
     clearBigQueryClientCache();
-    console.log(`Switched to client: ${clientId}, all caches cleared`);
+
+    // Set environment variable so sync functions use correct client immediately
+    process.env.CURRENT_CLIENT_ID = clientId;
+
+    // Set BigQuery cache directly (will be used by getCurrentDatasetName)
+    const { setBigQueryClientCache } = await import('@/lib/bigquery');
+    setBigQueryClientCache(clientId);
+
+    console.log(`Switched to client: ${clientId}, caches cleared and BigQuery cache set`);
 
     return NextResponse.json({ success: true, clientId });
   } catch (error) {

@@ -186,6 +186,80 @@ export const CLIENT_CONFIGS: Record<string, ClientConfig> = {
       currency: 'GBP',
       currencySymbol: '£'
     }
+  },
+
+  hb: {
+    id: "hb",
+    name: "Holderness & Bourne",
+
+    bigquery: {
+      dataset: "hb_analytics",
+    },
+
+    brand: {
+      colors: [
+        {
+          name: "Navy Blue",
+          hex: "#1B3A5F",
+          description: "Primary brand navy - classic and sophisticated",
+          usage: "primary_brand"
+        },
+        {
+          name: "Forest Green",
+          hex: "#2D5016",
+          description: "Secondary accent color - golf heritage and tradition",
+          usage: "accent"
+        },
+        {
+          name: "White",
+          hex: "#FFFFFF",
+          description: "Clean background and text contrast",
+          usage: "background"
+        },
+        {
+          name: "Dark Gray",
+          hex: "#2C3E50",
+          description: "Primary text and strong contrast",
+          usage: "text"
+        },
+        {
+          name: "Light Gray",
+          hex: "#95A5A6",
+          description: "Secondary text and subtle elements",
+          usage: "secondary_text"
+        }
+      ],
+      industry: "golf_apparel_accessories",
+      targetAudience: ["golf_enthusiasts", "fashion_conscious_golfers", "traditional_golf_club_members"],
+      productCategories: ["golf_apparel", "golf_accessories", "lifestyle_products"],
+      brandPersonality: "classic_sophisticated_traditional_premium",
+      competitiveContext: "premium_golf_lifestyle_brand_competing_with_traditional_golf_apparel_companies"
+    },
+
+    analysis: {
+      focusAreas: ["performance", "brand_compliance", "golf_appeal", "lifestyle_alignment"],
+      customPromptAdditions: "Focus on golf lifestyle and heritage appeal. Emphasize how the creative resonates with golfers seeking classic, sophisticated golf apparel and accessories."
+    },
+
+    dashboard: {
+      monthlyRevenueTargets: [
+        400000, // January
+        400000, // February
+        400000, // March
+        400000, // April
+        400000, // May
+        400000, // June
+        400000, // July
+        400000, // August
+        400000, // September
+        400000, // October
+        400000, // November
+        400000  // December
+      ],
+      monthlyRoasTarget: 5.5,
+      currency: 'USD',
+      currencySymbol: '$'
+    }
   }
 };
 
@@ -280,6 +354,15 @@ export function getCurrentClientConfigSync(): ClientConfig {
 // Helper to set cached client ID (used by BigQuery module)
 export function setCachedClientId(clientId: string) {
   cachedCurrentClientId = clientId;
+}
+
+// Helper to set cached client ID AND config (for client switching)
+export function setCachedClientConfig(clientId: string) {
+  cachedCurrentClientId = clientId;
+  // Force load the config for this client into cache
+  const config = getClientConfig(clientId);
+  cachedClientConfigs = { [clientId]: config };
+  console.log(`[client-config] Set cached config for ${clientId}, dataset:`, config.bigquery.dataset);
 }
 
 // Clear cache when client changes

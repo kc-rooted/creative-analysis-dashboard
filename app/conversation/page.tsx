@@ -7,14 +7,7 @@ import { ArrowUpFromDot, ArrowUpDown, Cog, CheckCircle, Loader2, AlertTriangle, 
 import { Switch } from "@/components/conversation/switch"
 import { MemoizedMarkdown } from '@/components/conversation/memoized-markdown';
 import { ReportRenderer } from '@/components/conversation/report-renderer';
-
-import {  
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/conversation/select"
+import { useClient } from '@/components/client-provider';
 
 import React, { useState } from 'react';
 import { promptTemplates, type PromptTemplate } from '@/lib/conversation/prompt-templates';
@@ -65,15 +58,17 @@ const conversationStyles = `
 `;
 
 export default function ConversationPage() {
+  // Get current client from context
+  const { currentClient } = useClient();
+
   // State needs to be defined first
   const [input, setInput] = useState<string>('');
-  const [selectedClient, setSelectedClient] = useState<string>("jumbomax");
   const [selectedPrompt, setSelectedPrompt] = useState<PromptTemplate | null>(null);
   const [fullReportMode, setFullReportMode] = useState<boolean>(false);
-  
-  // Updated useChat API for AI SDK 5.0 / @ai-sdk/react 2.0.10  
+
+  // Updated useChat API for AI SDK 5.0 / @ai-sdk/react 2.0.10
   const { messages, sendMessage, status, error, setMessages } = useChat({
-    id: selectedClient, // This will create a new chat instance per client
+    id: currentClient, // This will create a new chat instance per client
     onError: (error) => {
       console.error('Chat error:', error);
     },
@@ -84,9 +79,9 @@ export default function ConversationPage() {
   
   // Reset messages when client changes
   React.useEffect(() => {
-    console.log('Client changed to:', selectedClient);
+    console.log('Client changed to:', currentClient);
     setMessages([]); // Clear messages when switching clients
-  }, [selectedClient, setMessages]);
+  }, [currentClient, setMessages]);
   const [isOpen, setIsOpen] = useState<boolean>(false);
   const [overloadError, setOverloadError] = useState<string | null>(null);
 
@@ -99,7 +94,7 @@ export default function ConversationPage() {
       <div className="w-full" style={{ maxWidth: '73rem' }}>
         <div className="center">
           <h1 className="text-4xl font-extrabold text-center" style={{color: 'var(--text-primary)'}}>
-            What do you want to learn today about {selectedClient === 'jumbomax' ? 'JumboMax' : selectedClient === 'hb' ? 'Holderness & Bourne' : selectedClient === 'lab' ? 'L.A.B. Golf' : selectedClient}?
+            What do you want to learn today about {currentClient === 'jumbomax' ? 'JumboMax' : currentClient === 'puttout' ? 'PuttOut' : currentClient === 'hb' ? 'Holderness & Bourne' : currentClient === 'lab' ? 'L.A.B. Golf' : currentClient}?
           </h1>
         </div>
         
@@ -287,10 +282,10 @@ export default function ConversationPage() {
           <form onSubmit={(e) => {
             e.preventDefault();
             if (input.trim() && status === 'ready') {
-              console.log('Sending message with selectedClient:', selectedClient); // Debug log
+              console.log('Sending message with currentClient:', currentClient); // Debug log
               setOverloadError(null); // Clear any previous overload errors
               const messageOptions: any = {
-                body: { selectedClient }
+                body: { selectedClient: currentClient }
               };
 
               // Add custom system context if a prompt template is selected
@@ -363,20 +358,6 @@ export default function ConversationPage() {
 
             <div className="flex justify-between items-start">
               <div className="flex">
-                <Select defaultValue="jumbomax" onValueChange={(value) => {
-                  console.log('Client changed to:', value);
-                  setSelectedClient(value);
-                }}>
-                  <SelectTrigger className="rounded-full w-[200px] border-none" style={{background: 'var(--bg-elevated)', color: 'var(--text-secondary)'}}>
-                    <SelectValue placeholder="Client" />
-                  </SelectTrigger>
-                  <SelectContent className="border" style={{background: 'var(--bg-card)', borderColor: 'var(--border-muted)'}}>
-                    <SelectItem value="jumbomax">JumboMax</SelectItem>
-                    <SelectItem value="hb">Holderness & Bourne</SelectItem>
-                    <SelectItem value="lab">L.A.B. Golf</SelectItem>
-                  </SelectContent>
-                </Select>
-
                 <Collapsible open={isOpen} onOpenChange={setIsOpen} className="space-y-2">
                   <div className="flex items-center justify-between space-x-4 px-4">
                     <CollapsibleTrigger asChild>

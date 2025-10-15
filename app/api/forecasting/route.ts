@@ -1,10 +1,8 @@
 import { NextResponse } from 'next/server';
-import { initializeCurrentClient, getForecastScenarios, getForecastDaily, getForecastActuals } from '@/lib/bigquery';
+import { getForecastScenarios, getForecastDaily, getForecastActuals } from '@/lib/bigquery';
 
 export async function GET() {
   try {
-    // CRITICAL: Initialize current client cache before BigQuery operations
-    await initializeCurrentClient();
     const [scenarios, daily, actuals] = await Promise.all([
       getForecastScenarios(),
       getForecastDaily(),

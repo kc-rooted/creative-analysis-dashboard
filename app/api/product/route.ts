@@ -1,10 +1,8 @@
 import { NextResponse } from 'next/server';
-import { initializeCurrentClient, getProductIntelligence, getGripRepeatPurchaseAnalysis, getGeographicProductPerformance, getProductAffinity, getProductRankings, getGripSwitchingPatterns, getPutterGripSwitchingPatterns } from '@/lib/bigquery';
+import { getProductIntelligence, getGripRepeatPurchaseAnalysis, getGeographicProductPerformance, getProductAffinity, getProductRankings, getGripSwitchingPatterns, getPutterGripSwitchingPatterns } from '@/lib/bigquery';
 
 export async function GET(request: Request) {
   try {
-    // CRITICAL: Initialize current client cache before BigQuery operations
-    await initializeCurrentClient();
     const { searchParams } = new URL(request.url);
     const period = searchParams.get('period') || '30d';
 

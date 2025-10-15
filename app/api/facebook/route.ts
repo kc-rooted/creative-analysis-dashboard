@@ -1,10 +1,8 @@
 import { NextResponse } from 'next/server';
-import { initializeCurrentClient, getFacebookPerformanceData, getFacebookPerformanceByCountry } from '@/lib/bigquery';
+import { getFacebookPerformanceData, getFacebookPerformanceByCountry } from '@/lib/bigquery';
 
 export async function GET(request: Request) {
   try {
-    // CRITICAL: Initialize current client cache before BigQuery operations
-    await initializeCurrentClient();
     const { searchParams } = new URL(request.url);
     const preset = searchParams.get('preset') || 'mtd';
     const startDate = searchParams.get('startDate') || undefined;
