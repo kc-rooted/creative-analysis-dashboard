@@ -363,7 +363,7 @@ export default function CreativeDetailsPage() {
                         key={platform}
                         className="tag tag-accent"
                       >
-                        {platform === 'facebook' ? 'Facebook' : 'Google Ads'}
+                        {platform === 'facebook' ? 'Meta' : 'Google Ads'}
                       </span>
                     ))}
                   </div>

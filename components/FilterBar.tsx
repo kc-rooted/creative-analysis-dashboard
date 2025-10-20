@@ -83,7 +83,7 @@ export function FilterBar({
               }}
             >
               <option value="">All Platforms</option>
-              <option value="facebook">Facebook</option>
+              <option value="facebook">Meta</option>
               <option value="google_ads">Google Ads</option>
               <option value="both">Both Platforms</option>
             </select>

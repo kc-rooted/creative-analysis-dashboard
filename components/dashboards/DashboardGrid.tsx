@@ -298,7 +298,7 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
     fetchCustomerData();
   }, [section, currencyLoaded, isClientLoading, currentClient, fetchWithClient]);
 
-  // Fetch Facebook data when on facebook section or when date filter changes
+  // Fetch Meta data when on facebook section or when date filter changes
   useEffect(() => {
     if (section !== 'facebook' || !currencyLoaded || isClientLoading) return;
 
@@ -319,7 +319,7 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
 
         const response = await fetchWithClient(`/api/facebook?${params.toString()}`);
         if (!response.ok) {
-          throw new Error('Failed to fetch Facebook data');
+          throw new Error('Failed to fetch Meta data');
         }
         const data = await response.json();
         console.log('Facebook API Response:', data);
@@ -1747,7 +1747,7 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
                         <div className="text-sm mb-2" style={{color: 'var(--text-muted)'}}>PLATFORM PERFORMANCE</div>
                         <div className="grid grid-cols-2 gap-4">
                           <div>
-                            <div className="text-xs mb-1" style={{color: 'var(--text-muted)'}}>Facebook ROAS</div>
+                            <div className="text-xs mb-1" style={{color: 'var(--text-muted)'}}>Meta ROAS</div>
                             <div className="text-2xl font-bold" style={{color: '#1877F2'}}>{behavioralSegments[0]?.facebookRoas.toFixed(2)}x</div>
                           </div>
                           <div>
@@ -1882,7 +1882,7 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
         <div className="flex justify-center items-center py-12">
           <div className="flex items-center gap-3">
             <Loader2 className="h-8 w-8 animate-spin" style={{color: 'var(--accent-primary)'}} />
-            <span className="text-lg" style={{color: 'var(--text-secondary)'}}>Loading Facebook data...</span>
+            <span className="text-lg" style={{color: 'var(--text-secondary)'}}>Loading Meta data...</span>
           </div>
         </div>
       );
@@ -1929,7 +1929,7 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
         <div className="grid grid-cols-5 gap-4">
           {/* Facebook Spend */}
           <KPICard
-            title="Facebook Spend"
+            title="Meta Spend"
             currentValue={formatCurrency(facebookData.spend.current)}
             previousValue={formatCurrency(facebookData.spend.previous)}
             trend={facebookData.spend.change}
@@ -1952,7 +1952,7 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
 
           {/* Facebook Revenue */}
           <KPICard
-            title="Facebook Revenue"
+            title="Meta Revenue"
             currentValue={formatCurrency(facebookData.revenue.current)}
             previousValue={formatCurrency(facebookData.revenue.previous)}
             trend={facebookData.revenue.change}
@@ -1973,9 +1973,9 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
             dateRange={dateRange}
           />
 
-          {/* Facebook ROAS */}
+          {/* Meta ROAS */}
           <KPICard
-            title="Facebook ROAS"
+            title="Meta ROAS"
             currentValue={`${facebookData.roas.current.toFixed(2)}x`}
             previousValue={`${facebookData.roas.previous.toFixed(2)}x`}
             trend={facebookData.roas.change}
@@ -1999,7 +1999,7 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
 
           {/* Facebook Impressions */}
           <KPICard
-            title="Facebook Impressions"
+            title="Meta Impressions"
             currentValue={formatNumber(facebookData.impressions.current, 0)}
             previousValue={formatNumber(facebookData.impressions.previous, 0)}
             trend={facebookData.impressions.change}
@@ -2022,7 +2022,7 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
 
           {/* Facebook Clicks */}
           <KPICard
-            title="Facebook Clicks"
+            title="Meta Clicks"
             currentValue={formatNumber(facebookData.clicks.current, 0)}
             previousValue={formatNumber(facebookData.clicks.previous, 0)}
             trend={facebookData.clicks.change}
@@ -2185,7 +2185,7 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
 
         {/* Performance Chart - Full Width */}
         <ChartCard
-          title="Facebook Performance"
+          title="Meta Performance"
           type="line"
           dateRange={dateRange}
           data={facebookData.dailyMetrics}

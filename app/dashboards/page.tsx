@@ -12,7 +12,7 @@ import { useClient } from '@/components/client-provider';
 // All available dashboard sections
 const ALL_DASHBOARD_SECTIONS = [
   { id: 'overview', label: 'Business Overview', clients: ['jumbomax', 'puttout', 'hb'] },
-  { id: 'facebook', label: 'Facebook Ads', clients: ['jumbomax', 'puttout', 'hb'] },
+  { id: 'facebook', label: 'Meta Ads', clients: ['jumbomax', 'puttout', 'hb'] },
   { id: 'google', label: 'Google Ads', clients: ['jumbomax', 'hb'] },
   { id: 'funnel', label: 'Funnel Optimization', clients: ['puttout'] },
   { id: 'email', label: 'Email & Retention', clients: ['jumbomax', 'puttout'] },
