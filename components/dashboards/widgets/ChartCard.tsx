@@ -241,6 +241,9 @@ export default function ChartCard({ title, type, dateRange, data, className = ''
         );
 
       default:
+        // Check if we have ROAS data - if so, use dual Y-axes
+        const hasRoas = data[0]?.roas !== undefined;
+
         return (
           <ResponsiveContainer width="100%" height={300}>
             <LineChart data={data}>
@@ -256,11 +259,25 @@ export default function ChartCard({ title, type, dateRange, data, className = ''
                 axisLine={{ stroke: CHART_THEME.gridColor }}
                 tickLine={{ stroke: CHART_THEME.gridColor }}
               />
+              {/* Left Y-Axis for dollars (revenue, spend) */}
               <YAxis
+                yAxisId="left"
                 tick={{ fontSize: 12, fill: CHART_THEME.textColor }}
                 axisLine={{ stroke: CHART_THEME.gridColor }}
                 tickLine={{ stroke: CHART_THEME.gridColor }}
+                tickFormatter={(value) => `$${(value / 1000).toFixed(0)}K`}
               />
+              {/* Right Y-Axis for ROAS (only if we have ROAS data) */}
+              {hasRoas && (
+                <YAxis
+                  yAxisId="right"
+                  orientation="right"
+                  tick={{ fontSize: 12, fill: CHART_THEME.textColor }}
+                  axisLine={{ stroke: CHART_THEME.gridColor }}
+                  tickLine={{ stroke: CHART_THEME.gridColor }}
+                  tickFormatter={(value) => `${value.toFixed(1)}x`}
+                />
+              )}
               <Tooltip
                 contentStyle={{
                   backgroundColor: CHART_THEME.tooltipBg,
@@ -285,6 +302,7 @@ export default function ChartCard({ title, type, dateRange, data, className = ''
               />
               {data[0]?.revenue !== undefined && (
                 <Line
+                  yAxisId="left"
                   type="monotone"
                   dataKey="revenue"
                   name="Revenue"
@@ -296,6 +314,7 @@ export default function ChartCard({ title, type, dateRange, data, className = ''
               )}
               {data[0]?.revenue_cy !== undefined && (
                 <Line
+                  yAxisId="left"
                   type="monotone"
                   dataKey="revenue_cy"
                   name="Current Year"
@@ -307,6 +326,7 @@ export default function ChartCard({ title, type, dateRange, data, className = ''
               )}
               {data[0]?.revenue_ly !== undefined && (
                 <Line
+                  yAxisId="left"
                   type="monotone"
                   dataKey="revenue_ly"
                   name="Last Year"
@@ -319,6 +339,7 @@ export default function ChartCard({ title, type, dateRange, data, className = ''
               )}
               {data[0]?.purchases !== undefined && (
                 <Line
+                  yAxisId="left"
                   type="monotone"
                   dataKey="purchases"
                   name="Purchases"
@@ -330,6 +351,7 @@ export default function ChartCard({ title, type, dateRange, data, className = ''
               )}
               {data[0]?.spend !== undefined && (
                 <Line
+                  yAxisId="left"
                   type="monotone"
                   dataKey="spend"
                   name="Spend"
@@ -341,13 +363,14 @@ export default function ChartCard({ title, type, dateRange, data, className = ''
               )}
               {data[0]?.roas !== undefined && (
                 <Line
+                  yAxisId="right"
                   type="monotone"
                   dataKey="roas"
                   name="ROAS"
                   stroke="#8b5cf6"
-                  strokeWidth={2}
-                  dot={{ fill: '#8b5cf6', strokeWidth: 0, r: 4 }}
-                  activeDot={{ r: 6, fill: '#8b5cf6' }}
+                  strokeWidth={3}
+                  dot={{ fill: '#8b5cf6', strokeWidth: 0, r: 5 }}
+                  activeDot={{ r: 7, fill: '#8b5cf6' }}
                 />
               )}
               <Legend

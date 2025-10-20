@@ -124,8 +124,8 @@ export default function AdminPage() {
 
       if (response.ok) {
         setCurrentClientId(clientId);
-        // Client successfully changed
-        window.location.href = '/';
+        // Client successfully changed - redirect to Business Overview dashboard
+        window.location.href = '/dashboards?section=overview';
       } else {
         console.error('Failed to set current client');
       }
