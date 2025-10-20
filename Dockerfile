@@ -19,8 +19,8 @@ ENV CI=true
 # Build the application
 RUN npm run build
 
-# Remove dev dependencies to reduce image size
-RUN npm prune --production --legacy-peer-deps
+# Note: Skipping npm prune to keep TypeScript for next.config.ts at runtime
+# The image size increase is acceptable for proper functionality
 
 # Expose port
 EXPOSE 4000
