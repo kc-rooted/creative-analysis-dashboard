@@ -4,7 +4,7 @@ WORKDIR /app
 
 # Install dependencies first (better Docker layer caching)
 COPY package*.json ./
-RUN npm ci --prefer-offline --no-audit --progress=false
+RUN npm ci --prefer-offline --no-audit --progress=false --legacy-peer-deps
 
 # Copy source code
 COPY . .
