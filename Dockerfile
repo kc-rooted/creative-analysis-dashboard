@@ -20,7 +20,7 @@ ENV CI=true
 RUN npm run build
 
 # Remove dev dependencies to reduce image size
-RUN npm prune --production
+RUN npm prune --production --legacy-peer-deps
 
 # Expose port
 EXPOSE 4000
