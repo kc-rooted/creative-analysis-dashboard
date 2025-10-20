@@ -26,6 +26,7 @@ interface ChartCardProps {
   dateRange: DateRange;
   data?: any[];
   className?: string;
+  comparisonType?: 'previous-period' | 'previous-year';
 }
 
 // Design system colors
@@ -46,7 +47,7 @@ const CHART_THEME = {
   tooltipBorder: 'rgba(255, 255, 255, 0.05)', // var(--border-muted)
 };
 
-export default function ChartCard({ title, type, dateRange, data, className = '' }: ChartCardProps) {
+export default function ChartCard({ title, type, dateRange, data, className = '', comparisonType = 'previous-period' }: ChartCardProps) {
   // If no data is provided, show a placeholder
   if (!data || data.length === 0) {
     return (
@@ -273,10 +274,13 @@ export default function ChartCard({ title, type, dateRange, data, className = ''
                   const date = new Date(year, month - 1, day);
                   return date.toLocaleDateString();
                 }}
-                formatter={(value: number, name: string) => {
-                  const formattedValue = name === 'roas' ? `${value}x` : `$${value.toLocaleString()}`;
-                  const label = name.charAt(0).toUpperCase() + name.slice(1);
-                  return [formattedValue, label];
+                formatter={(value: any, name: string, props: any) => {
+                  // Check if it's ROAS based on the dataKey, not the display name
+                  const dataKey = props?.dataKey || '';
+                  const isRoas = dataKey.includes('roas');
+                  const numValue = typeof value === 'string' ? parseFloat(value) : value;
+                  const formattedValue = isRoas ? `${numValue.toFixed(2)}x` : `$${numValue.toLocaleString()}`;
+                  return [formattedValue, name];
                 }}
               />
               {data[0]?.revenue !== undefined && (
@@ -288,6 +292,29 @@ export default function ChartCard({ title, type, dateRange, data, className = ''
                   strokeWidth={2}
                   dot={{ fill: '#22c55e', strokeWidth: 0, r: 4 }}
                   activeDot={{ r: 6, fill: '#22c55e' }}
+                />
+              )}
+              {data[0]?.revenue_cy !== undefined && (
+                <Line
+                  type="monotone"
+                  dataKey="revenue_cy"
+                  name="Current Year"
+                  stroke="#22c55e"
+                  strokeWidth={2}
+                  dot={{ fill: '#22c55e', strokeWidth: 0, r: 4 }}
+                  activeDot={{ r: 6, fill: '#22c55e' }}
+                />
+              )}
+              {data[0]?.revenue_ly !== undefined && (
+                <Line
+                  type="monotone"
+                  dataKey="revenue_ly"
+                  name="Last Year"
+                  stroke="#94a3b8"
+                  strokeWidth={2}
+                  strokeDasharray="5 5"
+                  dot={{ fill: '#94a3b8', strokeWidth: 0, r: 4 }}
+                  activeDot={{ r: 6, fill: '#94a3b8' }}
                 />
               )}
               {data[0]?.purchases !== undefined && (
@@ -312,27 +339,15 @@ export default function ChartCard({ title, type, dateRange, data, className = ''
                   activeDot={{ r: 6, fill: '#89cdee' }}
                 />
               )}
-              {data[0]?.revenue_cy !== undefined && (
+              {data[0]?.roas !== undefined && (
                 <Line
                   type="monotone"
-                  dataKey="revenue_cy"
-                  name="Current Year"
-                  stroke="#22c55e"
+                  dataKey="roas"
+                  name="ROAS"
+                  stroke="#8b5cf6"
                   strokeWidth={2}
-                  dot={{ fill: '#22c55e', strokeWidth: 0, r: 4 }}
-                  activeDot={{ r: 6, fill: '#22c55e' }}
-                />
-              )}
-              {data[0]?.revenue_ly !== undefined && (
-                <Line
-                  type="monotone"
-                  dataKey="revenue_ly"
-                  name="Last Year"
-                  stroke="#94a3b8"
-                  strokeWidth={2}
-                  strokeDasharray="5 5"
-                  dot={{ fill: '#94a3b8', strokeWidth: 0, r: 4 }}
-                  activeDot={{ r: 6, fill: '#94a3b8' }}
+                  dot={{ fill: '#8b5cf6', strokeWidth: 0, r: 4 }}
+                  activeDot={{ r: 6, fill: '#8b5cf6' }}
                 />
               )}
               <Legend

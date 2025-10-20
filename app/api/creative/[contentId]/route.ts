@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { BigQuery } from '@google-cloud/bigquery';
+import { initializeCurrentClient } from '@/lib/bigquery';
 import { getCurrentClientConfigSync } from '@/lib/client-config';
 
 const bigquery = new BigQuery({
@@ -26,9 +27,15 @@ export async function GET(
   { params }: { params: Promise<{ contentId: string }> }
 ) {
   try {
+    // Get requested client from header (sent from frontend)
+    const requestedClient = request.headers.get('x-client-id');
+
+    // Initialize with requested client to ensure correct dataset
+    await initializeCurrentClient(requestedClient || undefined);
+
     const { contentId: rawContentId } = await params;
     const contentId = decodeURIComponent(rawContentId);
-    
+
     console.log('Fetching creative details for:', contentId);
 
     const query = `
@@ -46,8 +53,8 @@ export async function GET(
         IFNULL(cpd.platforms_used, []) as platforms_used,
         IFNULL(cpd.total_usage_count, 0) as total_usage_count,
         IFNULL(cpd.account_count, 0) as account_count,
-        FORMAT_TIMESTAMP('%Y-%m-%d %H:%M:%S', cpd.first_seen) as first_seen,
-        FORMAT_TIMESTAMP('%Y-%m-%d %H:%M:%S', cpd.last_seen) as last_seen,
+        IFNULL(FORMAT_TIMESTAMP('%Y-%m-%d %H:%M:%S', cpd.first_seen), 'N/A') as first_seen,
+        IFNULL(FORMAT_TIMESTAMP('%Y-%m-%d %H:%M:%S', cpd.last_seen), 'N/A') as last_seen,
 
         -- PERFORMANCE METRICS
         IFNULL(cpd.total_spend, 0) as total_spend,

@@ -200,22 +200,32 @@ export default function CreativeDetailsPage() {
     );
   }
 
-  const formatCurrency = (value: number | null | undefined) => {
-    if (value === null || value === undefined || typeof value !== 'number') {
+  const formatCurrency = (value: number | string | null | undefined) => {
+    if (value === null || value === undefined) {
+      return '$0.00';
+    }
+    // Convert string to number if needed (BigQuery NUMERIC returns as string)
+    const numValue = typeof value === 'string' ? parseFloat(value) : value;
+    if (isNaN(numValue)) {
       return '$0.00';
     }
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
       currency: 'USD',
-    }).format(value);
+    }).format(numValue);
   };
 
-  const formatPercentage = (value: number | null | undefined) => {
-    if (value === null || value === undefined || typeof value !== 'number') {
+  const formatPercentage = (value: number | string | null | undefined) => {
+    if (value === null || value === undefined) {
+      return '0.00%';
+    }
+    // Convert string to number if needed (BigQuery NUMERIC returns as string)
+    const numValue = typeof value === 'string' ? parseFloat(value) : value;
+    if (isNaN(numValue)) {
       return '0.00%';
     }
     // If value is greater than 100, it might be stored as basis points (divide by 100)
-    const percentage = value > 100 ? value / 100 : value;
+    const percentage = numValue > 100 ? numValue / 100 : numValue;
     return `${percentage.toFixed(2)}%`;
   };
 
@@ -372,20 +382,26 @@ export default function CreativeDetailsPage() {
                 </div>
                 <div>
                   <p className="text-sm" style={{color: 'var(--text-muted)'}}>First Seen</p>
-                  <p className="text-sm" style={{color: 'var(--text-secondary)'}}>{new Date(creative.first_seen).toLocaleDateString()}</p>
+                  <p className="text-sm" style={{color: 'var(--text-secondary)'}}>
+                    {creative.first_seen === 'N/A' ? 'N/A' : new Date(creative.first_seen).toLocaleDateString()}
+                  </p>
                 </div>
                 <div>
                   <p className="text-sm" style={{color: 'var(--text-muted)'}}>Last Seen</p>
-                  <p className="text-sm" style={{color: 'var(--text-secondary)'}}>{new Date(creative.last_seen).toLocaleDateString()}</p>
+                  <p className="text-sm" style={{color: 'var(--text-secondary)'}}>
+                    {creative.last_seen === 'N/A' ? 'N/A' : new Date(creative.last_seen).toLocaleDateString()}
+                  </p>
                 </div>
               </div>
 
               {creative.representative_ad_text && (
                 <div className="mt-4">
-                  <p className="text-sm" style={{color: 'var(--text-muted)'}}>Ad Copy</p>
-                  <p className="text-sm p-3 rounded-lg mt-1" style={{background: 'var(--bg-elevated)', color: 'var(--text-secondary)'}}>
-                    {creative.representative_ad_text}
-                  </p>
+                  <p className="text-sm mb-2" style={{color: 'var(--text-muted)'}}>Ad Copy</p>
+                  <div className="p-4 rounded-lg" style={{background: 'var(--bg-elevated)'}}>
+                    <p className="text-sm" style={{color: 'var(--text-secondary)'}}>
+                      {creative.representative_ad_text}
+                    </p>
+                  </div>
                 </div>
               )}
 

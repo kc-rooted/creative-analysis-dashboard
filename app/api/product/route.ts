@@ -1,8 +1,14 @@
 import { NextResponse } from 'next/server';
-import { getProductIntelligence, getGripRepeatPurchaseAnalysis, getGeographicProductPerformance, getProductAffinity, getProductRankings, getGripSwitchingPatterns, getPutterGripSwitchingPatterns } from '@/lib/bigquery';
+import { getProductIntelligence, getGripRepeatPurchaseAnalysis, getGeographicProductPerformance, getProductAffinity, getProductRankings, getGripSwitchingPatterns, getPutterGripSwitchingPatterns, initializeCurrentClient } from '@/lib/bigquery';
 
 export async function GET(request: Request) {
   try {
+    // Get requested client from header (sent from frontend)
+    const requestedClient = request.headers.get('x-client-id');
+
+    // Initialize with requested client to ensure correct dataset
+    await initializeCurrentClient(requestedClient || undefined);
+
     const { searchParams } = new URL(request.url);
     const period = searchParams.get('period') || '30d';
 

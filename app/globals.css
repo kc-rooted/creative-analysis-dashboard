@@ -191,7 +191,8 @@
   --bg-card: rgba(255, 255, 255, 0.025);
   --bg-elevated: rgba(255, 255, 255, 0.04);
   --bg-overlay: rgba(10, 14, 19, 0.95);
-  
+  --card-overlay: #0f141a;
+
   /* Borders and dividers */
   --border-subtle: rgba(255, 255, 255, 0.1);
   --border-muted: rgba(255, 255, 255, 0.05);

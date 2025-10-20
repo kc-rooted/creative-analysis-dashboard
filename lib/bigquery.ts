@@ -547,12 +547,14 @@ export async function getEmailDashboardData(preset: string = 'mtd', startDate?: 
     ),
     metrics_data AS (
       SELECT
-        -- Use total opens/sends for accurate rates, not average of rates
-        SAFE_DIVIDE(SUM(opens), SUM(sends)) as avg_open_rate,
-        SAFE_DIVIDE(SUM(clicks), SUM(sends)) as avg_click_rate,
+        -- Use unique opens/deliveries for accurate open rates
+        SAFE_DIVIDE(SUM(unique_opens), SUM(deliveries)) as avg_open_rate,
+        SAFE_DIVIDE(SUM(human_opens), SUM(deliveries)) as avg_human_open_rate,
+        SAFE_DIVIDE(SUM(unique_clicks), SUM(deliveries)) as avg_click_rate,
         SAFE_DIVIDE(SUM(bounces), SUM(sends)) as avg_bounce_rate,
-        SAFE_DIVIDE(SUM(unsubscribes), SUM(sends)) as avg_unsubscribe_rate,
+        SAFE_DIVIDE(SUM(unsubscribes), SUM(deliveries)) as avg_unsubscribe_rate,
         SUM(sends) as total_sends,
+        SUM(deliveries) as total_deliveries,
         SUM(bounces) as total_bounces,
         SUM(unsubscribes) as total_unsubscribes
       FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${getCurrentDatasetName()}.klaviyo_campaigns_detailed\`
@@ -560,11 +562,13 @@ export async function getEmailDashboardData(preset: string = 'mtd', startDate?: 
     ),
     prev_metrics_data AS (
       SELECT
-        SAFE_DIVIDE(SUM(opens), SUM(sends)) as prev_avg_open_rate,
-        SAFE_DIVIDE(SUM(clicks), SUM(sends)) as prev_avg_click_rate,
+        SAFE_DIVIDE(SUM(unique_opens), SUM(deliveries)) as prev_avg_open_rate,
+        SAFE_DIVIDE(SUM(human_opens), SUM(deliveries)) as prev_avg_human_open_rate,
+        SAFE_DIVIDE(SUM(unique_clicks), SUM(deliveries)) as prev_avg_click_rate,
         SAFE_DIVIDE(SUM(bounces), SUM(sends)) as prev_avg_bounce_rate,
-        SAFE_DIVIDE(SUM(unsubscribes), SUM(sends)) as prev_avg_unsubscribe_rate,
+        SAFE_DIVIDE(SUM(unsubscribes), SUM(deliveries)) as prev_avg_unsubscribe_rate,
         SUM(sends) as prev_total_sends,
+        SUM(deliveries) as prev_total_deliveries,
         SUM(bounces) as prev_total_bounces,
         SUM(unsubscribes) as prev_total_unsubscribes
       FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${getCurrentDatasetName()}.klaviyo_campaigns_detailed\`
@@ -635,6 +639,9 @@ export async function getEmailDashboardData(preset: string = 'mtd', startDate?: 
       avgOpenRate: (row.avg_open_rate || 0) * 100,
       prevAvgOpenRate: (row.prev_avg_open_rate || 0) * 100,
       openRateChange: calcChange(row.avg_open_rate || 0, row.prev_avg_open_rate || 0),
+      avgHumanOpenRate: (row.avg_human_open_rate || 0) * 100,
+      prevAvgHumanOpenRate: (row.prev_avg_human_open_rate || 0) * 100,
+      humanOpenRateChange: calcChange(row.avg_human_open_rate || 0, row.prev_avg_human_open_rate || 0),
       avgClickRate: (row.avg_click_rate || 0) * 100,
       prevAvgClickRate: (row.prev_avg_click_rate || 0) * 100,
       clickRateChange: calcChange(row.avg_click_rate || 0, row.prev_avg_click_rate || 0),
@@ -646,6 +653,8 @@ export async function getEmailDashboardData(preset: string = 'mtd', startDate?: 
       unsubscribeRateChange: calcChange(row.avg_unsubscribe_rate || 0, row.prev_avg_unsubscribe_rate || 0),
       totalSends: row.total_sends || 0,
       prevTotalSends: row.prev_total_sends || 0,
+      totalDeliveries: row.total_deliveries || 0,
+      prevTotalDeliveries: row.prev_total_deliveries || 0,
       totalBounces: row.total_bounces || 0,
       totalUnsubscribes: row.total_unsubscribes || 0
     };
@@ -666,7 +675,8 @@ export async function getEmailCampaignsTable(preset: string = 'mtd', startDate?:
       send_date,
       sends,
       ROUND(open_rate * 100, 2) as open_rate,
-      ROUND(click_rate * 100, 2) as click_rate,
+      ROUND(unique_click_rate * 100, 2) as unique_click_rate,
+      ROUND(click_to_open_rate * 100, 2) as click_to_open_rate,
       ROUND(bounce_rate * 100, 2) as bounce_rate,
       ROUND(unsubscribe_rate * 100, 2) as unsubscribe_rate,
       attributed_revenue,
@@ -690,7 +700,8 @@ export async function getEmailCampaignsTable(preset: string = 'mtd', startDate?:
       sendDate: row.send_date.value,
       sends: row.sends,
       openRate: row.open_rate,
-      clickRate: row.click_rate,
+      uniqueClickRate: row.unique_click_rate,
+      clickToOpenRate: row.click_to_open_rate,
       bounceRate: row.bounce_rate,
       unsubscribeRate: row.unsubscribe_rate,
       revenue: Math.round(row.attributed_revenue || 0),
@@ -1425,6 +1436,14 @@ export async function getFacebookPerformanceData(preset: string = 'mtd', startDa
     ? 'date >= DATE_SUB(DATE_SUB(CURRENT_DATE(), INTERVAL 1 YEAR), INTERVAL 30 DAY) AND date < DATE_SUB(CURRENT_DATE(), INTERVAL 1 YEAR)'
     : 'date >= DATE_SUB(CURRENT_DATE(), INTERVAL 60 DAY) AND date < DATE_SUB(CURRENT_DATE(), INTERVAL 30 DAY)';
 
+  console.log('[Facebook Query] Filters:', {
+    preset,
+    comparisonType,
+    dateFilter: filters.dateFilter,
+    comparisonDateFilter,
+    daysDiff: filters.daysDiff
+  });
+
   const query = `
     WITH current_period AS (
       SELECT
@@ -1452,24 +1471,29 @@ export async function getFacebookPerformanceData(preset: string = 'mtd', startDa
     current_daily AS (
       SELECT
         date,
-        SUM(revenue) as revenue_current
+        SUM(revenue) as revenue_current,
+        SUM(spend) as spend_current
       FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${getCurrentDatasetName()}.paid_media_performance\`
       WHERE platform = 'Facebook' AND ${filters.dateFilter}
       GROUP BY date
     ),
     comparison_daily AS (
       SELECT
-        ${comparisonType === 'previous-year' ? 'DATE_ADD(date, INTERVAL 1 YEAR)' : `DATE_ADD(date, INTERVAL ${filters.daysDiff} DAY)`} as date,
-        SUM(revenue) as revenue_comparison
-      FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${getCurrentDatasetName()}.paid_media_performance\`
-      WHERE platform = 'Facebook' AND ${comparisonDateFilter}
-      GROUP BY date
+        date,
+        0 as revenue_comparison,
+        0 as spend_comparison
+      FROM current_daily
+      WHERE 1=0
     ),
     daily_metrics AS (
       SELECT
         cd.date,
         cd.revenue_current,
-        COALESCE(cpd.revenue_comparison, 0) as revenue_comparison
+        COALESCE(cpd.revenue_comparison, 0) as revenue_comparison,
+        cd.spend_current,
+        COALESCE(cpd.spend_comparison, 0) as spend_comparison,
+        SAFE_DIVIDE(cd.revenue_current, cd.spend_current) as roas_current,
+        SAFE_DIVIDE(COALESCE(cpd.revenue_comparison, 0), COALESCE(cpd.spend_comparison, 0)) as roas_comparison
       FROM current_daily cd
       LEFT JOIN comparison_daily cpd ON cd.date = cpd.date
       ORDER BY cd.date
@@ -1562,7 +1586,7 @@ export async function getFacebookPerformanceData(preset: string = 'mtd', startDa
       (SELECT total_impressions FROM trailing_30d_comparison) as trailing_30d_prev_impressions,
       (SELECT total_clicks FROM trailing_30d_comparison) as trailing_30d_prev_clicks,
       (SELECT total_purchases FROM trailing_30d_comparison) as trailing_30d_prev_purchases,
-      ARRAY_AGG(STRUCT(date, revenue_current, revenue_comparison) ORDER BY date) as daily_metrics
+      ARRAY_AGG(STRUCT(date, revenue_current, revenue_comparison, spend_current, spend_comparison, roas_current, roas_comparison) ORDER BY date) as daily_metrics
     FROM daily_metrics
     LIMIT 1
   `;
@@ -1578,6 +1602,17 @@ export async function getFacebookPerformanceData(preset: string = 'mtd', startDa
     }
 
     const row = rows[0];
+    console.log("[Facebook Query] Results:", {
+      spend: row.spend,
+      prev_spend: row.prev_spend,
+      revenue: row.revenue,
+      prev_revenue: row.prev_revenue,
+      roas: row.roas,
+      impressions: row.impressions,
+      clicks: row.clicks,
+      purchases: row.purchases,
+      dailyMetricsCount: row.daily_metrics?.length
+    });
 
     // Calculate current period efficiency metrics
     const currentCtr = parseFloat((row.ctr || 0).toFixed(2));
@@ -1691,8 +1726,9 @@ export async function getFacebookPerformanceData(preset: string = 'mtd', startDa
       },
       dailyMetrics: row.daily_metrics.map((d: any) => ({
         date: d.date.value,
-        revenue_cy: Math.round(parseFloat(d.revenue_current || 0)),
-        revenue_ly: Math.round(parseFloat(d.revenue_comparison || 0))
+        revenue: Math.round(parseFloat(d.revenue_current || 0)),
+        spend: Math.round(parseFloat(d.spend_current || 0)),
+        roas: parseFloat((d.roas_current || 0).toFixed(2))
       })),
       campaigns: await getFacebookCampaigns(preset, startDate, endDate),
       ads: await getFacebookAds(preset, startDate, endDate)
@@ -1719,7 +1755,7 @@ export async function getFacebookPerformanceByCountry(preset: string = 'mtd', st
         SUM(clicks) as clicks,
         SUM(purchases) as purchases,
         SAFE_DIVIDE(SUM(clicks), SUM(impressions)) * 100 as ctr
-      FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${getCurrentDatasetName()}.paid_media_performance_by_country\`
+      FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${getCurrentDatasetName()}.geographic_paid_media_performance\`
       WHERE platform = 'Facebook' AND ${filters.dateFilter}
       GROUP BY country
     ),
@@ -1730,7 +1766,7 @@ export async function getFacebookPerformanceByCountry(preset: string = 'mtd', st
         SUM(revenue) as revenue,
         SAFE_DIVIDE(SUM(revenue), SUM(spend)) as roas,
         SUM(purchases) as purchases
-      FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${getCurrentDatasetName()}.paid_media_performance_by_country\`
+      FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${getCurrentDatasetName()}.geographic_paid_media_performance\`
       WHERE platform = 'Facebook' AND ${comparisonDateFilter}
       GROUP BY country
     ),
@@ -1740,7 +1776,7 @@ export async function getFacebookPerformanceByCountry(preset: string = 'mtd', st
         SUM(spend) as spend,
         SUM(revenue) as revenue,
         SAFE_DIVIDE(SUM(revenue), SUM(spend)) as roas
-      FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${getCurrentDatasetName()}.paid_media_performance_by_country\`
+      FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${getCurrentDatasetName()}.geographic_paid_media_performance\`
       WHERE platform = 'Facebook' AND date >= DATE_SUB(CURRENT_DATE(), INTERVAL 7 DAY)
       GROUP BY country
     ),
@@ -1750,7 +1786,7 @@ export async function getFacebookPerformanceByCountry(preset: string = 'mtd', st
         SUM(spend) as spend,
         SUM(revenue) as revenue,
         SAFE_DIVIDE(SUM(revenue), SUM(spend)) as roas
-      FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${getCurrentDatasetName()}.paid_media_performance_by_country\`
+      FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${getCurrentDatasetName()}.geographic_paid_media_performance\`
       WHERE platform = 'Facebook' AND date >= DATE_SUB(CURRENT_DATE(), INTERVAL 30 DAY)
       GROUP BY country
     )
@@ -1965,24 +2001,29 @@ export async function getGoogleAdsPerformanceData(preset: string = 'mtd', startD
     current_daily AS (
       SELECT
         date,
-        SUM(revenue) as revenue_current
+        SUM(revenue) as revenue_current,
+        SUM(spend) as spend_current
       FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${getCurrentDatasetName()}.paid_media_performance\`
       WHERE platform = 'Google Ads' AND ${filters.dateFilter}
       GROUP BY date
     ),
     comparison_daily AS (
       SELECT
-        ${comparisonType === 'previous-year' ? 'DATE_ADD(date, INTERVAL 1 YEAR)' : `DATE_ADD(date, INTERVAL ${filters.daysDiff} DAY)`} as date,
-        SUM(revenue) as revenue_comparison
-      FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${getCurrentDatasetName()}.paid_media_performance\`
-      WHERE platform = 'Google Ads' AND ${comparisonDateFilter}
-      GROUP BY date
+        date,
+        0 as revenue_comparison,
+        0 as spend_comparison
+      FROM current_daily
+      WHERE 1=0
     ),
     daily_metrics AS (
       SELECT
         cd.date,
         cd.revenue_current,
-        COALESCE(cpd.revenue_comparison, 0) as revenue_comparison
+        COALESCE(cpd.revenue_comparison, 0) as revenue_comparison,
+        cd.spend_current,
+        COALESCE(cpd.spend_comparison, 0) as spend_comparison,
+        SAFE_DIVIDE(cd.revenue_current, cd.spend_current) as roas_current,
+        SAFE_DIVIDE(COALESCE(cpd.revenue_comparison, 0), COALESCE(cpd.spend_comparison, 0)) as roas_comparison
       FROM current_daily cd
       LEFT JOIN comparison_daily cpd ON cd.date = cpd.date
       ORDER BY cd.date
@@ -2077,7 +2118,7 @@ export async function getGoogleAdsPerformanceData(preset: string = 'mtd', startD
       (SELECT total_impressions FROM trailing_30d_comparison) as trailing_30d_prev_impressions,
       (SELECT total_clicks FROM trailing_30d_comparison) as trailing_30d_prev_clicks,
       (SELECT total_purchases FROM trailing_30d_comparison) as trailing_30d_prev_purchases,
-      ARRAY_AGG(STRUCT(date, revenue_current, revenue_comparison) ORDER BY date) as daily_metrics
+      ARRAY_AGG(STRUCT(date, revenue_current, revenue_comparison, spend_current, spend_comparison, roas_current, roas_comparison) ORDER BY date) as daily_metrics
     FROM daily_metrics
     LIMIT 1
   `;
@@ -2206,8 +2247,9 @@ export async function getGoogleAdsPerformanceData(preset: string = 'mtd', startD
       },
       dailyMetrics: row.daily_metrics.map((d: any) => ({
         date: d.date.value,
-        revenue_cy: Math.round(parseFloat(d.revenue_current || 0)),
-        revenue_ly: Math.round(parseFloat(d.revenue_comparison || 0))
+        revenue: Math.round(parseFloat(d.revenue_current || 0)),
+        spend: Math.round(parseFloat(d.spend_current || 0)),
+        roas: parseFloat((d.roas_current || 0).toFixed(2))
       })),
       campaigns: await getGoogleAdsCampaigns(preset, startDate, endDate),
       ads: await getGoogleAdsAds(preset, startDate, endDate)
@@ -3329,7 +3371,21 @@ export async function getCurrentClientId(): Promise<string> {
 
 // Export function to initialize current client (must be called before any BigQuery operations)
 // This only runs ONCE per function instance, not on every request
-export async function initializeCurrentClient(): Promise<void> {
+// IMPORTANT: With requestedClientId parameter, will ALWAYS reinitialize to ensure correct client
+export async function initializeCurrentClient(requestedClientId?: string): Promise<void> {
+  // If a specific client is requested, always reinitialize to that client
+  if (requestedClientId) {
+    console.log('[BigQuery] Reinitializing to requested client:', requestedClientId);
+    cachedCurrentClientIdForBQ = requestedClientId;
+    hasInitialized = true;
+
+    // Also update client-config cache
+    const { setCachedClientId } = await import('./client-config');
+    setCachedClientId(requestedClientId);
+    return;
+  }
+
+  // Otherwise, only initialize once per function instance
   if (!hasInitialized) {
     await getCurrentClientId();
     hasInitialized = true;
@@ -3657,58 +3713,6 @@ export async function getForecastActuals(): Promise<any[]> {
     throw error;
   }
 }
-
-// Meta ROAS Predictions
-export async function getMetaRoasPredictions() {
-  console.log('[getMetaRoasPredictions] Fetching Meta ROAS predictions');
-
-  const query = `
-    SELECT
-      week_start_date,
-      API_Spend as api_spend,
-      API_ROAS as api_roas,
-      Predicted_Meta_ROAS as predicted_meta_roas,
-      Lower_Bound as lower_bound,
-      Upper_Bound as upper_bound,
-      Purchases as purchases,
-      Predicted_Multiplier as predicted_multiplier,
-      Prediction_Method as prediction_method,
-      Days_Ago as days_ago
-    FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${getCurrentDatasetName()}.meta_roas_predictions_live\`
-    WHERE Days_Ago <= 7
-    ORDER BY week_start_date DESC
-    LIMIT 1
-  `;
-
-  try {
-    const [rows] = await bigquery.query({
-      query,
-      timeoutMs: 30000,
-    });
-
-    if (rows.length === 0) {
-      return null;
-    }
-
-    const row = rows[0];
-    return {
-      weekStartDate: row.week_start_date?.value || null,
-      apiSpend: parseFloat(row.api_spend || 0),
-      apiRoas: parseFloat(row.api_roas || 0),
-      predictedMetaRoas: parseFloat(row.predicted_meta_roas || 0),
-      lowerBound: parseFloat(row.lower_bound || 0),
-      upperBound: parseFloat(row.upper_bound || 0),
-      purchases: parseInt(row.purchases || 0),
-      predictedMultiplier: parseFloat(row.predicted_multiplier || 0),
-      predictionMethod: row.prediction_method || 'Unknown',
-      daysAgo: parseInt(row.days_ago || 0)
-    };
-  } catch (error) {
-    console.error('Error fetching Meta ROAS predictions:', error);
-    throw error;
-  }
-}
-
 // Ad Performance Details
 export async function getAdPerformance(adName: string, adsetName: string, preset: string = 'last-30-days') {
   console.log(`[getAdPerformance] Fetching performance for ad: ${adName}, adset: ${adsetName}, preset: ${preset}`);

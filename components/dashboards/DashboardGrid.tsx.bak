@@ -43,7 +43,7 @@ interface DashboardData {
 
 export default function DashboardGrid({ section, dateRange }: DashboardGridProps) {
   // Use client from global provider instead of local state
-  const { currentClient, isLoading: isClientLoading } = useClient();
+  const { currentClient } = useClient();
   const [currencySymbol, setCurrencySymbol] = useState<string>('$');
   const [currencyLoaded, setCurrencyLoaded] = useState(false);
   const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
@@ -96,7 +96,6 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
 
   // Helper function to make fetch requests with client ID header
   const fetchWithClient = useCallback((url: string, options?: RequestInit) => {
-    console.log(`[DashboardGrid] Fetching ${url} with client ID:`, currentClient);
     return fetch(url, {
       ...options,
       headers: {
@@ -169,7 +168,7 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
 
   // Fetch funnel data when on funnel section - fetch all goals
   useEffect(() => {
-    if (section !== 'funnel' || !currencyLoaded || isClientLoading) return;
+    if (section !== 'funnel' || !currencyLoaded) return;
 
     const fetchAllFunnelData = async () => {
       try {
@@ -201,11 +200,11 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
     };
 
     fetchAllFunnelData();
-  }, [section, funnelCountry, currencyLoaded, isClientLoading, currentClient, fetchWithClient]);
+  }, [section, funnelCountry, currencyLoaded]);
 
   // Fetch email data when on email section or when date filter changes
   useEffect(() => {
-    if (section !== 'email' || !currencyLoaded || isClientLoading) return;
+    if (section !== 'email' || !currencyLoaded) return;
 
     const fetchEmailData = async () => {
       try {
@@ -235,7 +234,7 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
       }
     };
     fetchEmailData();
-  }, [section, emailDatePreset, emailCustomDates, emailComparisonType, currencyLoaded, isClientLoading, currentClient, fetchWithClient]);
+  }, [section, emailDatePreset, emailCustomDates, emailComparisonType, currencyLoaded]);
 
   // Handle date filter changes
   const handleEmailDateChange = (preset: DatePreset, startDate?: string, endDate?: string) => {
@@ -254,7 +253,7 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
 
   // Fetch product data when on product section or period changes
   useEffect(() => {
-    if (section !== 'product' || !currencyLoaded || isClientLoading) return;
+    if (section !== 'product' || !currencyLoaded) return;
 
     const fetchProductData = async () => {
       try {
@@ -273,11 +272,11 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
       }
     };
     fetchProductData();
-  }, [section, productPeriod, currencyLoaded, isClientLoading, currentClient, fetchWithClient]);
+  }, [section, productPeriod, currencyLoaded]);
 
   // Fetch customer data when on customers section
   useEffect(() => {
-    if (section !== 'customers' || !currencyLoaded || isClientLoading) return;
+    if (section !== 'customers' || !currencyLoaded) return;
 
     const fetchCustomerData = async () => {
       try {
@@ -296,11 +295,11 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
       }
     };
     fetchCustomerData();
-  }, [section, currencyLoaded, isClientLoading, currentClient, fetchWithClient]);
+  }, [section, currencyLoaded]);
 
   // Fetch Facebook data when on facebook section or when date filter changes
   useEffect(() => {
-    if (section !== 'facebook' || !currencyLoaded || isClientLoading) return;
+    if (section !== 'facebook' || !currencyLoaded) return;
 
     const fetchFacebookData = async () => {
       try {
@@ -332,7 +331,7 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
       }
     };
     fetchFacebookData();
-  }, [section, facebookDatePreset, facebookCustomDates, facebookComparisonType, currencyLoaded, isClientLoading, currentClient, fetchWithClient]);
+  }, [section, facebookDatePreset, facebookCustomDates, facebookComparisonType, currencyLoaded]);
 
   // Fetch Meta ROAS Predictions when on facebook or overview section
   // Handle Facebook date filter changes
@@ -352,7 +351,7 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
 
   // Fetch Google Ads data when on google section or when date filter changes
   useEffect(() => {
-    if (section !== 'google' || !currencyLoaded || isClientLoading) return;
+    if (section !== 'google' || !currencyLoaded) return;
 
     const fetchGoogleData = async () => {
       try {
@@ -382,7 +381,7 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
       }
     };
     fetchGoogleData();
-  }, [section, googleDatePreset, googleCustomDates, googleComparisonType, currencyLoaded, isClientLoading, currentClient, fetchWithClient]);
+  }, [section, googleDatePreset, googleCustomDates, googleComparisonType, currencyLoaded]);
 
   // Handle Google Ads date filter changes
   const handleGoogleDateChange = (preset: DatePreset, startDate?: string, endDate?: string) => {
@@ -401,7 +400,7 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
 
   // Fetch operational data when on operational section
   useEffect(() => {
-    if (section !== 'operational' || !currencyLoaded || isClientLoading) return;
+    if (section !== 'operational' || !currencyLoaded) return;
 
     const fetchOperationalData = async () => {
       try {
@@ -420,17 +419,17 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
       }
     };
     fetchOperationalData();
-  }, [section, currencyLoaded, isClientLoading, currentClient, fetchWithClient]);
+  }, [section, currencyLoaded]);
 
   // Fetch forecasting data when on forecasting section
   useEffect(() => {
-    if (section !== 'forecasting' || !currencyLoaded || isClientLoading) return;
+    if (section !== 'forecasting' || !currencyLoaded) return;
 
     const fetchForecastData = async () => {
       try {
         setForecastLoading(true);
         setForecastError(null);
-        const response = await fetchWithClient('/api/forecasting');
+        const response = await fetch('/api/forecasting');
         if (!response.ok) {
           throw new Error('Failed to fetch forecasting data');
         }
@@ -443,7 +442,7 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
       }
     };
     fetchForecastData();
-  }, [section, currencyLoaded, isClientLoading, currentClient, fetchWithClient]);
+  }, [section, currencyLoaded]);
 
   // Only show Big 5 KPIs for Business Overview section
   if (section === 'overview') {
@@ -1534,14 +1533,10 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
         {/* Campaigns - Key Metrics */}
         <div className="card p-6">
           <h3 className="text-lg font-semibold mb-6" style={{color: 'var(--text-primary)'}}>Campaigns - Key Metrics</h3>
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-6">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
             <div>
               <div className="text-sm" style={{color: 'var(--text-muted)'}}>Open Rate</div>
               <div className="text-2xl font-bold mt-1" style={{color: 'var(--text-primary)'}}>{emailData.metrics.openRate.toFixed(1)}%</div>
-            </div>
-            <div>
-              <div className="text-sm" style={{color: 'var(--text-muted)'}}>Human Open Rate</div>
-              <div className="text-2xl font-bold mt-1" style={{color: 'var(--text-primary)'}}>{emailData.metrics.humanOpenRate.toFixed(1)}%</div>
             </div>
             <div>
               <div className="text-sm" style={{color: 'var(--text-muted)'}}>Click Rate</div>
@@ -1569,8 +1564,7 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
                   <th className="text-left py-3 px-2" style={{color: 'var(--text-muted)'}}>Send Date</th>
                   <th className="text-right py-3 px-2" style={{color: 'var(--text-muted)'}}>Sends</th>
                   <th className="text-right py-3 px-2" style={{color: 'var(--text-muted)'}}>Open %</th>
-                  <th className="text-right py-3 px-2" style={{color: 'var(--text-muted)'}}>Unique Click Rate</th>
-                  <th className="text-right py-3 px-2" style={{color: 'var(--text-muted)'}}>CTO %</th>
+                  <th className="text-right py-3 px-2" style={{color: 'var(--text-muted)'}}>Click %</th>
                   <th className="text-right py-3 px-2" style={{color: 'var(--text-muted)'}}>Revenue</th>
                   <th className="text-right py-3 px-2" style={{color: 'var(--text-muted)'}}>$/Send</th>
                 </tr>
@@ -1582,8 +1576,7 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
                     <td className="py-3 px-2" style={{color: 'var(--text-secondary)'}}>{campaign.sendDate}</td>
                     <td className="text-right py-3 px-2" style={{color: 'var(--text-primary)'}}>{campaign.sends.toLocaleString()}</td>
                     <td className="text-right py-3 px-2" style={{color: 'var(--text-primary)'}}>{campaign.openRate}%</td>
-                    <td className="text-right py-3 px-2" style={{color: 'var(--text-primary)'}}>{campaign.uniqueClickRate}%</td>
-                    <td className="text-right py-3 px-2" style={{color: 'var(--text-primary)'}}>{campaign.clickToOpenRate}%</td>
+                    <td className="text-right py-3 px-2" style={{color: 'var(--text-primary)'}}>{campaign.clickRate}%</td>
                     <td className="text-right py-3 px-2" style={{color: 'var(--text-primary)'}}>${campaign.revenue.toLocaleString()}</td>
                     <td className="text-right py-3 px-2" style={{color: 'var(--text-primary)'}}>${campaign.revenuePerSend}</td>
                   </tr>

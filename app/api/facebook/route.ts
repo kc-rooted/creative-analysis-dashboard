@@ -1,8 +1,14 @@
 import { NextResponse } from 'next/server';
-import { getFacebookPerformanceData, getFacebookPerformanceByCountry } from '@/lib/bigquery';
+import { getFacebookPerformanceData, getFacebookPerformanceByCountry, initializeCurrentClient } from '@/lib/bigquery';
 
 export async function GET(request: Request) {
   try {
+    // Get requested client from header (sent from frontend)
+    const requestedClient = request.headers.get('x-client-id');
+
+    // Initialize with requested client to ensure correct dataset
+    await initializeCurrentClient(requestedClient || undefined);
+
     const { searchParams } = new URL(request.url);
     const preset = searchParams.get('preset') || 'mtd';
     const startDate = searchParams.get('startDate') || undefined;

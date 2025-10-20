@@ -1,8 +1,14 @@
 import { NextResponse } from 'next/server';
-import { getEmailDashboardData, getEmailCampaignsTable, getEmailFlowsTable } from '@/lib/bigquery';
+import { getEmailDashboardData, getEmailCampaignsTable, getEmailFlowsTable, initializeCurrentClient } from '@/lib/bigquery';
 
 export async function GET(request: Request) {
   try {
+    // Get requested client from header (sent from frontend)
+    const requestedClient = request.headers.get('x-client-id');
+
+    // Initialize with requested client to ensure correct dataset
+    await initializeCurrentClient(requestedClient || undefined);
+
     // Extract date parameters from URL
     const { searchParams } = new URL(request.url);
     const preset = searchParams.get('preset') || 'mtd';
@@ -63,6 +69,9 @@ export async function GET(request: Request) {
         openRate: emailData.avgOpenRate,
         prevOpenRate: emailData.prevAvgOpenRate,
         openRateChange: emailData.openRateChange,
+        humanOpenRate: emailData.avgHumanOpenRate,
+        prevHumanOpenRate: emailData.prevAvgHumanOpenRate,
+        humanOpenRateChange: emailData.humanOpenRateChange,
         clickRate: emailData.avgClickRate,
         prevClickRate: emailData.prevAvgClickRate,
         clickRateChange: emailData.clickRateChange,
@@ -74,6 +83,8 @@ export async function GET(request: Request) {
         unsubscribeRateChange: emailData.unsubscribeRateChange,
         totalSends: emailData.totalSends,
         prevTotalSends: emailData.prevTotalSends,
+        totalDeliveries: emailData.totalDeliveries,
+        prevTotalDeliveries: emailData.prevTotalDeliveries,
         totalBounces: emailData.totalBounces,
         totalUnsubscribes: emailData.totalUnsubscribes
       },

@@ -3,8 +3,11 @@ import { getExecutiveSummary, getPaidMediaTrend, getShopifyRevenueYoY, getRevenu
 
 export async function GET(request: Request) {
   try {
-    // Initialize client cache once per function instance
-    await initializeCurrentClient();
+    // Get requested client from header (sent from frontend)
+    const requestedClient = request.headers.get('x-client-id');
+
+    // Initialize with requested client to ensure correct dataset
+    await initializeCurrentClient(requestedClient || undefined);
 
     // Get current client ID to determine which features to include
     const currentClientId = await getCurrentClientId();

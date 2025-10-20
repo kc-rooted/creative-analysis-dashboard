@@ -4,11 +4,18 @@ import {
   getAudienceOverlapAnalysis,
   getCustomerOverviewKPIs,
   getLTVIntelligence,
-  getCustomerJourneyAnalysis
+  getCustomerJourneyAnalysis,
+  initializeCurrentClient
 } from '@/lib/bigquery';
 
 export async function GET(request: Request) {
   try {
+    // Get requested client from header (sent from frontend)
+    const requestedClient = request.headers.get('x-client-id');
+
+    // Initialize with requested client to ensure correct dataset
+    await initializeCurrentClient(requestedClient || undefined);
+
     const [clvData, audienceOverlap, overviewKPIs, ltvIntelligence, journeyAnalysis] = await Promise.all([
       getCustomerCLVData(),
       getAudienceOverlapAnalysis(),

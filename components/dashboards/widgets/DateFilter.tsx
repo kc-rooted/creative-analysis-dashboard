@@ -89,7 +89,7 @@ export default function DateFilter({ onDateChange, value = 'mtd' }: DateFilterPr
         <div
           ref={calendarRef}
           className="absolute top-full right-0 mt-2 p-4 rounded-lg shadow-lg z-50"
-          style={{ background: 'var(--card-bg)', border: '1px solid var(--border-muted)' }}
+          style={{ background: 'var(--card-overlay)', border: '1px solid var(--border-muted)' }}
         >
           <div className="space-y-4">
             <div className="flex items-center gap-2 text-sm font-medium" style={{ color: 'var(--text-primary)' }}>

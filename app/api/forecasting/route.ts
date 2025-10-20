@@ -1,8 +1,14 @@
 import { NextResponse } from 'next/server';
-import { getForecastScenarios, getForecastDaily, getForecastActuals } from '@/lib/bigquery';
+import { getForecastScenarios, getForecastDaily, getForecastActuals, initializeCurrentClient } from '@/lib/bigquery';
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
+    // Get requested client from header (sent from frontend)
+    const requestedClient = request.headers.get('x-client-id');
+
+    // Initialize with requested client to ensure correct dataset
+    await initializeCurrentClient(requestedClient || undefined);
+
     const [scenarios, daily, actuals] = await Promise.all([
       getForecastScenarios(),
       getForecastDaily(),

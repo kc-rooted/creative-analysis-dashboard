@@ -34,7 +34,12 @@ export default function Dashboard() {
         ...(statusFilter && { status: statusFilter }),
       });
 
-      const response = await fetch(`/api/creatives?${params}`);
+      console.log('[Creative Page] Fetching creatives with client:', currentClient);
+      const response = await fetch(`/api/creatives?${params}`, {
+        headers: {
+          'x-client-id': currentClient,
+        },
+      });
       const data = await response.json();
 
       // Ensure data is an array and deduplicate by content_id
@@ -64,7 +69,12 @@ export default function Dashboard() {
 
   const fetchStats = async () => {
     try {
-      const response = await fetch('/api/stats');
+      console.log('[Creative Page] Fetching stats with client:', currentClient);
+      const response = await fetch('/api/stats', {
+        headers: {
+          'x-client-id': currentClient,
+        },
+      });
       const data = await response.json();
       // Ensure data is an array
       const statsArray = Array.isArray(data) ? data : [];

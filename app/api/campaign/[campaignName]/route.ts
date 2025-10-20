@@ -1,11 +1,17 @@
 import { NextResponse } from 'next/server';
-import { getCampaignIntelligentAnalysis, getCampaignPerformanceTimeseries, getContextualizedCampaignPerformance, getAdDistributionForCampaign, getCampaignAdsList } from '@/lib/bigquery';
+import { getCampaignIntelligentAnalysis, getCampaignPerformanceTimeseries, getContextualizedCampaignPerformance, getAdDistributionForCampaign, getCampaignAdsList, initializeCurrentClient } from '@/lib/bigquery';
 
 export async function GET(
   request: Request,
   { params }: { params: Promise<{ campaignName: string }> }
 ) {
   try {
+    // Get requested client from header (sent from frontend)
+    const requestedClient = request.headers.get('x-client-id');
+
+    // Initialize with requested client to ensure correct dataset
+    await initializeCurrentClient(requestedClient || undefined);
+
     const { campaignName: rawCampaignName } = await params;
     const campaignName = decodeURIComponent(rawCampaignName);
     const { searchParams } = new URL(request.url);

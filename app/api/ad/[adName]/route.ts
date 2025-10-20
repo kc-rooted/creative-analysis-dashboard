@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getAdIntelligentAnalysis, getAdPerformanceTimeseries } from '@/lib/bigquery';
+import { getAdIntelligentAnalysis, getAdPerformanceTimeseries, initializeCurrentClient } from '@/lib/bigquery';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -9,6 +9,12 @@ export async function GET(
   { params }: { params: Promise<{ adName: string }> }
 ) {
   try {
+    // Get requested client from header (sent from frontend)
+    const requestedClient = request.headers.get('x-client-id');
+
+    // Initialize with requested client to ensure correct dataset
+    await initializeCurrentClient(requestedClient || undefined);
+
     const { adName: rawAdName } = await params;
     const adName = decodeURIComponent(rawAdName);
     const searchParams = request.nextUrl.searchParams;

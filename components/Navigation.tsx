@@ -3,10 +3,12 @@
 import { usePathname, useRouter } from 'next/navigation';
 import { MessageSquare, LayoutGrid, Settings, Users, BarChart3 } from 'lucide-react';
 import { UserMenu } from './auth/user-menu';
+import { useClient } from './client-provider';
 
 export function Navigation() {
   const pathname = usePathname();
   const router = useRouter();
+  const { currentClient } = useClient();
 
   const isCreative = pathname === '/' || pathname.startsWith('/creative');
   const isConversation = pathname.startsWith('/conversation');
@@ -109,6 +111,23 @@ export function Navigation() {
               <BarChart3 className="w-4 h-4" />
               DASHBOARDS
             </button>
+
+            <div className="w-px h-8 mx-2" style={{background: 'var(--border-muted)'}}></div>
+
+            {/* Current Client Indicator */}
+            <div
+              onClick={() => router.push('/admin')}
+              className="px-4 py-2 rounded-lg font-medium flex items-center cursor-pointer transition-all duration-200"
+              style={{
+                background: 'var(--bg-elevated)',
+                border: '1px solid var(--border-muted)',
+                color: 'var(--accent-primary)'
+              }}
+              onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--bg-card)')}
+              onMouseLeave={(e) => (e.currentTarget.style.background = 'var(--bg-elevated)')}
+            >
+              {currentClient.toUpperCase()}
+            </div>
 
             <div className="w-px h-8 mx-2" style={{background: 'var(--border-muted)'}}></div>
             

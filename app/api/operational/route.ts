@@ -1,8 +1,14 @@
 import { NextResponse } from 'next/server';
-import { getPutterGripPricingModel, getSwingGripPricingModel } from '@/lib/bigquery';
+import { getPutterGripPricingModel, getSwingGripPricingModel, initializeCurrentClient } from '@/lib/bigquery';
 
 export async function GET(request: Request) {
   try {
+    // Get requested client from header (sent from frontend)
+    const requestedClient = request.headers.get('x-client-id');
+
+    // Initialize with requested client to ensure correct dataset
+    await initializeCurrentClient(requestedClient || undefined);
+
     const [putterGripPricing, swingGripPricing] = await Promise.all([
       getPutterGripPricingModel(),
       getSwingGripPricingModel()

@@ -1,9 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getDeduplicatedCreatives } from '@/lib/bigquery';
+import { getDeduplicatedCreatives, initializeCurrentClient } from '@/lib/bigquery';
 import { mockCreatives } from '@/lib/mock-data';
 
 export async function GET(request: NextRequest) {
   try {
+    // Get requested client from header (sent from frontend)
+    const requestedClient = request.headers.get('x-client-id');
+
+    // Initialize with requested client to ensure correct dataset
+    await initializeCurrentClient(requestedClient || undefined);
+
     const searchParams = request.nextUrl.searchParams;
     const status = searchParams.get('status') || undefined;
     const limit = parseInt(searchParams.get('limit') || '50');
