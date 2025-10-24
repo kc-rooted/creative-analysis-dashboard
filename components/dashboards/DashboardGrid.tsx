@@ -502,10 +502,86 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
       }
     };
 
+    // Export PDF handler
+    const handleExportPDF = async () => {
+      try {
+        const response = await fetch('/api/reports/export', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            clientId: currentClient,
+            reportType: 'monthly',
+            period: overviewPeriod
+          })
+        });
+
+        if (!response.ok) throw new Error('Export failed');
+
+        const blob = await response.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${currentClient}-report-${overviewPeriod}.pdf`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      } catch (error) {
+        console.error('Error exporting PDF:', error);
+        alert('Failed to export PDF. Please try again.');
+      }
+    };
+
+    // Export to Google Docs handler
+    const handleExportGoogleDocs = async () => {
+      try {
+        const response = await fetch('/api/reports/export-google-doc', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            clientId: currentClient,
+            period: overviewPeriod,
+            dashboardData: dashboardData.kpis
+          })
+        });
+
+        const result = await response.json();
+
+        if (!response.ok) {
+          throw new Error(result.details || 'Export failed');
+        }
+
+        // Show success message with link to document
+        alert(`✅ Report exported to Google Docs!\n\nDocument: ${result.fileName}\n\nOpening in new tab...`);
+
+        // Open the Google Doc in a new tab
+        window.open(result.webViewLink, '_blank');
+      } catch (error) {
+        console.error('Error exporting to Google Docs:', error);
+        alert(`Failed to export to Google Docs: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      }
+    };
+
     return (
       <div className="space-y-8">
-        {/* Period Selector */}
-        <div className="flex flex-wrap justify-end gap-2">
+        {/* Period Selector and Export Buttons */}
+        <div className="flex flex-wrap justify-between items-center gap-2">
+          <div className="flex gap-2">
+            <button
+              onClick={handleExportPDF}
+              className="px-4 py-2 text-sm font-medium rounded-lg bg-blue-600 text-white hover:bg-blue-700 transition-all"
+            >
+              📄 Export PDF
+            </button>
+            <button
+              onClick={handleExportGoogleDocs}
+              className="px-4 py-2 text-sm font-medium rounded-lg bg-green-600 text-white hover:bg-green-700 transition-all"
+            >
+              📝 Export to Google Docs
+            </button>
+          </div>
+
+          <div className="flex flex-wrap gap-2">
           <button
             onClick={() => setOverviewPeriod('7d')}
             className={`px-4 py-2 text-sm font-medium rounded-lg transition-all ${
@@ -538,6 +614,7 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
           >
             Year to Date
           </button>
+          </div>
         </div>
 
         {/* Big 5 KPIs - Large Cards */}

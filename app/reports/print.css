@@ -1,0 +1,88 @@
+/* Print-specific styles for reports */
+
+@media print {
+  @page {
+    size: Letter; /* US Letter: 8.5in x 11in */
+    margin: 0.5in;
+  }
+
+  body {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+    background: white !important;
+  }
+
+  /* Keep backgrounds and colors */
+  * {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  /* Prevent page breaks inside important elements */
+  .kpi-card,
+  .report-section {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  /* Force page break before new sections if needed */
+  .page-break-before {
+    page-break-before: always;
+    break-before: page;
+  }
+
+  /* Hide elements that shouldn't print */
+  .no-print {
+    display: none !important;
+  }
+
+  /* Ensure proper spacing */
+  .report-container {
+    padding: 0.5in;
+    max-width: 100%;
+  }
+
+  /* Optimize text for print */
+  body {
+    font-size: 11pt;
+    line-height: 1.4;
+  }
+
+  h1 {
+    font-size: 24pt;
+  }
+
+  h2 {
+    font-size: 18pt;
+  }
+
+  h3 {
+    font-size: 14pt;
+  }
+
+  /* Ensure borders and colors are visible */
+  .border,
+  .border-2,
+  .border-4 {
+    border-color: #000 !important;
+  }
+
+  /* Fix any potential white-on-white issues */
+  .bg-white {
+    background: white !important;
+  }
+
+  .text-white {
+    color: black !important;
+  }
+}
+
+/* Screen-only styles */
+@media screen {
+  .report-container {
+    max-width: 8.5in;
+    margin: 2rem auto;
+    padding: 0.5in;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  }
+}

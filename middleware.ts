@@ -6,11 +6,21 @@ export default auth((req) => {
   const isLoggedIn = !!req.auth
   const isAuthPage = req.nextUrl.pathname.startsWith("/auth")
   const isApiAuthRoute = req.nextUrl.pathname.startsWith("/api/auth")
-  const isPublicFile = req.nextUrl.pathname.startsWith("/_next") || 
+  const isPublicFile = req.nextUrl.pathname.startsWith("/_next") ||
                        req.nextUrl.pathname.includes(".")
+  const isReportRoute = req.nextUrl.pathname.startsWith("/reports")
+
+  // Allow reports route when accessed from localhost (for Puppeteer PDF generation)
+  const isLocalhost = req.headers.get("host")?.includes("localhost") ||
+                     req.headers.get("host")?.includes("127.0.0.1")
 
   // Allow public files and auth API routes
   if (isPublicFile || isApiAuthRoute) {
+    return NextResponse.next()
+  }
+
+  // Allow reports route from localhost (for PDF generation)
+  if (isReportRoute && isLocalhost) {
     return NextResponse.next()
   }
 
