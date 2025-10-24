@@ -46,9 +46,11 @@ export async function GET(request: Request) {
     const revenue_mtd = parseFloat((data.revenue_mtd as any) || '0');
     const revenue_7d = parseFloat((data.revenue_7d as any) || '0');
     const revenue_30d = parseFloat((data.revenue_30d as any) || '0');
+    const revenue_ytd = parseFloat((data.revenue_ytd as any) || '0');
     const blended_spend_mtd = parseFloat((data.blended_spend_mtd as any) || '0');
     const blended_spend_7d = parseFloat((data.blended_spend_7d as any) || '0');
     const blended_spend_30d = parseFloat((data.blended_spend_30d as any) || '0');
+    const blended_spend_ytd = parseFloat((data.blended_spend_ytd as any) || '0');
 
     // Get current month (0-indexed)
     const currentMonth = new Date().getMonth();
@@ -84,6 +86,10 @@ export async function GET(request: Request) {
             sevenDay: {
               value: revenue_7d,
               trend: data.revenue_7d_yoy_growth_pct || 0
+            },
+            yearToDate: {
+              value: revenue_ytd,
+              trend: data.revenue_ytd_yoy_growth_pct || 0
             }
           },
           gaugeValue: revenue_mtd,
@@ -104,6 +110,10 @@ export async function GET(request: Request) {
             sevenDay: {
               value: data.blended_roas_7d || 0,
               trend: data.blended_roas_7d_yoy_growth_pct || 0
+            },
+            yearToDate: {
+              value: data.blended_roas_ytd || 0,
+              trend: data.blended_roas_ytd_yoy_growth_pct || 0
             }
           },
           gaugeValue: data.blended_roas_mtd || 0,
@@ -112,7 +122,8 @@ export async function GET(request: Request) {
           spend: {
             monthToDate: blended_spend_mtd,
             thirtyDay: blended_spend_30d,
-            sevenDay: blended_spend_7d
+            sevenDay: blended_spend_7d,
+            yearToDate: blended_spend_ytd
           }
         },
         ...(hasKlaviyo ? {
@@ -130,6 +141,10 @@ export async function GET(request: Request) {
               sevenDay: {
                 value: data.klaviyo_total_revenue_7d || 0,
                 trend: data.klaviyo_total_revenue_7d_yoy_growth_pct || 0
+              },
+              yearToDate: {
+                value: data.klaviyo_total_revenue_ytd || 0,
+                trend: data.klaviyo_total_revenue_ytd_yoy_growth_pct || 0
               }
             },
             revenuePerSend: data.klaviyo_revenue_per_send_mtd || 0,
@@ -156,6 +171,10 @@ export async function GET(request: Request) {
             sevenDay: {
               value: blended_spend_7d,
               trend: data.blended_spend_7d_yoy_growth_pct || 0
+            },
+            yearToDate: {
+              value: blended_spend_ytd,
+              trend: data.blended_spend_ytd_yoy_growth_pct || 0
             }
           },
           gaugeValue: blended_spend_mtd,
@@ -176,6 +195,10 @@ export async function GET(request: Request) {
             sevenDay: {
               value: parseFloat((data.google_spend_7d as any) || '0'),
               trend: data.google_spend_7d_yoy_growth_pct || 0
+            },
+            yearToDate: {
+              value: parseFloat((data.google_spend_ytd as any) || '0'),
+              trend: data.google_spend_ytd_yoy_growth_pct || 0
             }
           },
           gaugeValue: parseFloat((data.google_spend_mtd as any) || '0'),
@@ -196,6 +219,10 @@ export async function GET(request: Request) {
             sevenDay: {
               value: parseFloat((data.google_revenue_7d as any) || '0'),
               trend: data.google_revenue_7d_yoy_growth_pct || 0
+            },
+            yearToDate: {
+              value: parseFloat((data.google_revenue_ytd as any) || '0'),
+              trend: data.google_revenue_ytd_yoy_growth_pct || 0
             }
           },
           gaugeValue: parseFloat((data.google_revenue_mtd as any) || '0'),
@@ -216,6 +243,10 @@ export async function GET(request: Request) {
             sevenDay: {
               value: data.google_roas_7d || 0,
               trend: data.google_roas_7d_yoy_growth_pct || 0
+            },
+            yearToDate: {
+              value: data.google_roas_ytd || 0,
+              trend: data.google_roas_ytd_yoy_growth_pct || 0
             }
           },
           gaugeValue: data.google_roas_mtd || 0,
@@ -236,6 +267,10 @@ export async function GET(request: Request) {
             sevenDay: {
               value: parseFloat((data.facebook_spend_7d as any) || '0'),
               trend: data.facebook_spend_7d_yoy_growth_pct || 0
+            },
+            yearToDate: {
+              value: parseFloat((data.facebook_spend_ytd as any) || '0'),
+              trend: data.facebook_spend_ytd_yoy_growth_pct || 0
             }
           },
           gaugeValue: parseFloat((data.facebook_spend_mtd as any) || '0'),
@@ -256,6 +291,10 @@ export async function GET(request: Request) {
             sevenDay: {
               value: parseFloat((data.facebook_revenue_7d as any) || '0'),
               trend: data.facebook_revenue_7d_yoy_growth_pct || 0
+            },
+            yearToDate: {
+              value: parseFloat((data.facebook_revenue_ytd as any) || '0'),
+              trend: data.facebook_revenue_ytd_yoy_growth_pct || 0
             }
           },
           gaugeValue: parseFloat((data.facebook_revenue_mtd as any) || '0'),
@@ -276,6 +315,10 @@ export async function GET(request: Request) {
             sevenDay: {
               value: data.facebook_roas_7d || 0,
               trend: data.facebook_roas_7d_yoy_growth_pct || 0
+            },
+            yearToDate: {
+              value: data.facebook_roas_ytd || 0,
+              trend: data.facebook_roas_ytd_yoy_growth_pct || 0
             }
           },
           gaugeValue: data.facebook_roas_mtd || 0,

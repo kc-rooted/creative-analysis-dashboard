@@ -83,7 +83,7 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
   const [operationalLoading, setOperationalLoading] = useState(true);
   const [operationalError, setOperationalError] = useState<string | null>(null);
   const [customPrices, setCustomPrices] = useState<{[key: string]: number}>({});
-  const [overviewPeriod, setOverviewPeriod] = useState<'7d' | 'mtd' | '30d'>('7d');
+  const [overviewPeriod, setOverviewPeriod] = useState<'7d' | 'mtd' | '30d' | 'ytd'>('7d');
   const [forecastData, setForecastData] = useState<any>(null);
   const [forecastLoading, setForecastLoading] = useState(true);
   const [forecastError, setForecastError] = useState<string | null>(null);
@@ -495,6 +495,8 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
           return kpi.periodData.monthToDate;
         case '30d':
           return kpi.periodData.thirtyDay;
+        case 'ytd':
+          return kpi.periodData.yearToDate;
         default:
           return kpi.periodData.sevenDay;
       }
@@ -503,7 +505,7 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
     return (
       <div className="space-y-8">
         {/* Period Selector */}
-        <div className="flex justify-end gap-2">
+        <div className="flex flex-wrap justify-end gap-2">
           <button
             onClick={() => setOverviewPeriod('7d')}
             className={`px-4 py-2 text-sm font-medium rounded-lg transition-all ${
@@ -527,6 +529,14 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
             }`}
           >
             Last 30 Days
+          </button>
+          <button
+            onClick={() => setOverviewPeriod('ytd')}
+            className={`px-4 py-2 text-sm font-medium rounded-lg transition-all ${
+              overviewPeriod === 'ytd' ? 'btn-primary' : 'bg-[var(--bg-elevated)] text-[var(--text-secondary)]'
+            }`}
+          >
+            Year to Date
           </button>
         </div>
 
