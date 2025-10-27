@@ -17,3 +17,14 @@ services:
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
       - GOOGLE_SERVICE_ACCOUNT_KEY=${GOOGLE_SERVICE_ACCOUNT_KEY}
     restart: unless-stopped
+
+  bayesian-calculator:
+    build: ./bayesian-calculator
+    environment:
+      - GOOGLE_CLOUD_PROJECT_ID=${GOOGLE_CLOUD_PROJECT_ID}
+      - GOOGLE_APPLICATION_CREDENTIALS=/app/service-account.json
+    volumes:
+      - ./service-account.json:/app/service-account.json:ro
+    restart: "no"  # Manual run or cron-based
+    profiles:
+      - tools  # Only start when explicitly requested

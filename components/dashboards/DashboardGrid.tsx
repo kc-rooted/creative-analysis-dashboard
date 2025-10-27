@@ -16,6 +16,7 @@ import CustomerCLVDashboard from './widgets/CustomerCLVDashboard';
 import CustomerOverviewKPIs from './widgets/CustomerOverviewKPIs';
 import LTVIntelligence from './widgets/LTVIntelligence';
 import CustomerJourneyAnalysis from './widgets/CustomerJourneyAnalysis';
+import MetaAdsOptimizationDashboard from './MetaAdsOptimizationDashboard';
 import { Loader2, FrownIcon } from 'lucide-react';
 import { formatCurrency as baseFomatCurrency, formatNumber } from '@/lib/format';
 import { LineChart, Line, CartesianGrid, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer } from 'recharts';
@@ -3638,6 +3639,11 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
         </div>
       </div>
     );
+  }
+
+  // Meta Ads Optimization section
+  if (section === 'meta-ads-optimization') {
+    return <MetaAdsOptimizationDashboard />;
   }
 
   // For other sections, show simplified layout
