@@ -45,7 +45,7 @@ export default function AdSetCard({
   const getProbabilityColor = (prob: number) => {
     if (prob >= 0.9) return '#22c55e'; // Green
     if (prob >= 0.8) return '#f59e0b'; // Yellow
-    return '#ef4444'; // Red
+    return '#b55c5c'; // Red
   };
 
   const probBestColor = getProbabilityColor(data.bayesian.probability_best);
@@ -91,7 +91,7 @@ export default function AdSetCard({
                 {data.roas.toFixed(2)}x
               </div>
               <div className={`inline-flex items-center text-xs font-medium`}
-                style={{ color: data.roas_delta > 0 ? '#22c55e' : '#ef4444' }}
+                style={{ color: data.roas_delta > 0 ? '#22c55e' : '#b55c5c' }}
               >
                 {data.roas_delta > 0 ? (
                   <ArrowUp className="h-3 w-3 mr-1" />
@@ -226,7 +226,7 @@ export default function AdSetCard({
               <div className="text-xs font-medium" style={{ color: 'var(--text-muted)' }}>
                 P(Best Ad in Campaign)
               </div>
-              <div className="text-xs" style={{ color: data.bayesian.prob_best_delta > 0 ? '#22c55e' : '#ef4444' }}>
+              <div className="text-xs" style={{ color: data.bayesian.prob_best_delta > 0 ? '#22c55e' : '#b55c5c' }}>
                 {data.bayesian.prob_best_delta > 0 ? '↑' : '↓'} {Math.abs(data.bayesian.prob_best_delta * 100).toFixed(1)}%
               </div>
             </div>

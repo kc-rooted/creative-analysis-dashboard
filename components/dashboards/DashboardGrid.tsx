@@ -566,8 +566,8 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
     return (
       <div className="space-y-8">
         {/* Period Selector and Export Buttons */}
-        <div className="flex flex-wrap justify-between items-center gap-2">
-          <div className="flex gap-2">
+        <div className="flex flex-wrap justify-end items-center gap-2">
+          <div className="flex gap-2 export-buttons">
             <button
               onClick={handleExportPDF}
               className="px-4 py-2 text-sm font-medium rounded-lg bg-blue-600 text-white hover:bg-blue-700 transition-all"
@@ -619,7 +619,7 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
         </div>
 
         {/* Big 5 KPIs - Large Cards */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-5 gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-4 gap-6">
           {/* Total Revenue */}
           <KPICard
             title="TOTAL REVENUE"
@@ -782,6 +782,102 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
             </div>
           </div>
         </div>
+
+        {/* Budget Pacing Row - Only for HB */}
+        {currentClient === 'hb' && dashboardData.kpis.revenuePacing && (
+          <div className="space-y-4">
+            <h2 className="text-xl font-semibold mb-4" style={{color: 'var(--text-primary)'}}>
+              Monthly Budget Pacing & Forecast
+            </h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
+              {/* Revenue Pacing */}
+              <KPICard
+                title="REVENUE PACING"
+                currentValue={formatCurrency(dashboardData.kpis.revenuePacing.current)}
+                trend={((dashboardData.kpis.revenuePacing.current - dashboardData.kpis.revenuePacing.target) / dashboardData.kpis.revenuePacing.target) * 100}
+                subtitle={`${dashboardData.kpis.revenuePacing.daysRemaining} days remaining\n${dashboardData.kpis.revenuePacing.probabilityHitTarget.toFixed(1)}% probability to hit target`}
+                gaugeValue={dashboardData.kpis.revenuePacing.gaugeValue}
+                gaugeMin={dashboardData.kpis.revenuePacing.gaugeMin}
+                gaugeMax={dashboardData.kpis.revenuePacing.gaugeMax}
+                gaugeTarget={dashboardData.kpis.revenuePacing.gaugeTarget}
+                gaugeLabel={`${dashboardData.kpis.revenuePacing.attainmentPct.toFixed(1)}% of ${formatCurrency(dashboardData.kpis.revenuePacing.target)} target`}
+                status={
+                  dashboardData.kpis.revenuePacing.riskLevel === 'LOW_RISK' ? 'excellent' :
+                  dashboardData.kpis.revenuePacing.riskLevel === 'MEDIUM_RISK' ? 'good' :
+                  dashboardData.kpis.revenuePacing.riskLevel === 'HIGH_RISK' ? 'monitor' : 'warning'
+                }
+                dateRange={dateRange}
+              />
+
+              {/* ROAS Pacing */}
+              <KPICard
+                title="ROAS PACING"
+                currentValue={`${dashboardData.kpis.roasPacing.current.toFixed(2)}x`}
+                trend={((dashboardData.kpis.roasPacing.current - dashboardData.kpis.roasPacing.target) / dashboardData.kpis.roasPacing.target) * 100}
+                subtitle={`Target: ${dashboardData.kpis.roasPacing.target.toFixed(1)}x\n${dashboardData.kpis.roasPacing.probabilityHitTarget.toFixed(1)}% probability to hit target`}
+                gaugeValue={dashboardData.kpis.roasPacing.gaugeValue}
+                gaugeMin={dashboardData.kpis.roasPacing.gaugeMin}
+                gaugeMax={dashboardData.kpis.roasPacing.gaugeMax}
+                gaugeTarget={dashboardData.kpis.roasPacing.gaugeTarget}
+                gaugeLabel={`Forecast: ${dashboardData.kpis.roasPacing.p50Forecast.toFixed(2)}x (P50)`}
+                status={
+                  dashboardData.kpis.roasPacing.riskLevel === 'LOW_RISK' ? 'excellent' :
+                  dashboardData.kpis.roasPacing.riskLevel === 'MEDIUM_RISK' ? 'good' :
+                  dashboardData.kpis.roasPacing.riskLevel === 'HIGH_RISK' ? 'monitor' : 'warning'
+                }
+                dateRange={dateRange}
+              />
+
+              {/* Budget Performance */}
+              <KPICard
+                title="BUDGET PERFORMANCE"
+                currentValue={formatCurrency(dashboardData.kpis.budgetPerformance.mtdSpend)}
+                trend={dashboardData.kpis.budgetPerformance.performanceVsExpectedPct}
+                subtitle={`Performance Ratio: ${dashboardData.kpis.budgetPerformance.performanceRatio.toFixed(2)}x\n${dashboardData.kpis.budgetPerformance.probabilityHitBothTargets.toFixed(1)}% chance to hit both targets`}
+                gaugeValue={dashboardData.kpis.budgetPerformance.gaugeValue}
+                gaugeMin={dashboardData.kpis.budgetPerformance.gaugeMin}
+                gaugeMax={dashboardData.kpis.budgetPerformance.gaugeMax}
+                gaugeTarget={dashboardData.kpis.budgetPerformance.gaugeTarget}
+                gaugeLabel={`${dashboardData.kpis.budgetPerformance.performanceVsExpectedPct > 0 ? '+' : ''}${dashboardData.kpis.budgetPerformance.performanceVsExpectedPct.toFixed(1)}% vs expected pace`}
+                status={
+                  Math.abs(dashboardData.kpis.budgetPerformance.performanceRatio - 1.0) < 0.05 ? 'excellent' :
+                  Math.abs(dashboardData.kpis.budgetPerformance.performanceRatio - 1.0) < 0.10 ? 'good' :
+                  Math.abs(dashboardData.kpis.budgetPerformance.performanceRatio - 1.0) < 0.15 ? 'monitor' : 'warning'
+                }
+                dateRange={dateRange}
+              />
+
+              {/* Forecast Confidence */}
+              <div className="card p-6">
+                <div className="space-y-6">
+                  {/* Header */}
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-sm font-medium" style={{color: 'var(--text-muted)'}}>
+                      FORECAST CONFIDENCE
+                    </h3>
+                  </div>
+
+                  {/* Main Value */}
+                  <div className="space-y-3">
+                    <div className="text-4xl font-bold" style={{color: 'var(--text-primary)'}}>
+                      {dashboardData.kpis.forecastConfidence.gaugeValue.toFixed(1)}%
+                    </div>
+
+                    {/* Subtitle */}
+                    <div className="text-sm" style={{color: 'var(--text-secondary)'}}>
+                      P10/P50/P90: {formatCurrency(dashboardData.kpis.forecastConfidence.p10Revenue, 0)} / {formatCurrency(dashboardData.kpis.forecastConfidence.p50Revenue, 0)} / {formatCurrency(dashboardData.kpis.forecastConfidence.p90Revenue, 0)}
+                    </div>
+
+                    {/* Simulations */}
+                    <div className="text-xs" style={{color: 'var(--text-muted)'}}>
+                      {dashboardData.kpis.forecastConfidence.numSimulations.toLocaleString()} simulations
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Key Charts */}
         <div className="space-y-6">
@@ -977,8 +1073,8 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
                     <span
                       className="inline-block px-3 py-1 rounded-full text-xs font-medium"
                       style={{
-                        background: dashboardData.kpis.businessHealth.revenueTrend === 'REVENUE_GROWING' ? 'rgba(34, 197, 94, 0.1)' : dashboardData.kpis.businessHealth.revenueTrend === 'REVENUE_DECLINING' ? 'rgba(239, 68, 68, 0.1)' : 'rgba(245, 158, 11, 0.1)',
-                        color: dashboardData.kpis.businessHealth.revenueTrend === 'REVENUE_GROWING' ? '#22c55e' : dashboardData.kpis.businessHealth.revenueTrend === 'REVENUE_DECLINING' ? '#ef4444' : '#f59e0b'
+                        background: dashboardData.kpis.businessHealth.revenueTrend === 'REVENUE_GROWING' ? 'rgba(34, 197, 94, 0.1)' : dashboardData.kpis.businessHealth.revenueTrend === 'REVENUE_DECLINING' ? 'rgba(181, 92, 92, 0.1)' : 'rgba(245, 158, 11, 0.1)',
+                        color: dashboardData.kpis.businessHealth.revenueTrend === 'REVENUE_GROWING' ? '#22c55e' : dashboardData.kpis.businessHealth.revenueTrend === 'REVENUE_DECLINING' ? '#b55c5c' : '#f59e0b'
                       }}
                     >
                       {dashboardData.kpis.businessHealth.revenueTrend.replace('REVENUE_', '')}
@@ -986,8 +1082,8 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
                     <span
                       className="inline-block px-3 py-1 rounded-full text-xs font-medium"
                       style={{
-                        background: dashboardData.kpis.businessHealth.demandTrend === 'DEMAND_GROWING' ? 'rgba(34, 197, 94, 0.1)' : dashboardData.kpis.businessHealth.demandTrend === 'DEMAND_DECLINING' ? 'rgba(239, 68, 68, 0.1)' : 'rgba(245, 158, 11, 0.1)',
-                        color: dashboardData.kpis.businessHealth.demandTrend === 'DEMAND_GROWING' ? '#22c55e' : dashboardData.kpis.businessHealth.demandTrend === 'DEMAND_DECLINING' ? '#ef4444' : '#f59e0b'
+                        background: dashboardData.kpis.businessHealth.demandTrend === 'DEMAND_GROWING' ? 'rgba(34, 197, 94, 0.1)' : dashboardData.kpis.businessHealth.demandTrend === 'DEMAND_DECLINING' ? 'rgba(181, 92, 92, 0.1)' : 'rgba(245, 158, 11, 0.1)',
+                        color: dashboardData.kpis.businessHealth.demandTrend === 'DEMAND_GROWING' ? '#22c55e' : dashboardData.kpis.businessHealth.demandTrend === 'DEMAND_DECLINING' ? '#b55c5c' : '#f59e0b'
                       }}
                     >
                       {dashboardData.kpis.businessHealth.demandTrend.replace('DEMAND_', '')} DEMAND
@@ -1001,7 +1097,7 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
                         className="absolute top-0 left-0 h-3 rounded-full transition-all duration-500"
                         style={{
                           width: `${(dashboardData.kpis.businessHealth.healthIndex / 100) * 100}%`,
-                          background: dashboardData.kpis.businessHealth.healthIndex >= 70 ? 'linear-gradient(90deg, var(--accent-primary), #22c55e)' : dashboardData.kpis.businessHealth.healthIndex >= 40 ? 'linear-gradient(90deg, var(--accent-primary), #f59e0b)' : 'linear-gradient(90deg, var(--accent-primary), #ef4444)'
+                          background: dashboardData.kpis.businessHealth.healthIndex >= 70 ? 'linear-gradient(90deg, var(--accent-primary), #22c55e)' : dashboardData.kpis.businessHealth.healthIndex >= 40 ? 'linear-gradient(90deg, var(--accent-primary), #f59e0b)' : 'linear-gradient(90deg, var(--accent-primary), #b55c5c)'
                         }}
                       />
                     </div>
@@ -1040,8 +1136,8 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
                     <span
                       className="inline-block px-2 py-1 rounded text-xs font-medium"
                       style={{
-                        background: dashboardData.kpis.searchDemand.trend === 'DEMAND_GROWING' ? 'rgba(34, 197, 94, 0.1)' : dashboardData.kpis.searchDemand.trend === 'DEMAND_DECLINING' ? 'rgba(239, 68, 68, 0.1)' : 'rgba(245, 158, 11, 0.1)',
-                        color: dashboardData.kpis.searchDemand.trend === 'DEMAND_GROWING' ? '#22c55e' : dashboardData.kpis.searchDemand.trend === 'DEMAND_DECLINING' ? '#ef4444' : '#f59e0b'
+                        background: dashboardData.kpis.searchDemand.trend === 'DEMAND_GROWING' ? 'rgba(34, 197, 94, 0.1)' : dashboardData.kpis.searchDemand.trend === 'DEMAND_DECLINING' ? 'rgba(181, 92, 92, 0.1)' : 'rgba(245, 158, 11, 0.1)',
+                        color: dashboardData.kpis.searchDemand.trend === 'DEMAND_GROWING' ? '#22c55e' : dashboardData.kpis.searchDemand.trend === 'DEMAND_DECLINING' ? '#b55c5c' : '#f59e0b'
                       }}
                     >
                       {dashboardData.kpis.searchDemand.trend.replace('DEMAND_', '')}
@@ -1110,8 +1206,8 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
                     <span
                       className="inline-block px-2 py-1 rounded text-xs font-medium"
                       style={{
-                        background: dashboardData.kpis.revenueMomentum.trend === 'REVENUE_GROWING' ? 'rgba(34, 197, 94, 0.1)' : dashboardData.kpis.revenueMomentum.trend === 'REVENUE_DECLINING' ? 'rgba(239, 68, 68, 0.1)' : 'rgba(245, 158, 11, 0.1)',
-                        color: dashboardData.kpis.revenueMomentum.trend === 'REVENUE_GROWING' ? '#22c55e' : dashboardData.kpis.revenueMomentum.trend === 'REVENUE_DECLINING' ? '#ef4444' : '#f59e0b'
+                        background: dashboardData.kpis.revenueMomentum.trend === 'REVENUE_GROWING' ? 'rgba(34, 197, 94, 0.1)' : dashboardData.kpis.revenueMomentum.trend === 'REVENUE_DECLINING' ? 'rgba(181, 92, 92, 0.1)' : 'rgba(245, 158, 11, 0.1)',
+                        color: dashboardData.kpis.revenueMomentum.trend === 'REVENUE_GROWING' ? '#22c55e' : dashboardData.kpis.revenueMomentum.trend === 'REVENUE_DECLINING' ? '#b55c5c' : '#f59e0b'
                       }}
                     >
                       {dashboardData.kpis.revenueMomentum.trend.replace('REVENUE_', '')}
@@ -1227,7 +1323,7 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
                   className="h-1 rounded-full"
                   style={{
                     width: `${Math.min(Math.abs(bundle.tofuScore || 0) * 20, 100)}%`,
-                    background: (bundle.tofuScore || 0) >= 0 ? '#22c55e' : '#ef4444'
+                    background: (bundle.tofuScore || 0) >= 0 ? '#22c55e' : '#b55c5c'
                   }}
                 />
               </div>
@@ -1240,7 +1336,7 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
                   className="h-1 rounded-full"
                   style={{
                     width: `${Math.min(Math.abs(bundle.mofuScore || 0) * 20, 100)}%`,
-                    background: (bundle.mofuScore || 0) >= 0 ? '#22c55e' : '#ef4444'
+                    background: (bundle.mofuScore || 0) >= 0 ? '#22c55e' : '#b55c5c'
                   }}
                 />
               </div>
@@ -1253,7 +1349,7 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
                   className="h-1 rounded-full"
                   style={{
                     width: `${Math.min(Math.abs(bundle.bofuScore || 0) * 20, 100)}%`,
-                    background: (bundle.bofuScore || 0) >= 0 ? '#22c55e' : '#ef4444'
+                    background: (bundle.bofuScore || 0) >= 0 ? '#22c55e' : '#b55c5c'
                   }}
                 />
               </div>
@@ -1809,8 +1905,8 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
                           <span
                             className="px-2 py-1 rounded text-xs font-medium"
                             style={{
-                              background: segment.overlapEfficiency.includes('Positive') ? 'rgba(34, 197, 94, 0.1)' : segment.overlapEfficiency.includes('Negative') ? 'rgba(239, 68, 68, 0.1)' : 'rgba(137, 205, 238, 0.1)',
-                              color: segment.overlapEfficiency.includes('Positive') ? '#22c55e' : segment.overlapEfficiency.includes('Negative') ? '#ef4444' : 'var(--accent-primary)'
+                              background: segment.overlapEfficiency.includes('Positive') ? 'rgba(34, 197, 94, 0.1)' : segment.overlapEfficiency.includes('Negative') ? 'rgba(181, 92, 92, 0.1)' : 'rgba(137, 205, 238, 0.1)',
+                              color: segment.overlapEfficiency.includes('Positive') ? '#22c55e' : segment.overlapEfficiency.includes('Negative') ? '#b55c5c' : 'var(--accent-primary)'
                             }}
                           >
                             {segment.overlapEfficiency}
@@ -1899,8 +1995,8 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
                             <span
                               className="px-2 py-1 rounded text-xs font-medium"
                               style={{
-                                background: segment.overlapEfficiency.includes('Positive') ? 'rgba(34, 197, 94, 0.1)' : segment.overlapEfficiency.includes('Negative') ? 'rgba(239, 68, 68, 0.1)' : 'rgba(137, 205, 238, 0.1)',
-                                color: segment.overlapEfficiency.includes('Positive') ? '#22c55e' : segment.overlapEfficiency.includes('Negative') ? '#ef4444' : 'var(--accent-primary)'
+                                background: segment.overlapEfficiency.includes('Positive') ? 'rgba(34, 197, 94, 0.1)' : segment.overlapEfficiency.includes('Negative') ? 'rgba(181, 92, 92, 0.1)' : 'rgba(137, 205, 238, 0.1)',
+                                color: segment.overlapEfficiency.includes('Positive') ? '#22c55e' : segment.overlapEfficiency.includes('Negative') ? '#b55c5c' : 'var(--accent-primary)'
                               }}
                             >
                               {segment.overlapEfficiency}
@@ -3029,7 +3125,7 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
           <div className="card p-6">
             <div className="text-sm mb-2" style={{color: 'var(--text-muted)'}}>TOTAL REVENUE POTENTIAL</div>
-            <div className="text-3xl font-bold" style={{color: totalRevenuePotential >= 0 ? '#22c55e' : '#ef4444'}}>
+            <div className="text-3xl font-bold" style={{color: totalRevenuePotential >= 0 ? '#22c55e' : '#b55c5c'}}>
               {formatCurrency(totalRevenuePotential)}
             </div>
             <div className="text-sm mt-2" style={{color: 'var(--text-muted)'}}>With elasticity-adjusted pricing</div>
@@ -3037,7 +3133,7 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
 
           <div className="card p-6">
             <div className="text-sm mb-2" style={{color: 'var(--text-muted)'}}>PUTTER GRIPS OPPORTUNITY</div>
-            <div className="text-3xl font-bold" style={{color: totalPutterRevenuePotential >= 0 ? '#22c55e' : '#ef4444'}}>
+            <div className="text-3xl font-bold" style={{color: totalPutterRevenuePotential >= 0 ? '#22c55e' : '#b55c5c'}}>
               {formatCurrency(totalPutterRevenuePotential)}
             </div>
             <div className="text-sm mt-2" style={{color: 'var(--text-muted)'}}>Avg price change: {avgPutterPriceChange.toFixed(1)}%</div>
@@ -3045,7 +3141,7 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
 
           <div className="card p-6">
             <div className="text-sm mb-2" style={{color: 'var(--text-muted)'}}>SWING GRIPS OPPORTUNITY</div>
-            <div className="text-3xl font-bold" style={{color: totalSwingRevenuePotential >= 0 ? '#22c55e' : '#ef4444'}}>
+            <div className="text-3xl font-bold" style={{color: totalSwingRevenuePotential >= 0 ? '#22c55e' : '#b55c5c'}}>
               {formatCurrency(totalSwingRevenuePotential)}
             </div>
             <div className="text-sm mt-2" style={{color: 'var(--text-muted)'}}>Avg price change: {avgSwingPriceChange.toFixed(1)}%</div>
@@ -3105,16 +3201,16 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
                             }}
                           />
                         </td>
-                        <td className="text-right py-3 px-2 font-semibold" style={{color: projection.priceChangePct > 0 ? '#22c55e' : projection.priceChangePct < 0 ? '#ef4444' : 'var(--text-primary)'}}>
+                        <td className="text-right py-3 px-2 font-semibold" style={{color: projection.priceChangePct > 0 ? '#22c55e' : projection.priceChangePct < 0 ? '#b55c5c' : 'var(--text-primary)'}}>
                           {projection.priceChangePct > 0 ? '+' : ''}{projection.priceChangePct.toFixed(1)}%
                         </td>
-                        <td className="text-right py-3 px-2 font-semibold" style={{color: projection.demandChangePct > 0 ? '#22c55e' : projection.demandChangePct < 0 ? '#ef4444' : 'var(--text-primary)'}}>
+                        <td className="text-right py-3 px-2 font-semibold" style={{color: projection.demandChangePct > 0 ? '#22c55e' : projection.demandChangePct < 0 ? '#b55c5c' : 'var(--text-primary)'}}>
                           {projection.demandChangePct > 0 ? '+' : ''}{projection.demandChangePct.toFixed(1)}%
                         </td>
                         <td className="text-right py-3 px-2" style={{color: 'var(--text-primary)'}}>
                           {Math.round(projection.projectedUnits).toLocaleString()}
                         </td>
-                        <td className="text-right py-3 px-2 font-semibold" style={{color: projection.revenueChange >= 0 ? '#22c55e' : '#ef4444'}}>
+                        <td className="text-right py-3 px-2 font-semibold" style={{color: projection.revenueChange >= 0 ? '#22c55e' : '#b55c5c'}}>
                           {formatCurrency(projection.revenueChange)}
                         </td>
                       </tr>
@@ -3151,13 +3247,13 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
                       <td className="py-3 px-2" style={{color: 'var(--text-primary)'}}>{item.title}</td>
                       <td className="text-right py-3 px-2" style={{color: 'var(--text-primary)'}}>{formatCurrency(item.currentAvgPrice)}</td>
                       <td className="text-right py-3 px-2" style={{color: 'var(--text-primary)'}}>{(item.currentUnitsSold || 0).toLocaleString()}</td>
-                      <td className="text-right py-3 px-2 font-semibold" style={{color: (item.priceChangePct || 0) > 0 ? '#22c55e' : '#ef4444'}}>
+                      <td className="text-right py-3 px-2 font-semibold" style={{color: (item.priceChangePct || 0) > 0 ? '#22c55e' : '#b55c5c'}}>
                         {(item.priceChangePct || 0) > 0 ? '+' : ''}{(item.priceChangePct || 0).toFixed(1)}%
                       </td>
-                      <td className="text-right py-3 px-2 font-semibold" style={{color: (item.demandChangePct || 0) > 0 ? '#22c55e' : '#ef4444'}}>
+                      <td className="text-right py-3 px-2 font-semibold" style={{color: (item.demandChangePct || 0) > 0 ? '#22c55e' : '#b55c5c'}}>
                         {(item.demandChangePct || 0) > 0 ? '+' : ''}{(item.demandChangePct || 0).toFixed(1)}%
                       </td>
-                      <td className="text-right py-3 px-2 font-semibold" style={{color: (item.revenueChangeWithElasticity || 0) >= 0 ? '#22c55e' : '#ef4444'}}>
+                      <td className="text-right py-3 px-2 font-semibold" style={{color: (item.revenueChangeWithElasticity || 0) >= 0 ? '#22c55e' : '#b55c5c'}}>
                         {formatCurrency(item.revenueChangeWithElasticity)}
                       </td>
                       <td className="py-3 px-2 text-sm" style={{color: 'var(--text-secondary)'}}>{item.riskCategory}</td>
@@ -3245,7 +3341,7 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
                   const percentage = 20 + ((data.total - minTotal) / (maxTotal - minTotal)) * 80;
 
                   const getColor = (name: string) => {
-                    if (name === 'conservative') return '#ef4444';
+                    if (name === 'conservative') return '#b55c5c';
                     if (name === 'forecast') return '#f59e0b';
                     if (name === 'optimistic') return '#22c55e';
                     if (name === 'stretchGoal') return '#10b981';
@@ -3302,7 +3398,7 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
                   const percentage = 20 + ((data.total - minTotal) / (maxTotal - minTotal)) * 80;
 
                   const getColor = (name: string) => {
-                    if (name === 'conservative') return '#ef4444';
+                    if (name === 'conservative') return '#b55c5c';
                     if (name === 'forecast') return '#f59e0b';
                     if (name === 'optimistic') return '#22c55e';
                     if (name === 'stretchGoal') return '#10b981';

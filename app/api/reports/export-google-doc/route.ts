@@ -6,7 +6,7 @@ import * as path from 'path';
 import * as os from 'os';
 
 // Configuration for Google Drive folder and sharing
-const REPORTS_FOLDER_NAME = 'Rooted Analytics Reports';
+const REPORTS_FOLDER_ID = '1rR77jye0X8ZO2tXWLSHw2JJ4eU6u-ebG'; // Shared folder with service account
 const ORGANIZATION_DOMAIN = 'rootedsolutions.co';
 const OWNER_EMAIL = process.env.GOOGLE_WORKSPACE_OWNER_EMAIL || 'kane@rootedsolutions.co';
 
@@ -59,33 +59,18 @@ export async function POST(request: Request) {
 
     console.log('[Google Docs Export] Generated DOCX at:', tempFilePath);
 
-    // Step 3: Find the "Rooted Analytics Reports" folder
-    // This folder should be in the owner's Drive with service account having Editor access
-    const folderSearchResponse = await drive.files.list({
-      q: `name='${REPORTS_FOLDER_NAME}' and mimeType='application/vnd.google-apps.folder' and trashed=false`,
-      fields: 'files(id, name)',
-      pageSize: 1,
-    });
+    // Step 3: Use the pre-configured shared folder
+    const folderId = REPORTS_FOLDER_ID;
+    console.log('[Google Docs Export] Using shared folder:', folderId);
 
-    let folderId: string | undefined;
-    if (folderSearchResponse.data.files && folderSearchResponse.data.files.length > 0) {
-      folderId = folderSearchResponse.data.files[0].id!;
-      console.log('[Google Docs Export] Using existing folder:', folderId);
-    } else {
-      console.log('[Google Docs Export] WARNING: Folder not found. File will be created in root. Run setup script first!');
-    }
-
-    // Step 4: Upload DOCX to the folder (or root if folder not found)
+    // Step 4: Upload DOCX to the folder
     const fileName = `${clientId.toUpperCase()} - Performance Report - ${getPeriodLabel(period)} - ${new Date().toLocaleDateString()}`;
 
     const fileMetadata: any = {
       name: fileName,
       mimeType: 'application/vnd.google-apps.document', // Auto-convert to Google Docs
+      parents: [folderId],
     };
-
-    if (folderId) {
-      fileMetadata.parents = [folderId];
-    }
 
     const media = {
       mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
@@ -96,6 +81,7 @@ export async function POST(request: Request) {
       requestBody: fileMetadata,
       media: media,
       fields: 'id, name, webViewLink',
+      supportsAllDrives: true,
     });
 
     const docId = uploadResponse.data.id!;

@@ -100,7 +100,7 @@ export default function ConversationPage() {
         
         {/* Display error state */}
         {status === 'error' && error && (
-          <div className="card px-4 py-3 rounded mb-4 border" style={{borderColor: 'rgba(239, 68, 68, 0.5)', background: 'rgba(239, 68, 68, 0.1)'}}>
+          <div className="card px-4 py-3 rounded mb-4 border" style={{borderColor: 'rgba(181, 92, 92, 0.5)', background: 'rgba(181, 92, 92, 0.1)'}}>
             {error.message?.includes('Overloaded') || (error as any)?.type === 'overloaded_error' ? (
               <>
                 <strong style={{color: 'var(--text-primary)'}}>⚠️ Service Temporarily Overloaded</strong>
@@ -237,7 +237,7 @@ export default function ConversationPage() {
                   ? 'border-l-4' 
                   : ''
               }`}
-              style={hasOverloadError ? {borderColor: 'rgba(239, 68, 68, 0.5)'} : {}}
+              style={hasOverloadError ? {borderColor: 'rgba(181, 92, 92, 0.5)'} : {}}
               key={message.id}
             >
               {message.role === 'user' && (

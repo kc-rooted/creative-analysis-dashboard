@@ -191,7 +191,7 @@ export default function CustomerOverviewKPIs({ data }: CustomerOverviewKPIsProps
                   className="h-3 rounded-full transition-all duration-500"
                   style={{
                     width: `${Math.min(churnRiskPercent, 100)}%`,
-                    background: 'linear-gradient(90deg, #f59e0b, #ef4444)'
+                    background: 'linear-gradient(90deg, #f59e0b, #b55c5c)'
                   }}
                 />
               </div>

@@ -1,7 +1,7 @@
 'use client';
 
 import { usePathname, useRouter } from 'next/navigation';
-import { MessageSquare, LayoutGrid, Settings, Users, BarChart3 } from 'lucide-react';
+import { MessageSquare, LayoutGrid, Settings, Users, BarChart3, FileText } from 'lucide-react';
 import { UserMenu } from './auth/user-menu';
 import { useClient } from './client-provider';
 
@@ -14,6 +14,7 @@ export function Navigation() {
   const isConversation = pathname.startsWith('/conversation');
   const isInfluencer = pathname.startsWith('/influencer');
   const isDashboards = pathname.startsWith('/dashboards');
+  const isReports = pathname.startsWith('/reports');
   const isAdmin = pathname.startsWith('/admin');
 
   return (
@@ -110,6 +111,23 @@ export function Navigation() {
             >
               <BarChart3 className="w-4 h-4" />
               DASHBOARDS
+            </button>
+
+            <button
+              onClick={() => router.push('/reports')}
+              className={`px-4 py-2 rounded-lg font-medium transition-all duration-200 flex items-center gap-2 ${
+                isReports ? 'btn-primary' : ''
+              }`}
+              style={!isReports ? {
+                background: 'var(--bg-elevated)',
+                border: '1px solid var(--border-muted)',
+                color: 'var(--text-secondary)'
+              } : {}}
+              onMouseEnter={(e) => !isReports && (e.currentTarget.style.background = 'var(--bg-card)')}
+              onMouseLeave={(e) => !isReports && (e.currentTarget.style.background = 'var(--bg-elevated)')}
+            >
+              <FileText className="w-4 h-4" />
+              REPORTS
             </button>
 
             <div className="w-px h-8 mx-2" style={{background: 'var(--border-muted)'}}></div>

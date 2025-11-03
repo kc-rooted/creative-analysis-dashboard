@@ -41,9 +41,9 @@ function SignInComponent() {
         
         {error === "AccessDenied" && (
           <div className="px-4 py-3 rounded-lg" style={{
-            background: 'rgba(239, 68, 68, 0.1)',
-            border: '1px solid rgba(239, 68, 68, 0.3)',
-            color: '#ef4444'
+            background: 'rgba(181, 92, 92, 0.1)',
+            border: '1px solid rgba(181, 92, 92, 0.3)',
+            color: '#b55c5c'
           }}>
             Access denied. Only @rootedsolutions.co emails are allowed.
           </div>
@@ -51,9 +51,9 @@ function SignInComponent() {
         
         {error && error !== "AccessDenied" && (
           <div className="px-4 py-3 rounded-lg" style={{
-            background: 'rgba(239, 68, 68, 0.1)',
-            border: '1px solid rgba(239, 68, 68, 0.3)',
-            color: '#ef4444'
+            background: 'rgba(181, 92, 92, 0.1)',
+            border: '1px solid rgba(181, 92, 92, 0.3)',
+            color: '#b55c5c'
           }}>
             An error occurred during sign in. Please try again.
           </div>

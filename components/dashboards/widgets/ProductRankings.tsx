@@ -62,11 +62,11 @@ export default function ProductRankings({ data }: ProductRankingsProps) {
                   style={{
                     backgroundColor:
                       item.trendStatus === 'Growing' ? '#22c55e20' :
-                      item.trendStatus === 'Declining' ? '#ef444420' :
+                      item.trendStatus === 'Declining' ? '#b55c5c20' :
                       'var(--border-muted)',
                     color:
                       item.trendStatus === 'Growing' ? '#22c55e' :
-                      item.trendStatus === 'Declining' ? '#ef4444' :
+                      item.trendStatus === 'Declining' ? '#b55c5c' :
                       'var(--text-muted)'
                   }}
                 >

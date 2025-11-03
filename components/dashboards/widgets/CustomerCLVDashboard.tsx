@@ -49,7 +49,7 @@ export default function CustomerCLVDashboard({ data }: CustomerCLVDashboardProps
 
   // Get gauge color based on percentage
   const getGaugeColor = (percent: number) => {
-    if (percent >= 125) return '#ef4444'; // Red
+    if (percent >= 125) return '#b55c5c'; // Red
     if (percent >= 100) return '#f59e0b'; // Orange
     return '#10b981'; // Green
   };
@@ -133,14 +133,14 @@ export default function CustomerCLVDashboard({ data }: CustomerCLVDashboardProps
       <div
         className="p-6 rounded-lg"
         style={{
-          backgroundColor: '#ef444420',
-          border: '2px solid #ef4444'
+          backgroundColor: '#b55c5c20',
+          border: '2px solid #b55c5c'
         }}
       >
         <div className="flex items-start gap-3 mb-4">
           <span className="text-2xl">🚨</span>
           <div>
-            <h4 className="text-sm font-bold mb-1" style={{color: '#ef4444'}}>
+            <h4 className="text-sm font-bold mb-1" style={{color: '#b55c5c'}}>
               CHURN ALERT
             </h4>
             <p className="text-sm" style={{color: 'var(--text-primary)'}}>

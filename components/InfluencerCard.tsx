@@ -28,7 +28,7 @@ export function InfluencerCard({ influencer, onEdit, onDelete }: InfluencerCardP
       case 'instagram':
         return '#e11d48';
       case 'youtube':
-        return '#ef4444';
+        return '#b55c5c';
       case 'tiktok':
         return '#000000';
       case 'twitter':
@@ -188,11 +188,11 @@ export function InfluencerCard({ influencer, onEdit, onDelete }: InfluencerCardP
           style={{
             background: 'var(--bg-elevated)',
             border: '1px solid var(--border-muted)',
-            color: '#ef4444'
+            color: '#b55c5c'
           }}
           onMouseEnter={(e) => {
-            e.currentTarget.style.background = '#ef444420';
-            e.currentTarget.style.borderColor = '#ef4444';
+            e.currentTarget.style.background = '#b55c5c20';
+            e.currentTarget.style.borderColor = '#b55c5c';
           }}
           onMouseLeave={(e) => {
             e.currentTarget.style.background = 'var(--bg-elevated)';

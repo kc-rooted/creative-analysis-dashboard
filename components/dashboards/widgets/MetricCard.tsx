@@ -67,7 +67,7 @@ export default function MetricCard({ metric, dateRange, className = '' }: Metric
           {metric.previous && (
             <div className="flex items-center space-x-2">
               <div className={`inline-flex items-center text-sm`}
-                style={{color: isPositive ? '#22c55e' : '#ef4444'}}
+                style={{color: isPositive ? '#22c55e' : '#b55c5c'}}
               >
                 {isPositive ? (
                   <ArrowUp className="h-4 w-4 mr-1" />

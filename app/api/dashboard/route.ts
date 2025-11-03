@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getExecutiveSummary, getPaidMediaTrend, getShopifyRevenueYoY, getRevenueForecast7Day, getClientDashboardConfig, getBusinessContextIndex, initializeCurrentClient, getCurrentClientId } from '@/lib/bigquery';
+import { getExecutiveSummary, getPaidMediaTrend, getShopifyRevenueYoY, getRevenueForecast7Day, getClientDashboardConfig, getBusinessContextIndex, getBayesianForecast, initializeCurrentClient, getCurrentClientId } from '@/lib/bigquery';
 
 export async function GET(request: Request) {
   try {
@@ -26,13 +26,14 @@ export async function GET(request: Request) {
       days = 30;
     }
 
-    const [data, paidMediaTrend, shopifyRevenueYoY, revenueForecast, dashboardConfig, businessContext] = await Promise.all([
+    const [data, paidMediaTrend, shopifyRevenueYoY, revenueForecast, dashboardConfig, businessContext, bayesianForecast] = await Promise.all([
       getExecutiveSummary(),
       getPaidMediaTrend(days),
       getShopifyRevenueYoY(days),
       getRevenueForecast7Day(),
       getClientDashboardConfig(),
-      getBusinessContextIndex()
+      getBusinessContextIndex(),
+      getBayesianForecast()
     ]);
 
     if (!data) {
@@ -376,6 +377,53 @@ export async function GET(request: Request) {
           revenue30dAvg: businessContext.revenue30dAvg,
           trend: businessContext.revenueTrend,
           acceleration: ((businessContext.revenue7dAvg - businessContext.revenue30dAvg) / businessContext.revenue30dAvg) * 100
+        } : null,
+        // Budget Pacing KPIs
+        revenuePacing: bayesianForecast ? {
+          current: bayesianForecast.mtdRevenue,
+          target: bayesianForecast.monthlyRevenueTarget,
+          gap: bayesianForecast.revenueGap,
+          attainmentPct: bayesianForecast.currentAttainmentPct,
+          probabilityHitTarget: bayesianForecast.probabilityHitRevenueTarget,
+          riskLevel: bayesianForecast.revenueRiskLevel,
+          daysRemaining: bayesianForecast.daysRemaining,
+          gaugeValue: bayesianForecast.currentAttainmentPct,
+          gaugeMin: 0,
+          gaugeMax: 100,
+          gaugeTarget: 100
+        } : null,
+        roasPacing: bayesianForecast ? {
+          current: bayesianForecast.mtdActualRoas,
+          target: bayesianForecast.monthlyRoasTarget,
+          probabilityHitTarget: bayesianForecast.probabilityHitRoasTarget,
+          riskLevel: bayesianForecast.roasRiskLevel,
+          p50Forecast: bayesianForecast.p50Roas,
+          gaugeValue: bayesianForecast.mtdActualRoas,
+          gaugeMin: 0,
+          gaugeMax: bayesianForecast.monthlyRoasTarget * 1.5,
+          gaugeTarget: bayesianForecast.monthlyRoasTarget
+        } : null,
+        budgetPerformance: bayesianForecast ? {
+          mtdSpend: bayesianForecast.mtdSpend,
+          performanceRatio: bayesianForecast.performanceRatio,
+          performanceVsExpectedPct: bayesianForecast.performanceVsExpectedPct,
+          probabilityHitBothTargets: bayesianForecast.probabilityHitBothTargets,
+          gaugeValue: bayesianForecast.performanceRatio,
+          gaugeMin: 0.8,
+          gaugeMax: 1.2,
+          gaugeTarget: 1.0
+        } : null,
+        forecastConfidence: bayesianForecast ? {
+          p10Revenue: bayesianForecast.p10Revenue,
+          p50Revenue: bayesianForecast.p50Revenue,
+          p90Revenue: bayesianForecast.p90Revenue,
+          historicalRevenueSuccessRate: bayesianForecast.historicalRevenueSuccessRate,
+          historicalRoasSuccessRate: bayesianForecast.historicalRoasSuccessRate,
+          numSimulations: bayesianForecast.numSimulations,
+          gaugeValue: bayesianForecast.probabilityHitBothTargets,
+          gaugeMin: 0,
+          gaugeMax: 100,
+          gaugeTarget: 75
         } : null
       },
       charts: {

@@ -71,13 +71,13 @@ export default function CampaignDetailPage() {
   const getHealthColor = (score: number) => {
     if (score >= 80) return '#22c55e';
     if (score >= 60) return '#f59e0b';
-    return '#ef4444';
+    return '#b55c5c';
   };
 
   // Trend color
   const getTrendColor = (trend: string) => {
     if (trend === 'IMPROVING' || trend === 'STABLE') return '#22c55e';
-    if (trend === 'DECLINING') return '#ef4444';
+    if (trend === 'DECLINING') return '#b55c5c';
     return '#f59e0b';
   };
 
@@ -187,7 +187,7 @@ export default function CampaignDetailPage() {
                     className="absolute top-0 left-0 h-2 rounded-full"
                     style={{
                       width: `${contextualData.businessHealthIndex}%`,
-                      background: contextualData.businessHealthIndex >= 70 ? '#22c55e' : contextualData.businessHealthIndex >= 40 ? '#f59e0b' : '#ef4444'
+                      background: contextualData.businessHealthIndex >= 70 ? '#22c55e' : contextualData.businessHealthIndex >= 40 ? '#f59e0b' : '#b55c5c'
                     }}
                   />
                 </div>
@@ -200,8 +200,8 @@ export default function CampaignDetailPage() {
                   <span
                     className="px-3 py-1.5 rounded text-xs font-medium text-center"
                     style={{
-                      background: contextualData.businessRevenueTrend === 'REVENUE_GROWING' ? 'rgba(34, 197, 94, 0.1)' : contextualData.businessRevenueTrend === 'REVENUE_DECLINING' ? 'rgba(239, 68, 68, 0.1)' : 'rgba(245, 158, 11, 0.1)',
-                      color: contextualData.businessRevenueTrend === 'REVENUE_GROWING' ? '#22c55e' : contextualData.businessRevenueTrend === 'REVENUE_DECLINING' ? '#ef4444' : '#f59e0b'
+                      background: contextualData.businessRevenueTrend === 'REVENUE_GROWING' ? 'rgba(34, 197, 94, 0.1)' : contextualData.businessRevenueTrend === 'REVENUE_DECLINING' ? 'rgba(181, 92, 92, 0.1)' : 'rgba(245, 158, 11, 0.1)',
+                      color: contextualData.businessRevenueTrend === 'REVENUE_GROWING' ? '#22c55e' : contextualData.businessRevenueTrend === 'REVENUE_DECLINING' ? '#b55c5c' : '#f59e0b'
                     }}
                   >
                     {contextualData.businessRevenueTrend.replace('REVENUE_', '')} Revenue
@@ -209,8 +209,8 @@ export default function CampaignDetailPage() {
                   <span
                     className="px-3 py-1.5 rounded text-xs font-medium text-center"
                     style={{
-                      background: contextualData.businessDemandTrend === 'DEMAND_GROWING' ? 'rgba(34, 197, 94, 0.1)' : contextualData.businessDemandTrend === 'DEMAND_DECLINING' ? 'rgba(239, 68, 68, 0.1)' : 'rgba(245, 158, 11, 0.1)',
-                      color: contextualData.businessDemandTrend === 'DEMAND_GROWING' ? '#22c55e' : contextualData.businessDemandTrend === 'DEMAND_DECLINING' ? '#ef4444' : '#f59e0b'
+                      background: contextualData.businessDemandTrend === 'DEMAND_GROWING' ? 'rgba(34, 197, 94, 0.1)' : contextualData.businessDemandTrend === 'DEMAND_DECLINING' ? 'rgba(181, 92, 92, 0.1)' : 'rgba(245, 158, 11, 0.1)',
+                      color: contextualData.businessDemandTrend === 'DEMAND_GROWING' ? '#22c55e' : contextualData.businessDemandTrend === 'DEMAND_DECLINING' ? '#b55c5c' : '#f59e0b'
                     }}
                   >
                     {contextualData.businessDemandTrend.replace('DEMAND_', '')} Demand
@@ -218,8 +218,8 @@ export default function CampaignDetailPage() {
                   <span
                     className="px-3 py-1.5 rounded text-xs font-medium text-center"
                     style={{
-                      background: contextualData.businessYoyStatus === 'OUTPERFORMING_YOY' ? 'rgba(34, 197, 94, 0.1)' : contextualData.businessYoyStatus === 'UNDERPERFORMING_YOY' ? 'rgba(239, 68, 68, 0.1)' : 'rgba(245, 158, 11, 0.1)',
-                      color: contextualData.businessYoyStatus === 'OUTPERFORMING_YOY' ? '#22c55e' : contextualData.businessYoyStatus === 'UNDERPERFORMING_YOY' ? '#ef4444' : '#f59e0b'
+                      background: contextualData.businessYoyStatus === 'OUTPERFORMING_YOY' ? 'rgba(34, 197, 94, 0.1)' : contextualData.businessYoyStatus === 'UNDERPERFORMING_YOY' ? 'rgba(181, 92, 92, 0.1)' : 'rgba(245, 158, 11, 0.1)',
+                      color: contextualData.businessYoyStatus === 'OUTPERFORMING_YOY' ? '#22c55e' : contextualData.businessYoyStatus === 'UNDERPERFORMING_YOY' ? '#b55c5c' : '#f59e0b'
                     }}
                   >
                     {contextualData.businessYoyStatus.replace(/_/g, ' ')}
@@ -239,8 +239,8 @@ export default function CampaignDetailPage() {
                 <div
                   className="px-3 py-2 rounded-lg text-center font-medium"
                   style={{
-                    background: contextualData.relativePerformance === 'OUTPERFORMING_MARKET' ? 'rgba(34, 197, 94, 0.1)' : contextualData.relativePerformance === 'UNDERPERFORMING_MARKET' ? 'rgba(239, 68, 68, 0.1)' : 'rgba(137, 205, 238, 0.1)',
-                    color: contextualData.relativePerformance === 'OUTPERFORMING_MARKET' ? '#22c55e' : contextualData.relativePerformance === 'UNDERPERFORMING_MARKET' ? '#ef4444' : 'var(--accent-primary)'
+                    background: contextualData.relativePerformance === 'OUTPERFORMING_MARKET' ? 'rgba(34, 197, 94, 0.1)' : contextualData.relativePerformance === 'UNDERPERFORMING_MARKET' ? 'rgba(181, 92, 92, 0.1)' : 'rgba(137, 205, 238, 0.1)',
+                    color: contextualData.relativePerformance === 'OUTPERFORMING_MARKET' ? '#22c55e' : contextualData.relativePerformance === 'UNDERPERFORMING_MARKET' ? '#b55c5c' : 'var(--accent-primary)'
                   }}
                 >
                   {contextualData.relativePerformance.replace(/_/g, ' ')}
@@ -271,8 +271,8 @@ export default function CampaignDetailPage() {
                         key={idx}
                         className="px-2 py-1 rounded text-xs font-medium"
                         style={{
-                          background: flag.includes('⚠️') ? 'rgba(239, 68, 68, 0.1)' : flag.includes('📉') ? 'rgba(239, 68, 68, 0.1)' : flag.includes('⚡') ? 'rgba(245, 158, 11, 0.1)' : 'rgba(137, 205, 238, 0.1)',
-                          color: flag.includes('⚠️') ? '#ef4444' : flag.includes('📉') ? '#ef4444' : flag.includes('⚡') ? '#f59e0b' : 'var(--accent-primary)'
+                          background: flag.includes('⚠️') ? 'rgba(181, 92, 92, 0.1)' : flag.includes('📉') ? 'rgba(181, 92, 92, 0.1)' : flag.includes('⚡') ? 'rgba(245, 158, 11, 0.1)' : 'rgba(137, 205, 238, 0.1)',
+                          color: flag.includes('⚠️') ? '#b55c5c' : flag.includes('📉') ? '#b55c5c' : flag.includes('⚡') ? '#f59e0b' : 'var(--accent-primary)'
                         }}
                       >
                         {flag}
@@ -306,8 +306,8 @@ export default function CampaignDetailPage() {
                   <div
                     className="px-4 py-3 rounded-lg"
                     style={{
-                      background: 'rgba(239, 68, 68, 0.1)',
-                      color: '#ef4444'
+                      background: 'rgba(181, 92, 92, 0.1)',
+                      color: '#b55c5c'
                     }}
                   >
                     {analysis.riskFlags}
@@ -377,7 +377,7 @@ export default function CampaignDetailPage() {
                   <span style={{color: 'var(--text-muted)'}}>Scaling Efficiency</span>
                   <span
                     className="font-semibold"
-                    style={{color: analysis.scalingEfficiency >= 0 ? '#22c55e' : '#ef4444'}}
+                    style={{color: analysis.scalingEfficiency >= 0 ? '#22c55e' : '#b55c5c'}}
                   >
                     {analysis.scalingEfficiency >= 0 ? '+' : ''}{analysis.scalingEfficiency.toFixed(2)}
                   </span>
@@ -386,8 +386,8 @@ export default function CampaignDetailPage() {
               <div
                 className="px-3 py-2 rounded-lg text-center font-medium"
                 style={{
-                  background: analysis.scalingCategory === 'POSITIVE_SCALING' ? 'rgba(34, 197, 94, 0.1)' : 'rgba(239, 68, 68, 0.1)',
-                  color: analysis.scalingCategory === 'POSITIVE_SCALING' ? '#22c55e' : '#ef4444'
+                  background: analysis.scalingCategory === 'POSITIVE_SCALING' ? 'rgba(34, 197, 94, 0.1)' : 'rgba(181, 92, 92, 0.1)',
+                  color: analysis.scalingCategory === 'POSITIVE_SCALING' ? '#22c55e' : '#b55c5c'
                 }}
               >
                 {analysis.scalingCategory.replace(/_/g, ' ')}
@@ -442,7 +442,7 @@ export default function CampaignDetailPage() {
 
               <div>
                 <div className="text-xs mb-2" style={{color: 'var(--text-muted)'}}>WORST</div>
-                <div className="text-2xl font-bold" style={{color: '#ef4444'}}>{adDistribution.worstAdHealth}</div>
+                <div className="text-2xl font-bold" style={{color: '#b55c5c'}}>{adDistribution.worstAdHealth}</div>
                 <div className="text-xs" style={{color: 'var(--text-secondary)'}}>Health</div>
               </div>
             </div>
@@ -472,7 +472,7 @@ export default function CampaignDetailPage() {
                   </div>
                   <div className="flex justify-between items-center">
                     <span className="text-xs" style={{color: 'var(--text-secondary)'}}>Poor (&lt;40)</span>
-                    <span className="font-semibold px-2 py-0.5 rounded text-xs" style={{background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444'}}>
+                    <span className="font-semibold px-2 py-0.5 rounded text-xs" style={{background: 'rgba(181, 92, 92, 0.1)', color: '#b55c5c'}}>
                       {adDistribution.poorAds}
                     </span>
                   </div>
@@ -497,7 +497,7 @@ export default function CampaignDetailPage() {
                   </div>
                   <div className="flex justify-between items-center">
                     <span className="text-xs" style={{color: 'var(--text-secondary)'}}>Pause</span>
-                    <span className="font-semibold px-2 py-0.5 rounded text-xs" style={{background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444'}}>
+                    <span className="font-semibold px-2 py-0.5 rounded text-xs" style={{background: 'rgba(181, 92, 92, 0.1)', color: '#b55c5c'}}>
                       {adDistribution.adsToPause}
                     </span>
                   </div>
@@ -539,8 +539,8 @@ export default function CampaignDetailPage() {
                       <div
                         className="px-2 py-1 rounded text-xs font-medium"
                         style={{
-                          background: ad.recommendedAction.includes('SCALE') ? 'rgba(34, 197, 94, 0.1)' : ad.recommendedAction.includes('PAUSE') ? 'rgba(239, 68, 68, 0.1)' : 'rgba(245, 158, 11, 0.1)',
-                          color: ad.recommendedAction.includes('SCALE') ? '#22c55e' : ad.recommendedAction.includes('PAUSE') ? '#ef4444' : '#f59e0b'
+                          background: ad.recommendedAction.includes('SCALE') ? 'rgba(34, 197, 94, 0.1)' : ad.recommendedAction.includes('PAUSE') ? 'rgba(181, 92, 92, 0.1)' : 'rgba(245, 158, 11, 0.1)',
+                          color: ad.recommendedAction.includes('SCALE') ? '#22c55e' : ad.recommendedAction.includes('PAUSE') ? '#b55c5c' : '#f59e0b'
                         }}
                       >
                         {ad.recommendedAction.replace(/_/g, ' ')}

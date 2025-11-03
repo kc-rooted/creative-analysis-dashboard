@@ -110,13 +110,13 @@ export default function AdDetailPage() {
   const getHealthColor = (score: number) => {
     if (score >= 80) return '#22c55e';
     if (score >= 60) return '#f59e0b';
-    return '#ef4444';
+    return '#b55c5c';
   };
 
   // Trend color
   const getTrendColor = (trend: string) => {
     if (trend === 'IMPROVING' || trend === 'STABLE') return '#22c55e';
-    if (trend === 'DECLINING') return '#ef4444';
+    if (trend === 'DECLINING') return '#b55c5c';
     return '#f59e0b';
   };
 
@@ -232,7 +232,7 @@ export default function AdDetailPage() {
                 </span>
               </div>
               {analysis.isMisclassified && (
-                <div className="px-3 py-2 rounded" style={{background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444'}}>
+                <div className="px-3 py-2 rounded" style={{background: 'rgba(181, 92, 92, 0.1)', color: '#b55c5c'}}>
                   <span className="text-sm font-medium">⚠️ Misclassified</span>
                 </div>
               )}
@@ -249,7 +249,7 @@ export default function AdDetailPage() {
                       className="h-2 rounded-full"
                       style={{
                         width: `${Math.min(Math.abs(analysis.tofuScore || 0) * 20, 100)}%`,
-                        background: (analysis.tofuScore || 0) >= 0 ? '#22c55e' : '#ef4444'
+                        background: (analysis.tofuScore || 0) >= 0 ? '#22c55e' : '#b55c5c'
                       }}
                     />
                   </div>
@@ -266,7 +266,7 @@ export default function AdDetailPage() {
                       className="h-2 rounded-full"
                       style={{
                         width: `${Math.min(Math.abs(analysis.mofuScore || 0) * 20, 100)}%`,
-                        background: (analysis.mofuScore || 0) >= 0 ? '#22c55e' : '#ef4444'
+                        background: (analysis.mofuScore || 0) >= 0 ? '#22c55e' : '#b55c5c'
                       }}
                     />
                   </div>
@@ -283,7 +283,7 @@ export default function AdDetailPage() {
                       className="h-2 rounded-full"
                       style={{
                         width: `${Math.min(Math.abs(analysis.bofuScore || 0) * 20, 100)}%`,
-                        background: (analysis.bofuScore || 0) >= 0 ? '#22c55e' : '#ef4444'
+                        background: (analysis.bofuScore || 0) >= 0 ? '#22c55e' : '#b55c5c'
                       }}
                     />
                   </div>
@@ -310,7 +310,7 @@ export default function AdDetailPage() {
                 <span style={{color: 'var(--text-muted)'}}>Scaling Efficiency</span>
                 <span
                   className="font-semibold"
-                  style={{color: analysis.scalingEfficiency >= 0 ? '#22c55e' : '#ef4444'}}
+                  style={{color: analysis.scalingEfficiency >= 0 ? '#22c55e' : '#b55c5c'}}
                 >
                   {analysis.scalingEfficiency >= 0 ? '+' : ''}{analysis.scalingEfficiency.toFixed(2)}
                 </span>
@@ -319,8 +319,8 @@ export default function AdDetailPage() {
             <div
               className="px-3 py-2 rounded-lg text-center font-medium"
               style={{
-                background: analysis.scalingCategory === 'POSITIVE_SCALING' ? 'rgba(34, 197, 94, 0.1)' : 'rgba(239, 68, 68, 0.1)',
-                color: analysis.scalingCategory === 'POSITIVE_SCALING' ? '#22c55e' : '#ef4444'
+                background: analysis.scalingCategory === 'POSITIVE_SCALING' ? 'rgba(34, 197, 94, 0.1)' : 'rgba(181, 92, 92, 0.1)',
+                color: analysis.scalingCategory === 'POSITIVE_SCALING' ? '#22c55e' : '#b55c5c'
               }}
             >
               {analysis.scalingCategory.replace(/_/g, ' ')}
@@ -498,8 +498,8 @@ export default function AdDetailPage() {
                 <div
                   className="px-4 py-3 rounded-lg"
                   style={{
-                    background: 'rgba(239, 68, 68, 0.1)',
-                    color: '#ef4444'
+                    background: 'rgba(181, 92, 92, 0.1)',
+                    color: '#b55c5c'
                   }}
                 >
                   {analysis.riskFlags}

@@ -3622,6 +3622,90 @@ export async function getBusinessContextIndex(): Promise<any> {
   }
 }
 
+// Get Bayesian probability forecast for budget pacing
+export async function getBayesianForecast(): Promise<any> {
+  const query = `
+    SELECT
+      month_start,
+      report_date,
+      month_label,
+      days_elapsed,
+      days_remaining,
+      monthly_revenue_target,
+      monthly_roas_target,
+      mtd_revenue,
+      mtd_spend,
+      mtd_actual_roas,
+      revenue_gap,
+      current_attainment_pct,
+      probability_hit_revenue_target,
+      probability_hit_roas_target,
+      probability_hit_both_targets,
+      p10_revenue,
+      p50_revenue,
+      p90_revenue,
+      p10_roas,
+      p50_roas,
+      p90_roas,
+      revenue_risk_level,
+      roas_risk_level,
+      performance_ratio,
+      performance_vs_expected_pct,
+      historical_revenue_success_rate,
+      historical_roas_success_rate,
+      num_simulations,
+      calculated_at
+    FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${getCurrentDatasetName()}.bayesian_probability_forecast\`
+    WHERE report_date = CURRENT_DATE()
+    LIMIT 1
+  `;
+
+  try {
+    const [rows] = await bigquery.query({
+      query,
+      timeoutMs: 30000,
+    });
+
+    if (rows.length === 0) return null;
+
+    const row = rows[0];
+    return {
+      monthStart: row.month_start,
+      reportDate: row.report_date,
+      monthLabel: row.month_label,
+      daysElapsed: parseInt(row.days_elapsed || 0),
+      daysRemaining: parseInt(row.days_remaining || 0),
+      monthlyRevenueTarget: parseFloat(row.monthly_revenue_target || 0),
+      monthlyRoasTarget: parseFloat(row.monthly_roas_target || 0),
+      mtdRevenue: parseFloat(row.mtd_revenue || 0),
+      mtdSpend: parseFloat(row.mtd_spend || 0),
+      mtdActualRoas: parseFloat(row.mtd_actual_roas || 0),
+      revenueGap: parseFloat(row.revenue_gap || 0),
+      currentAttainmentPct: parseFloat(row.current_attainment_pct || 0),
+      probabilityHitRevenueTarget: parseFloat(row.probability_hit_revenue_target || 0),
+      probabilityHitRoasTarget: parseFloat(row.probability_hit_roas_target || 0),
+      probabilityHitBothTargets: parseFloat(row.probability_hit_both_targets || 0),
+      p10Revenue: parseFloat(row.p10_revenue || 0),
+      p50Revenue: parseFloat(row.p50_revenue || 0),
+      p90Revenue: parseFloat(row.p90_revenue || 0),
+      p10Roas: parseFloat(row.p10_roas || 0),
+      p50Roas: parseFloat(row.p50_roas || 0),
+      p90Roas: parseFloat(row.p90_roas || 0),
+      revenueRiskLevel: row.revenue_risk_level,
+      roasRiskLevel: row.roas_risk_level,
+      performanceRatio: parseFloat(row.performance_ratio || 0),
+      performanceVsExpectedPct: parseFloat(row.performance_vs_expected_pct || 0),
+      historicalRevenueSuccessRate: parseFloat(row.historical_revenue_success_rate || 0),
+      historicalRoasSuccessRate: parseFloat(row.historical_roas_success_rate || 0),
+      numSimulations: parseInt(row.num_simulations || 0),
+      calculatedAt: row.calculated_at
+    };
+  } catch (error) {
+    console.error('Error fetching Bayesian forecast:', error);
+    return null;
+  }
+}
+
 // Get forecast scenarios from prophet summary
 export async function getForecastScenarios(): Promise<any[]> {
   const query = `

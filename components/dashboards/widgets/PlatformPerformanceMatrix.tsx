@@ -34,7 +34,7 @@ export default function PlatformPerformanceMatrix({ data, roasTarget = 5, period
 
   const getTrendColor = (trend: number) => {
     if (trend > 5) return '#22c55e'; // Green
-    if (trend < -5) return '#ef4444'; // Red
+    if (trend < -5) return '#b55c5c'; // Red
     return 'var(--text-muted)';
   };
 
@@ -54,7 +54,7 @@ export default function PlatformPerformanceMatrix({ data, roasTarget = 5, period
   const getGaugeColor = (percent: number) => {
     if (percent >= 120) return '#22c55e'; // Green
     if (percent >= 80) return '#f59e0b'; // Orange
-    return '#ef4444'; // Red
+    return '#b55c5c'; // Red
   };
 
   return (

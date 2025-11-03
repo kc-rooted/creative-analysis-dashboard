@@ -32,7 +32,7 @@ const statusConfig = {
   excellent: { color: '#22c55e', bg: 'rgba(34, 197, 94, 0.1)', label: '🟢 Excellent' },
   good: { color: '#22c55e', bg: 'rgba(34, 197, 94, 0.1)', label: '🟢 Good Zone' },
   monitor: { color: '#f59e0b', bg: 'rgba(245, 158, 11, 0.1)', label: '🟡 Monitor' },
-  warning: { color: '#ef4444', bg: 'rgba(239, 68, 68, 0.1)', label: '🔴 Warning' },
+  warning: { color: '#b55c5c', bg: 'rgba(181, 92, 92, 0.1)', label: '🔴 Warning' },
 };
 
 export default function KPICard({
@@ -80,7 +80,7 @@ export default function KPICard({
               {currentValue}
             </div>
             <div className={`inline-flex items-center text-lg font-medium`}
-              style={{color: isPositive ? '#22c55e' : '#ef4444'}}
+              style={{color: isPositive ? '#22c55e' : '#b55c5c'}}
             >
               {isPositive ? (
                 <ArrowUp className="h-5 w-5 mr-1" />
@@ -105,7 +105,7 @@ export default function KPICard({
                 <div className="flex items-center justify-between text-sm">
                   <span style={{color: 'var(--text-muted)'}}>7D: {periodData.sevenDay.value}</span>
                   <div className={`inline-flex items-center text-xs`}
-                    style={{color: periodData.sevenDay.trend > 0 ? '#22c55e' : '#ef4444'}}
+                    style={{color: periodData.sevenDay.trend > 0 ? '#22c55e' : '#b55c5c'}}
                   >
                     {periodData.sevenDay.trend > 0 ? (
                       <ArrowUp className="h-3 w-3 mr-1" />
@@ -120,7 +120,7 @@ export default function KPICard({
                 <div className="flex items-center justify-between text-sm">
                   <span style={{color: 'var(--text-muted)'}}>30D: {periodData.thirtyDay.value}</span>
                   <div className={`inline-flex items-center text-xs`}
-                    style={{color: periodData.thirtyDay.trend > 0 ? '#22c55e' : '#ef4444'}}
+                    style={{color: periodData.thirtyDay.trend > 0 ? '#22c55e' : '#b55c5c'}}
                   >
                     {periodData.thirtyDay.trend > 0 ? (
                       <ArrowUp className="h-3 w-3 mr-1" />

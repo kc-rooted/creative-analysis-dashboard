@@ -37,12 +37,12 @@ export default function CampaignMarginalROAS({ data }: CampaignMarginalROASProps
 
   const getActionColor = (marginalRoas: number) => {
     if (marginalRoas > 5) return '#22c55e'; // Green
-    if (marginalRoas < 0) return '#ef4444'; // Red
+    if (marginalRoas < 0) return '#b55c5c'; // Red
     return '#f59e0b'; // Orange
   };
 
   const getActionBadgeColor = (action: string) => {
-    if (action.includes('REDUCE')) return '#ef4444';
+    if (action.includes('REDUCE')) return '#b55c5c';
     if (action.includes('OPTIMIZE')) return '#f59e0b';
     return '#22c55e';
   };

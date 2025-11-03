@@ -15,9 +15,9 @@ export async function GET(request: Request) {
       getForecastActuals()
     ]);
 
-    // Find BFCM and Q4 data
-    const bfcmScenarios = scenarios.find(s => s.period.includes('BFCM'));
-    const q4Scenarios = scenarios.find(s => s.period.includes('Q4'));
+    // Find BFCM and Q4 data (or first two scenarios if not found)
+    const bfcmScenarios = scenarios.find(s => s.period.includes('BFCM')) || scenarios[0];
+    const q4Scenarios = scenarios.find(s => s.period.includes('Q4')) || scenarios[1];
 
     // Create a map of actuals by date string for efficient lookup
     const actualsMap = new Map(
