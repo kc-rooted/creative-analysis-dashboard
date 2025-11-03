@@ -44,6 +44,10 @@ export async function POST(request: Request) {
         reportData = await fetchMonthlyPerformanceData(projectId, dataset, dateRange);
         break;
 
+      case 'hb-monthly-performance':
+        reportData = await fetchHBMonthlyPerformanceData(projectId, dataset, dateRange);
+        break;
+
       case 'platform-deep-dive':
         reportData = await fetchPlatformDeepDiveData(projectId, dataset, dateRange);
         break;
@@ -319,6 +323,58 @@ async function fetchMonthlyPerformanceData(projectId: string, dataset: string, d
 }
 
 /**
+ * Fetch data for H&B Monthly Performance Review (extends standard monthly with funnel ads)
+ */
+async function fetchHBMonthlyPerformanceData(projectId: string, dataset: string, dateRange: any) {
+  // First, get all the standard monthly performance data
+  const baseData = await fetchMonthlyPerformanceData(projectId, dataset, dateRange);
+
+  // Add H&B-specific funnel ads data
+  const funnelAdsQuery = `
+    SELECT
+      ad_name,
+      recommended_stage,
+      all_star_rank,
+      roas_rank,
+      clicks_rank,
+      efficiency_rank,
+      ctr_rank,
+      conversion_rank,
+      roas,
+      ctr_percent,
+      cpc,
+      image_url,
+      video_id,
+      thumbnail_url,
+      creative_type
+    FROM ${projectId}.${dataset}.ai_allstar_ad_bundles
+    ORDER BY all_star_rank
+  `;
+
+  try {
+    const allAds = await runSQLQuery(funnelAdsQuery);
+    console.log(`[Report Data] funnelAds: ${allAds.length} rows fetched`);
+
+    // Filter top 3 ads per funnel stage
+    const funnelStages = ['TOFU', 'MOFU', 'BOFU'];
+    const funnelAds: any = {};
+
+    funnelStages.forEach(stage => {
+      funnelAds[stage] = allAds
+        .filter((ad: any) => ad.recommended_stage === stage)
+        .slice(0, 3); // Top 3 per stage
+    });
+
+    baseData.funnelAds = funnelAds;
+  } catch (error) {
+    console.error('[Report Data] Error fetching funnel ads:', error);
+    baseData.funnelAds = { TOFU: [], MOFU: [], BOFU: [] };
+  }
+
+  return baseData;
+}
+
+/**
  * Fetch data for Platform Deep Dive
  */
 async function fetchPlatformDeepDiveData(projectId: string, dataset: string, dateRange: any) {
@@ -428,6 +484,9 @@ function formatDataAsMarkdown(data: any, reportType: string): string {
   if (reportType === 'monthly-performance') {
     return formatMonthlyReportAsMarkdown(data);
   }
+  if (reportType === 'hb-monthly-performance') {
+    return formatHBMonthlyReportAsMarkdown(data);
+  }
   // Add other report types as needed
   return JSON.stringify(data, null, 2);
 }
@@ -518,6 +577,25 @@ function formatMonthlyReportAsMarkdown(data: any): string {
     data.productIntelligence.forEach((p: any) => {
       markdown += `| ${p.product_title} | $${p.revenue_30d?.toLocaleString() || 0} | ${p.units_sold_30d || 0} | ${p.revenue_change_pct_30d || 0 > 0 ? '+' : ''}${p.revenue_change_pct_30d?.toFixed(1) || 0}% | ${p.total_inventory_quantity || 0} |\n`;
     });
+  }
+
+  return markdown;
+}
+
+function formatHBMonthlyReportAsMarkdown(data: any): string {
+  // Start with the standard monthly report formatting
+  let markdown = formatMonthlyReportAsMarkdown(data);
+
+  // NOTE: Funnel ads section is now handled via client-side injection
+  // The funnel ads data is still fetched and returned in the response,
+  // but we don't include it in the markdown sent to Claude to avoid
+  // issues with expired Facebook CDN image URLs
+
+  console.log('[HB Report] Funnel ads will be injected client-side');
+  if (data.funnelAds) {
+    console.log('[HB Report] TOFU ads:', data.funnelAds['TOFU']?.length || 0);
+    console.log('[HB Report] MOFU ads:', data.funnelAds['MOFU']?.length || 0);
+    console.log('[HB Report] BOFU ads:', data.funnelAds['BOFU']?.length || 0);
   }
 
   return markdown;

@@ -217,6 +217,7 @@
   /* Font variables */
   --font-nord: 'NORD', sans-serif;
   --font-thermal: 'thermal-variable', serif;
+  --font-meursault: 'meursault-variable', serif;
 }
 
 @theme inline {
@@ -644,22 +645,25 @@ button:focus {
   display: none !important;
 }
 
-/* Reports page - Thermal Variable font for entire page */
+/* Reports page - Nord for UI elements, Meursault for report content only */
 .reports-page {
-  font-size: 17.5px; /* 14px * 1.25 = 17.5px */
+  font-family: var(--font-nord);
+  font-size: 14px;
 }
 
-.reports-page,
-.reports-page * {
-  font-family: var(--font-thermal) !important;
+/* Meursault Variable font ONLY for report content preview */
+.reports-page .report-content,
+.reports-page .report-content * {
+  font-family: var(--font-meursault) !important;
+  font-size: 20px;
 }
 
-/* Override prose headings in reports to use Thermal */
-.reports-page .prose h1,
-.reports-page .prose h2,
-.reports-page .prose h3,
-.reports-page .prose h4,
-.reports-page .prose h5,
-.reports-page .prose h6 {
-  font-family: var(--font-thermal) !important;
+/* Override prose headings in report content to use Meursault */
+.reports-page .report-content.prose h1,
+.reports-page .report-content.prose h2,
+.reports-page .report-content.prose h3,
+.reports-page .report-content.prose h4,
+.reports-page .report-content.prose h5,
+.reports-page .report-content.prose h6 {
+  font-family: var(--font-meursault) !important;
 }

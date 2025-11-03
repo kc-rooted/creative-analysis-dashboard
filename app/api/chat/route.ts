@@ -10,15 +10,17 @@ export async function POST(req: Request) {
   try {
     const body = await req.json();
     const { messages } = body;
-    
+
     // Extract selectedClient from request body
     const selectedClient = body.selectedClient || 'jumbomax';
     const systemContext = body.systemContext;
     const expectsReport = body.expectsReport;
     const hasPrefetchedData = body.hasPrefetchedData || false;
+    const disableTools = body.disableTools || false;
     console.log('Body selectedClient:', body.selectedClient);
     console.log('Custom system context:', systemContext ? 'Yes' : 'No');
     console.log('Has pre-fetched data:', hasPrefetchedData);
+    console.log('Disable tools:', disableTools);
     
     console.log('API received messages:', messages);
     console.log('Selected client:', selectedClient);
@@ -139,35 +141,37 @@ Always structure your responses with clear headings, use bullet points for key i
       ? `${baseSystem}\\n\\n**TASK-SPECIFIC CONTEXT:**\\n${systemContext}`
       : baseSystem;
 
-    // Override system message when pre-fetched data is provided
-    if (hasPrefetchedData) {
-      systemMessage = `You are a professional marketing report writer.
+    // Override system message when pre-fetched data is provided or tools are disabled
+    if (hasPrefetchedData || disableTools) {
+      systemMessage = `You are a professional marketing analyst and report writer.
 
 **CRITICAL INSTRUCTION:**
-The user has already pre-fetched ALL the data you need from BigQuery. The data is included in the user's message.
+${hasPrefetchedData
+  ? 'The user has already pre-fetched ALL the data you need from BigQuery. The data is included in the user\'s message.'
+  : 'You do NOT have access to BigQuery tools for this request.'
+}
 
 **YOU MUST:**
-- Use ONLY the data provided in the user's message
-- Do NOT attempt to query BigQuery or use any data fetching tools
-- The data is already complete and ready to use
-- Generate the report directly from the pre-fetched data provided
+- ${hasPrefetchedData ? 'Use ONLY the data provided in the user\'s message' : 'Work with whatever context is provided'}
+- Do NOT attempt to query databases or use data fetching tools
+- ${hasPrefetchedData ? 'Generate the report directly from the pre-fetched data provided' : 'Provide analysis based on the information given'}
 
-**REPORT FORMAT:**
-Generate the report as formatted markdown text in your response. Do NOT use the composeReport tool.
+**RESPONSE FORMAT:**
+Generate your response as formatted markdown text.
 
 Structure your response with:
 - ## Headings for main sections
 - ### Subheadings for subsections
 - **Bold** for important metrics and key findings
 - Bullet points (-) for lists
-- Tables with proper markdown syntax (| Header | Header |)
-- Clear, professional language at an executive level
+- Tables with proper markdown syntax (| Header | Header |) if needed
+- Clear, professional language suitable for executives
 
-The report should be complete, self-contained, and ready to present with all sections requested by the user.`;
+Keep your response concise, focused, and actionable.`;
     }
 
-    // Conditionally build tools list - exclude ALL tools when pre-fetched data is provided
-    const tools = hasPrefetchedData
+    // Conditionally build tools list - exclude ALL tools when pre-fetched data is provided or tools are disabled
+    const tools = (hasPrefetchedData || disableTools)
       ? {} // No tools - just generate markdown text directly
       : {
           weatherTool,
@@ -181,7 +185,7 @@ The report should be complete, self-contained, and ready to present with all sec
         };
 
     const result = streamText({
-      model: anthropic('claude-3-5-haiku-20241022'),
+      model: anthropic('claude-haiku-4-5-20251001'),
       system: systemMessage,
       tools,
        stopWhen: stepCountIs(10), // Intelligent stopping condition,

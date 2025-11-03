@@ -25,9 +25,9 @@ interface DashboardData {
 
 export async function POST(request: Request) {
   try {
-    const { clientId, period, dashboardData } = await request.json();
+    const { clientId, period, dashboardData, markdownContent, reportType } = await request.json();
 
-    console.log('[Google Docs Export] Starting export for:', { clientId, period });
+    console.log('[Google Docs Export] Starting export for:', { clientId, period, reportType, hasMarkdown: !!markdownContent });
 
     // Initialize Google Auth
     const keyPath = process.env.GOOGLE_APPLICATION_CREDENTIALS;
@@ -48,13 +48,19 @@ export async function POST(request: Request) {
     const authClient = await auth.getClient();
     const drive = google.drive({ version: 'v3', auth: authClient as any });
 
-    // Step 1: Generate DOCX document
-    const doc = await generateDocument(clientId, period, dashboardData);
+    // Step 1: Generate DOCX document (choose method based on input type)
+    let doc: Document;
+    if (markdownContent) {
+      doc = await generateMarkdownDocument(clientId, reportType, markdownContent);
+    } else {
+      doc = await generateDocument(clientId, period, dashboardData);
+    }
+
     const buffer = await Packer.toBuffer(doc);
 
     // Step 2: Save DOCX to temp file
     const tempDir = os.tmpdir();
-    const tempFilePath = path.join(tempDir, `${clientId}-${period}-${Date.now()}.docx`);
+    const tempFilePath = path.join(tempDir, `${clientId}-${reportType || period}-${Date.now()}.docx`);
     fs.writeFileSync(tempFilePath, buffer);
 
     console.log('[Google Docs Export] Generated DOCX at:', tempFilePath);
@@ -64,7 +70,9 @@ export async function POST(request: Request) {
     console.log('[Google Docs Export] Using shared folder:', folderId);
 
     // Step 4: Upload DOCX to the folder
-    const fileName = `${clientId.toUpperCase()} - Performance Report - ${getPeriodLabel(period)} - ${new Date().toLocaleDateString()}`;
+    const fileName = markdownContent
+      ? `${clientId.toUpperCase()} - ${reportType || 'Report'} - ${new Date().toLocaleDateString()}`
+      : `${clientId.toUpperCase()} - Performance Report - ${getPeriodLabel(period)} - ${new Date().toLocaleDateString()}`;
 
     const fileMetadata: any = {
       name: fileName,
@@ -416,4 +424,367 @@ function createPlatformSection(
   }
 
   return paragraphs;
+}
+
+async function generateMarkdownDocument(
+  clientId: string,
+  reportType: string,
+  markdownContent: string
+): Promise<Document> {
+  const { marked } = await import('marked');
+
+  // Parse markdown to tokens
+  const tokens = marked.lexer(markdownContent);
+
+  // Build document children from tokens
+  const children: (Paragraph | Table)[] = [];
+
+  // Add title
+  children.push(
+    new Paragraph({
+      children: [
+        new TextRun({
+          text: `${clientId.toUpperCase()} - ${reportType || 'Report'}`,
+          bold: true,
+          font: 'Roboto Condensed',
+          size: 32, // 16pt
+          color: '000000',
+        }),
+      ],
+      heading: HeadingLevel.HEADING_1,
+      spacing: { after: 200 },
+    })
+  );
+
+  // Add generation date (subtitle)
+  children.push(
+    new Paragraph({
+      children: [
+        new TextRun({
+          text: `Generated on ${new Date().toLocaleDateString('en-US', {
+            weekday: 'long',
+            year: 'numeric',
+            month: 'long',
+            day: 'numeric'
+          })}`,
+          bold: true,
+          font: 'Roboto Condensed',
+          size: 22, // 11pt
+          color: '000000',
+        }),
+      ],
+      spacing: { after: 600 },
+    })
+  );
+
+  // Process markdown tokens
+  for (const token of tokens) {
+    switch (token.type) {
+      case 'heading':
+        const headingLevel = token.depth === 1 ? HeadingLevel.HEADING_1 :
+                           token.depth === 2 ? HeadingLevel.HEADING_2 :
+                           token.depth === 3 ? HeadingLevel.HEADING_3 :
+                           token.depth === 4 ? HeadingLevel.HEADING_4 :
+                           token.depth === 5 ? HeadingLevel.HEADING_5 :
+                           HeadingLevel.HEADING_6;
+
+        // Heading sizes: H1=32pt, H2=28pt, H3=24pt, H4=22pt, H5=20pt, H6=20pt
+        const headingSize = token.depth === 1 ? 32 :
+                          token.depth === 2 ? 28 :
+                          token.depth === 3 ? 24 :
+                          token.depth === 4 ? 22 :
+                          token.depth === 5 ? 20 : 20;
+
+        children.push(
+          new Paragraph({
+            children: [
+              new TextRun({
+                text: token.text,
+                bold: true,
+                font: 'Roboto Condensed',
+                size: headingSize * 2, // docx size is in half-points
+                color: '000000',
+              }),
+            ],
+            heading: headingLevel,
+            spacing: { before: 400, after: 200 },
+          })
+        );
+        break;
+
+      case 'paragraph':
+        // Parse inline formatting
+        const runs = parseInlineMarkdown(token.text);
+        children.push(
+          new Paragraph({
+            children: runs,
+            spacing: { after: 200 },
+          })
+        );
+        break;
+
+      case 'list':
+        // Handle lists
+        for (const item of token.items) {
+          const itemRuns = parseInlineMarkdown(item.text);
+          children.push(
+            new Paragraph({
+              children: itemRuns,
+              bullet: { level: 0 },
+              spacing: { after: 100 },
+            })
+          );
+        }
+        children.push(new Paragraph({ spacing: { after: 200 } })); // Add space after list
+        break;
+
+      case 'table':
+        // Handle tables
+        const tableRows: TableRow[] = [];
+
+        // Header row
+        if (token.header && token.header.length > 0) {
+          tableRows.push(
+            new TableRow({
+              children: token.header.map(cell =>
+                new TableCell({
+                  children: [new Paragraph({
+                    children: [
+                      new TextRun({
+                        text: cell.text,
+                        bold: true,
+                        font: 'Roboto Condensed',
+                        size: 22,
+                        color: '000000',
+                      }),
+                    ],
+                  })],
+                  width: { size: 100 / token.header.length, type: WidthType.PERCENTAGE },
+                })
+              ),
+            })
+          );
+        }
+
+        // Data rows
+        for (const row of token.rows) {
+          tableRows.push(
+            new TableRow({
+              children: row.map(cell =>
+                new TableCell({
+                  children: [new Paragraph({
+                    children: [
+                      new TextRun({
+                        text: cell.text,
+                        font: 'Roboto Condensed',
+                        size: 22,
+                        color: '000000',
+                      }),
+                    ],
+                  })],
+                  width: { size: 100 / row.length, type: WidthType.PERCENTAGE },
+                })
+              ),
+            })
+          );
+        }
+
+        children.push(
+          new Table({
+            rows: tableRows,
+            width: { size: 100, type: WidthType.PERCENTAGE },
+            borders: {
+              top: { style: BorderStyle.SINGLE, size: 1 },
+              bottom: { style: BorderStyle.SINGLE, size: 1 },
+              left: { style: BorderStyle.SINGLE, size: 1 },
+              right: { style: BorderStyle.SINGLE, size: 1 },
+              insideHorizontal: { style: BorderStyle.SINGLE, size: 1 },
+              insideVertical: { style: BorderStyle.SINGLE, size: 1 },
+            },
+          })
+        );
+        children.push(new Paragraph({ spacing: { after: 400 } })); // Add space after table
+        break;
+
+      case 'space':
+        // Add spacing
+        children.push(new Paragraph({ spacing: { after: 200 } }));
+        break;
+
+      case 'hr':
+        // Horizontal rule
+        children.push(
+          new Paragraph({
+            children: [
+              new TextRun({
+                text: '---',
+                font: 'Roboto Condensed',
+                size: 22,
+                color: '000000',
+              }),
+            ],
+            spacing: { before: 400, after: 400 },
+          })
+        );
+        break;
+
+      case 'blockquote':
+        // Blockquote
+        const quoteRuns = parseInlineMarkdown(token.text);
+        children.push(
+          new Paragraph({
+            children: quoteRuns,
+            spacing: { after: 200, left: 720 }, // Indent blockquotes
+            italics: true,
+          })
+        );
+        break;
+
+      case 'code':
+        // Code block
+        children.push(
+          new Paragraph({
+            children: [
+              new TextRun({
+                text: token.text,
+                font: 'Roboto Condensed',
+                size: 22,
+                color: '000000',
+              }),
+            ],
+            spacing: { after: 200 },
+            shading: {
+              fill: 'F5F5F5',
+            },
+          })
+        );
+        break;
+    }
+  }
+
+  // Add footer
+  children.push(
+    new Paragraph({
+      children: [
+        new TextRun({
+          text: '---',
+          font: 'Roboto Condensed',
+          size: 22,
+          color: '000000',
+        }),
+      ],
+      spacing: { before: 800, after: 200 },
+    })
+  );
+
+  children.push(
+    new Paragraph({
+      children: [
+        new TextRun({
+          text: '🤖 Generated with AI Analytics Dashboard • Rooted Solutions',
+          font: 'Roboto Condensed',
+          size: 20,
+          color: '000000',
+          italics: true,
+        }),
+      ],
+      alignment: AlignmentType.CENTER,
+    })
+  );
+
+  // Build document
+  const doc = new Document({
+    sections: [
+      {
+        properties: {
+          page: {
+            margin: {
+              top: 720, // 0.5 inch
+              right: 720,
+              bottom: 720,
+              left: 720,
+            },
+          },
+        },
+        children,
+      },
+    ],
+  });
+
+  return doc;
+}
+
+function parseInlineMarkdown(text: string): TextRun[] {
+  const runs: TextRun[] = [];
+
+  // Base font settings for all text
+  const baseFontSettings = {
+    font: 'Roboto Condensed',
+    size: 22, // 11pt
+    color: '000000',
+  };
+
+  // Simple regex-based inline parsing
+  // Handles **bold**, *italic*, and plain text
+  const boldPattern = /\*\*(.*?)\*\*/g;
+  const italicPattern = /\*(.*?)\*/g;
+
+  let lastIndex = 0;
+  let match;
+
+  // First pass: find bold text
+  const boldRanges: { start: number; end: number; text: string }[] = [];
+  while ((match = boldPattern.exec(text)) !== null) {
+    boldRanges.push({
+      start: match.index,
+      end: match.index + match[0].length,
+      text: match[1],
+    });
+  }
+
+  // Build runs with formatting
+  if (boldRanges.length === 0) {
+    // No bold text, check for italics or return plain text
+    const italicRanges: { start: number; end: number; text: string }[] = [];
+    while ((match = italicPattern.exec(text)) !== null) {
+      italicRanges.push({
+        start: match.index,
+        end: match.index + match[0].length,
+        text: match[1],
+      });
+    }
+
+    if (italicRanges.length === 0) {
+      // Plain text
+      runs.push(new TextRun({ text, ...baseFontSettings }));
+    } else {
+      // Build with italics
+      let pos = 0;
+      for (const range of italicRanges) {
+        if (pos < range.start) {
+          runs.push(new TextRun({ text: text.substring(pos, range.start), ...baseFontSettings }));
+        }
+        runs.push(new TextRun({ text: range.text, italics: true, ...baseFontSettings }));
+        pos = range.end;
+      }
+      if (pos < text.length) {
+        runs.push(new TextRun({ text: text.substring(pos), ...baseFontSettings }));
+      }
+    }
+  } else {
+    // Build with bold text
+    let pos = 0;
+    for (const range of boldRanges) {
+      if (pos < range.start) {
+        runs.push(new TextRun({ text: text.substring(pos, range.start), ...baseFontSettings }));
+      }
+      runs.push(new TextRun({ text: range.text, bold: true, ...baseFontSettings }));
+      pos = range.end;
+    }
+    if (pos < text.length) {
+      runs.push(new TextRun({ text: text.substring(pos), ...baseFontSettings }));
+    }
+  }
+
+  return runs;
 }
