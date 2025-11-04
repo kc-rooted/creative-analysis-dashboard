@@ -386,6 +386,37 @@ async function fetchHBMonthlyPerformanceData(projectId: string, dataset: string,
   // First, get all the standard monthly performance data
   const baseData = await fetchMonthlyPerformanceData(projectId, dataset, dateRange);
 
+  // Add H&B-specific paid media performance metrics (Meta & Google Ads)
+  const paidMediaQuery = `
+    SELECT
+      platform,
+      SUM(spend) as total_spend,
+      SUM(revenue) as total_revenue,
+      SUM(impressions) as total_impressions,
+      SUM(clicks) as total_clicks,
+      SUM(reach) as total_reach,
+      SUM(purchases) as total_purchases,
+      AVG(frequency) as avg_frequency,
+      AVG(conversion_rate) as avg_conversion_rate,
+      SUM(revenue) / NULLIF(SUM(spend), 0) as calculated_roas,
+      SUM(spend) / NULLIF(SUM(impressions) / 1000, 0) as calculated_cpm,
+      SUM(spend) / NULLIF(SUM(clicks), 0) as calculated_cpc,
+      (SUM(clicks) / NULLIF(SUM(impressions), 0)) * 100 as calculated_ctr
+    FROM \`${projectId}.${dataset}.paid_media_performance\`
+    WHERE date >= '${dateRange.start}' AND date < DATE_ADD(DATE '${dateRange.start}', INTERVAL 1 MONTH)
+    GROUP BY platform
+    ORDER BY platform
+  `;
+
+  try {
+    const paidMediaData = await runSQLQuery(paidMediaQuery);
+    console.log(`[Report Data] paidMediaPerformance: ${paidMediaData.length} rows fetched`);
+    baseData.paidMediaPerformance = paidMediaData;
+  } catch (error) {
+    console.error('[Report Data] Error fetching paid media performance:', error);
+    baseData.paidMediaPerformance = [];
+  }
+
   // Add H&B-specific funnel ads data
   const funnelAdsQuery = `
     SELECT
@@ -696,6 +727,69 @@ function formatMonthlyReportAsMarkdown(data: any): string {
 function formatHBMonthlyReportAsMarkdown(data: any): string {
   // Start with the standard monthly report formatting
   let markdown = formatMonthlyReportAsMarkdown(data);
+
+  // Add report month information at the top
+  if (data.monthlyExecutiveReport?.[0]?.report_month) {
+    const reportMonthValue = data.monthlyExecutiveReport[0].report_month;
+
+    // Handle BigQuery date object or string
+    let reportMonth: Date;
+    if (reportMonthValue.value) {
+      // BigQuery returns dates as { value: "2024-10-01" }
+      reportMonth = new Date(reportMonthValue.value + 'T00:00:00');
+    } else if (typeof reportMonthValue === 'string') {
+      // If it's a string, append time to ensure local timezone
+      reportMonth = new Date(reportMonthValue + 'T00:00:00');
+    } else {
+      reportMonth = new Date(reportMonthValue);
+    }
+
+    // Validate the date is valid
+    if (!isNaN(reportMonth.getTime())) {
+      const monthName = reportMonth.toLocaleString('en-US', { month: 'long', year: 'numeric' });
+      markdown = `# REPORT MONTH: ${monthName}\n**CRITICAL: Use this month name in the H3 header at the start of the report**\n\n` + markdown;
+    } else {
+      console.error('[HB Report] Invalid date from report_month:', reportMonthValue);
+    }
+  }
+
+  // Add paid media performance metrics for Meta and Google Ads
+  if (data.paidMediaPerformance?.length > 0) {
+    const metaData = data.paidMediaPerformance.find((p: any) => p.platform === 'Facebook');
+    const googleData = data.paidMediaPerformance.find((p: any) => p.platform === 'Google Ads');
+
+    if (metaData) {
+      markdown += `\n## META ADS PERFORMANCE METRICS\n`;
+      markdown += `**Use these exact metrics for the Meta Ads Performance section:**\n\n`;
+      markdown += `- ROAS: ${metaData.calculated_roas?.toFixed(2) || 'N/A'}x\n`;
+      markdown += `- CPM: $${metaData.calculated_cpm?.toFixed(2) || 'N/A'}\n`;
+      markdown += `- CPC: $${metaData.calculated_cpc?.toFixed(2) || 'N/A'}\n`;
+      markdown += `- CTR: ${metaData.calculated_ctr?.toFixed(2) || 'N/A'}%\n`;
+      markdown += `- Frequency: ${metaData.avg_frequency?.toFixed(2) || 'N/A'}\n\n`;
+      markdown += `**Additional Context:**\n`;
+      markdown += `- Total Spend: $${metaData.total_spend?.toLocaleString() || 'N/A'}\n`;
+      markdown += `- Total Revenue: $${metaData.total_revenue?.toLocaleString() || 'N/A'}\n`;
+      markdown += `- Total Impressions: ${metaData.total_impressions?.toLocaleString() || 'N/A'}\n`;
+      markdown += `- Total Clicks: ${metaData.total_clicks?.toLocaleString() || 'N/A'}\n`;
+      markdown += `- Total Purchases: ${metaData.total_purchases?.toLocaleString() || 'N/A'}\n\n`;
+    }
+
+    if (googleData) {
+      markdown += `\n## GOOGLE ADS PERFORMANCE METRICS\n`;
+      markdown += `**Use these exact metrics for the Google Ads Performance section:**\n\n`;
+      markdown += `- ROAS: ${googleData.calculated_roas?.toFixed(2) || 'N/A'}x\n`;
+      markdown += `- CPM: $${googleData.calculated_cpm?.toFixed(2) || 'N/A'}\n`;
+      markdown += `- CPC: $${googleData.calculated_cpc?.toFixed(2) || 'N/A'}\n`;
+      markdown += `- CTR: ${googleData.calculated_ctr?.toFixed(2) || 'N/A'}%\n`;
+      markdown += `- Conversion Rate: ${googleData.avg_conversion_rate?.toFixed(2) || 'N/A'}%\n\n`;
+      markdown += `**Additional Context:**\n`;
+      markdown += `- Total Spend: $${googleData.total_spend?.toLocaleString() || 'N/A'}\n`;
+      markdown += `- Total Revenue: $${googleData.total_revenue?.toLocaleString() || 'N/A'}\n`;
+      markdown += `- Total Impressions: ${googleData.total_impressions?.toLocaleString() || 'N/A'}\n`;
+      markdown += `- Total Clicks: ${googleData.total_clicks?.toLocaleString() || 'N/A'}\n`;
+      markdown += `- Total Purchases: ${googleData.total_purchases?.toLocaleString() || 'N/A'}\n\n`;
+    }
+  }
 
   // NOTE: Funnel ads section is now handled via client-side injection
   // The funnel ads data is still fetched and returned in the response,

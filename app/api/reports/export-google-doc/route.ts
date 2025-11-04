@@ -25,9 +25,9 @@ interface DashboardData {
 
 export async function POST(request: Request) {
   try {
-    const { clientId, period, dashboardData, markdownContent, reportType } = await request.json();
+    const { clientId, period, dashboardData, markdownContent, reportType, funnelAds } = await request.json();
 
-    console.log('[Google Docs Export] Starting export for:', { clientId, period, reportType, hasMarkdown: !!markdownContent });
+    console.log('[Google Docs Export] Starting export for:', { clientId, period, reportType, hasMarkdown: !!markdownContent, hasFunnelAds: !!funnelAds });
 
     // Initialize Google Auth
     const keyPath = process.env.GOOGLE_APPLICATION_CREDENTIALS;
@@ -47,11 +47,12 @@ export async function POST(request: Request) {
 
     const authClient = await auth.getClient();
     const drive = google.drive({ version: 'v3', auth: authClient as any });
+    const docs = google.docs({ version: 'v1', auth: authClient as any });
 
     // Step 1: Generate DOCX document (choose method based on input type)
     let doc: Document;
     if (markdownContent) {
-      doc = await generateMarkdownDocument(clientId, reportType, markdownContent);
+      doc = await generateMarkdownDocument(clientId, reportType, markdownContent, funnelAds);
     } else {
       doc = await generateDocument(clientId, period, dashboardData);
     }
@@ -97,10 +98,43 @@ export async function POST(request: Request) {
 
     console.log('[Google Docs Export] Uploaded to Google Drive:', docId);
 
-    // Step 5: File is now in the shared folder, which already has organization-wide sharing
+    // Step 5: Apply page background color using Google Docs API
+    try {
+      await docs.documents.batchUpdate({
+        documentId: docId,
+        requestBody: {
+          requests: [
+            {
+              updateDocumentStyle: {
+                documentStyle: {
+                  background: {
+                    color: {
+                      color: {
+                        rgbColor: {
+                          red: 0.976, // #f9f9f9 = RGB(249, 249, 249)
+                          green: 0.976,
+                          blue: 0.976,
+                        },
+                      },
+                    },
+                  },
+                },
+                fields: 'background',
+              },
+            },
+          ],
+        },
+      });
+      console.log('[Google Docs Export] Applied background color');
+    } catch (error) {
+      console.error('[Google Docs Export] Failed to apply background color:', error);
+      // Continue even if styling fails
+    }
+
+    // Step 6: File is now in the shared folder, which already has organization-wide sharing
     // The folder permissions cascade to files, so no additional sharing needed
 
-    // Step 6: Clean up temp file
+    // Step 7: Clean up temp file
     fs.unlinkSync(tempFilePath);
 
     console.log('[Google Docs Export] File now in your Drive, no longer consuming service account quota');
@@ -429,7 +463,8 @@ function createPlatformSection(
 async function generateMarkdownDocument(
   clientId: string,
   reportType: string,
-  markdownContent: string
+  markdownContent: string,
+  funnelAds?: any
 ): Promise<Document> {
   const { marked } = await import('marked');
 
@@ -438,44 +473,6 @@ async function generateMarkdownDocument(
 
   // Build document children from tokens
   const children: (Paragraph | Table)[] = [];
-
-  // Add title
-  children.push(
-    new Paragraph({
-      children: [
-        new TextRun({
-          text: `${clientId.toUpperCase()} - ${reportType || 'Report'}`,
-          bold: true,
-          font: 'Roboto Condensed',
-          size: 32, // 16pt
-          color: '000000',
-        }),
-      ],
-      heading: HeadingLevel.HEADING_1,
-      spacing: { after: 200 },
-    })
-  );
-
-  // Add generation date (subtitle)
-  children.push(
-    new Paragraph({
-      children: [
-        new TextRun({
-          text: `Generated on ${new Date().toLocaleDateString('en-US', {
-            weekday: 'long',
-            year: 'numeric',
-            month: 'long',
-            day: 'numeric'
-          })}`,
-          bold: true,
-          font: 'Roboto Condensed',
-          size: 22, // 11pt
-          color: '000000',
-        }),
-      ],
-      spacing: { after: 600 },
-    })
-  );
 
   // Process markdown tokens
   for (const token of tokens) {
@@ -542,6 +539,18 @@ async function generateMarkdownDocument(
         // Handle tables
         const tableRows: TableRow[] = [];
 
+        // Calculate fixed column widths in DXA (twips)
+        // Use 9000 total width (same as funnel ads), divide by number of columns
+        const numColumns = token.header?.length || token.rows[0]?.length || 1;
+        const columnWidth = Math.floor(9000 / numColumns);
+        const columnWidths = Array(numColumns).fill(columnWidth);
+
+        // Check if this is the hero metrics table (has "Metric", "Value", "Analysis" columns)
+        const isHeroMetricsTable = token.header?.some(cell =>
+          cell.text === 'Metric' || cell.text === 'Value' || cell.text === 'Analysis'
+        );
+        const borderSize = isHeroMetricsTable ? 6 : 8; // Larger sizes for visibility in Google Docs
+
         // Header row
         if (token.header && token.header.length > 0) {
           tableRows.push(
@@ -559,7 +568,13 @@ async function generateMarkdownDocument(
                       }),
                     ],
                   })],
-                  width: { size: 100 / token.header.length, type: WidthType.PERCENTAGE },
+                  width: { size: columnWidth, type: WidthType.DXA },
+                  margins: {
+                    top: 200,
+                    bottom: 200,
+                    left: 200,
+                    right: 200,
+                  },
                 })
               ),
             })
@@ -573,16 +588,15 @@ async function generateMarkdownDocument(
               children: row.map(cell =>
                 new TableCell({
                   children: [new Paragraph({
-                    children: [
-                      new TextRun({
-                        text: cell.text,
-                        font: 'Roboto Condensed',
-                        size: 22,
-                        color: '000000',
-                      }),
-                    ],
+                    children: parseInlineMarkdown(cell.text), // Parse markdown in table cells
                   })],
-                  width: { size: 100 / row.length, type: WidthType.PERCENTAGE },
+                  width: { size: columnWidth, type: WidthType.DXA },
+                  margins: {
+                    top: 200,
+                    bottom: 200,
+                    left: 200,
+                    right: 200,
+                  },
                 })
               ),
             })
@@ -592,14 +606,15 @@ async function generateMarkdownDocument(
         children.push(
           new Table({
             rows: tableRows,
-            width: { size: 100, type: WidthType.PERCENTAGE },
+            width: { size: 9000, type: WidthType.DXA },
+            columnWidths: columnWidths,
             borders: {
-              top: { style: BorderStyle.SINGLE, size: 1 },
-              bottom: { style: BorderStyle.SINGLE, size: 1 },
-              left: { style: BorderStyle.SINGLE, size: 1 },
-              right: { style: BorderStyle.SINGLE, size: 1 },
-              insideHorizontal: { style: BorderStyle.SINGLE, size: 1 },
-              insideVertical: { style: BorderStyle.SINGLE, size: 1 },
+              top: { style: BorderStyle.SINGLE, size: borderSize, color: 'D1D5DB' },
+              bottom: { style: BorderStyle.SINGLE, size: borderSize, color: 'D1D5DB' },
+              left: { style: BorderStyle.SINGLE, size: borderSize, color: 'D1D5DB' },
+              right: { style: BorderStyle.SINGLE, size: borderSize, color: 'D1D5DB' },
+              insideHorizontal: { style: BorderStyle.SINGLE, size: borderSize, color: 'D1D5DB' },
+              insideVertical: { style: BorderStyle.SINGLE, size: borderSize, color: 'D1D5DB' },
             },
           })
         );
@@ -607,25 +622,11 @@ async function generateMarkdownDocument(
         break;
 
       case 'space':
-        // Add spacing
-        children.push(new Paragraph({ spacing: { after: 200 } }));
+        // Skip extra spacing - paragraphs already have spacing
         break;
 
       case 'hr':
-        // Horizontal rule
-        children.push(
-          new Paragraph({
-            children: [
-              new TextRun({
-                text: '---',
-                font: 'Roboto Condensed',
-                size: 22,
-                color: '000000',
-              }),
-            ],
-            spacing: { before: 400, after: 400 },
-          })
-        );
+        // Skip horizontal rules - we don't want them in the export
         break;
 
       case 'blockquote':
@@ -659,6 +660,185 @@ async function generateMarkdownDocument(
           })
         );
         break;
+    }
+  }
+
+  // Add funnel ads section if available
+  if (funnelAds) {
+    console.log('[Google Docs Export] Adding funnel ads section');
+
+    // Add "Top Ads by Funnel Stage" heading
+    children.push(
+      new Paragraph({
+        children: [
+          new TextRun({
+            text: 'Top Ads by Funnel Stage',
+            bold: true,
+            font: 'Roboto Condensed',
+            size: 28 * 2, // H2 size
+            color: '000000',
+          }),
+        ],
+        heading: HeadingLevel.HEADING_2,
+        spacing: { before: 600, after: 400 },
+      })
+    );
+
+    const stageLabels: Record<string, string> = {
+      'TOFU': 'Top of Funnel',
+      'MOFU': 'Middle of Funnel',
+      'BOFU': 'Bottom of Funnel'
+    };
+
+    // Add each funnel stage
+    for (const stage of ['TOFU', 'MOFU', 'BOFU']) {
+      if (funnelAds[stage]?.length > 0) {
+        // Stage heading
+        children.push(
+          new Paragraph({
+            children: [
+              new TextRun({
+                text: `${stage} (${stageLabels[stage]})`,
+                bold: true,
+                font: 'Roboto Condensed',
+                size: 24 * 2, // H3 size
+                color: '000000',
+              }),
+            ],
+            heading: HeadingLevel.HEADING_3,
+            spacing: { before: 400, after: 200 },
+          })
+        );
+
+        // Add ads as a table (3 columns for 3 ads)
+        const ads = funnelAds[stage].slice(0, 3);
+        const tableRows: TableRow[] = [];
+
+        // Create cells for each ad
+        const adCells: TableCell[] = [];
+        for (const ad of ads) {
+          const cellContent: Paragraph[] = [];
+
+          // Ad name
+          cellContent.push(
+            new Paragraph({
+              children: [
+                new TextRun({
+                  text: ad.ad_name || 'Untitled Ad',
+                  bold: true,
+                  font: 'Roboto Condensed',
+                  size: 20,
+                  color: '000000',
+                }),
+              ],
+              spacing: { after: 100 },
+            })
+          );
+
+          // Metrics
+          const metrics: string[] = [];
+          if (ad.all_star_rank !== null && ad.all_star_rank !== undefined) {
+            metrics.push(`⭐ All-Star Rank: ${ad.all_star_rank}`);
+          }
+          if (ad.roas !== null && ad.roas !== undefined) {
+            metrics.push(`ROAS: ${ad.roas.toFixed(2)}x`);
+          }
+          if (ad.ctr_percent !== null && ad.ctr_percent !== undefined) {
+            metrics.push(`CTR: ${ad.ctr_percent.toFixed(2)}%`);
+          }
+          if (ad.cpc !== null && ad.cpc !== undefined) {
+            metrics.push(`CPC: $${ad.cpc.toFixed(2)}`);
+          }
+
+          for (const metric of metrics) {
+            cellContent.push(
+              new Paragraph({
+                children: [
+                  new TextRun({
+                    text: metric,
+                    font: 'Roboto Condensed',
+                    size: 18,
+                    color: '374151',
+                  }),
+                ],
+                spacing: { after: 50 },
+              })
+            );
+          }
+
+          // Add image URL note at bottom
+          const imageUrl = ad.creative_type === 'VIDEO' && ad.thumbnail_url
+            ? ad.thumbnail_url
+            : ad.image_url || ad.thumbnail_url;
+
+          if (imageUrl) {
+            cellContent.push(
+              new Paragraph({
+                children: [
+                  new TextRun({
+                    text: '📷 View ad creative',
+                    font: 'Roboto Condensed',
+                    size: 16,
+                    color: '89cdee',
+                    italics: true,
+                  }),
+                ],
+                spacing: { before: 100 },
+              })
+            );
+          }
+
+          adCells.push(
+            new TableCell({
+              children: cellContent,
+              width: { size: 3000, type: WidthType.DXA }, // Fixed width in twips (3000 twips = ~2 inches)
+              shading: {
+                fill: 'FFFFFF',
+              },
+              margins: {
+                top: 200,
+                bottom: 200,
+                left: 200,
+                right: 200,
+              },
+            })
+          );
+        }
+
+        // Fill empty cells if less than 3 ads
+        while (adCells.length < 3) {
+          adCells.push(
+            new TableCell({
+              children: [new Paragraph('')],
+              width: { size: 3000, type: WidthType.DXA },
+              shading: {
+                fill: 'F9F9F9',
+              },
+            })
+          );
+        }
+
+        tableRows.push(new TableRow({ children: adCells }));
+
+        children.push(
+          new Table({
+            rows: tableRows,
+            width: { size: 9000, type: WidthType.DXA }, // Total width (3 columns × 3000 twips)
+            columnWidths: [3000, 3000, 3000],
+            borders: {
+              top: { style: BorderStyle.SINGLE, size: 2, color: 'D1D5DB' },
+              bottom: { style: BorderStyle.SINGLE, size: 2, color: 'D1D5DB' },
+              left: { style: BorderStyle.SINGLE, size: 2, color: 'D1D5DB' },
+              right: { style: BorderStyle.SINGLE, size: 2, color: 'D1D5DB' },
+              insideHorizontal: { style: BorderStyle.SINGLE, size: 2, color: 'D1D5DB' },
+              insideVertical: { style: BorderStyle.SINGLE, size: 2, color: 'D1D5DB' },
+            },
+          })
+        );
+
+        // Add spacing after table
+        children.push(new Paragraph({ spacing: { after: 400 } }));
+      }
     }
   }
 
