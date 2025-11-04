@@ -100,6 +100,7 @@ export async function POST(request: Request) {
 function getPeriodDateRange(period: string): { start: string; end: string; sql: string } {
   const today = new Date();
   let startDate: Date;
+  let endDate: Date = today;
 
   switch (period) {
     case '7d':
@@ -116,6 +117,13 @@ function getPeriodDateRange(period: string): { start: string; end: string; sql: 
     case 'ytd':
       startDate = new Date(today.getFullYear(), 0, 1);
       break;
+    case 'previous-month':
+      // Get the full previous month
+      // e.g., if today is Nov 3, 2025, return Oct 1 - Oct 31, 2025
+      const lastMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+      startDate = new Date(lastMonth.getFullYear(), lastMonth.getMonth(), 1);
+      endDate = new Date(lastMonth.getFullYear(), lastMonth.getMonth() + 1, 0); // Last day of previous month
+      break;
     default:
       startDate = new Date(today);
       startDate.setDate(today.getDate() - 30);
@@ -125,8 +133,8 @@ function getPeriodDateRange(period: string): { start: string; end: string; sql: 
 
   return {
     start: formatDate(startDate),
-    end: formatDate(today),
-    sql: `DATE >= '${formatDate(startDate)}' AND DATE <= '${formatDate(today)}'`
+    end: formatDate(endDate),
+    sql: `DATE >= '${formatDate(startDate)}' AND DATE <= '${formatDate(endDate)}'`
   };
 }
 
@@ -194,7 +202,29 @@ async function fetchWeeklyExecutiveData(projectId: string, dataset: string, date
  */
 async function fetchMonthlyPerformanceData(projectId: string, dataset: string, dateRange: any) {
   const queries = {
-    // 1. Executive Summary - Only essential MTD metrics
+    // 1. Monthly Executive Report - Hero metrics with MoM and YoY
+    monthlyExecutiveReport: `
+      SELECT
+        report_month,
+        revenue_total,
+        revenue_mom_pct,
+        revenue_yoy_pct,
+        blended_roas,
+        blended_roas_mom_pct,
+        blended_roas_yoy_pct,
+        paid_spend_total as paid_media_spend,
+        paid_spend_mom_pct as paid_media_spend_mom_pct,
+        paid_spend_yoy_pct as paid_media_spend_yoy_pct,
+        top_emerging_product_title,
+        top_emerging_product_revenue,
+        top_emerging_product_growth_pct as top_emerging_product_mom_growth_pct,
+        top_emerging_product_category
+      FROM \`${projectId}.${dataset}.monthly_executive_report\`
+      ORDER BY report_month DESC
+      LIMIT 1
+    `,
+
+    // 2. Executive Summary - Only essential MTD metrics (kept for backwards compatibility)
     executiveSummary: `
       SELECT
         revenue_mtd,
@@ -222,18 +252,21 @@ async function fetchMonthlyPerformanceData(projectId: string, dataset: string, d
     `,
 
     // 2. Monthly Business Summary - Core metrics only
+    // NOTE: Filter to previous complete month to match monthly_executive_report
     monthlyBusinessSummary: `
       SELECT
+        month,
         monthly_gross_sales,
         monthly_net_sales_after_refunds,
         monthly_orders,
         avg_monthly_aov,
-        net_sales_roas,
-        avg_monthly_roas,
+        total_sales_roas,
+        attributed_blended_roas,
         monthly_ad_spend,
         monthly_facebook_spend,
         monthly_google_spend
       FROM \`${projectId}.${dataset}.monthly_business_summary\`
+      WHERE month < DATE_TRUNC(CURRENT_DATE(), MONTH)
       ORDER BY month DESC
       LIMIT 1
     `,
@@ -276,13 +309,37 @@ async function fetchMonthlyPerformanceData(projectId: string, dataset: string, d
         product_title,
         revenue_30d,
         units_sold_30d,
-        revenue_change_pct_30d,
-        units_change_pct_30d,
         total_inventory_quantity,
-        avg_variant_price
+        avg_variant_price,
+        performance_category_30d
       FROM \`${projectId}.${dataset}.product_intelligence\`
       ORDER BY revenue_30d DESC
       LIMIT 10
+    `,
+
+    // 6. Bayesian Annual Forecast - Revenue projection for remainder of year
+    bayesianForecast: `
+      SELECT
+        report_date,
+        forecast_year,
+        annual_revenue_target,
+        annual_roas_target,
+        ytd_revenue,
+        ytd_attainment_pct,
+        days_remaining,
+        revenue_gap,
+        prophet_annual_revenue_base,
+        prophet_annual_revenue_conservative,
+        prophet_annual_revenue_optimistic,
+        probability_hit_revenue_target,
+        probability_hit_roas_target,
+        probability_hit_both_targets,
+        p50_annual_revenue,
+        revenue_risk_level,
+        performance_vs_pace_pct
+      FROM \`${projectId}.${dataset}.bayesian_annual_probability_forecast\`
+      ORDER BY report_date DESC
+      LIMIT 1
     `
   };
 
@@ -494,10 +551,59 @@ function formatDataAsMarkdown(data: any, reportType: string): string {
 function formatMonthlyReportAsMarkdown(data: any): string {
   let markdown = '# PRE-FETCHED DATA\n\n';
 
-  // Executive Summary
+  // Hero Metrics from Monthly Executive Report (NEW)
+  if (data.monthlyExecutiveReport?.[0]) {
+    const hero = data.monthlyExecutiveReport[0];
+    markdown += `## HERO METRICS (for Executive Summary)\n`;
+    markdown += `**Use these 6 metrics EXACTLY as specified in the prompt:**\n\n`;
+
+    markdown += `**Row 1 - Monthly Revenue**:\n`;
+    markdown += `- revenue_total: $${hero.revenue_total?.toLocaleString() || 'N/A'}\n`;
+    markdown += `- revenue_mom_pct: ${hero.revenue_mom_pct?.toFixed(1) || 0}%\n`;
+    markdown += `- revenue_yoy_pct: ${hero.revenue_yoy_pct?.toFixed(1) || 0}%\n\n`;
+
+    markdown += `**Row 3 - Monthly ROAS**:\n`;
+    markdown += `- blended_roas: ${hero.blended_roas?.toFixed(2) || 'N/A'}x\n`;
+    markdown += `- blended_roas_mom_pct: ${hero.blended_roas_mom_pct?.toFixed(1) || 0}%\n`;
+    markdown += `- blended_roas_yoy_pct: ${hero.blended_roas_yoy_pct?.toFixed(1) || 0}%\n\n`;
+
+    markdown += `**Row 4 - Paid Media Spend**:\n`;
+    markdown += `- paid_media_spend: $${hero.paid_media_spend?.toLocaleString() || 'N/A'}\n`;
+    markdown += `- paid_media_spend_mom_pct: ${hero.paid_media_spend_mom_pct?.toFixed(1) || 0}%\n`;
+    markdown += `- paid_media_spend_yoy_pct: ${hero.paid_media_spend_yoy_pct?.toFixed(1) || 0}%\n\n`;
+
+    markdown += `**Row 6 - Top Emerging SKU**:\n`;
+    markdown += `- top_emerging_product_title: ${hero.top_emerging_product_title || 'N/A'}\n`;
+    markdown += `- top_emerging_product_revenue: $${hero.top_emerging_product_revenue?.toLocaleString() || 'N/A'}\n`;
+    markdown += `- top_emerging_product_mom_growth_pct: ${hero.top_emerging_product_mom_growth_pct?.toFixed(1) || 0}%\n\n`;
+  }
+
+  // Annual Revenue Forecast (Bayesian)
+  if (data.bayesianForecast?.[0]) {
+    const forecast = data.bayesianForecast[0];
+    markdown += `## ANNUAL REVENUE FORECAST (for Hero Metric Row 2)\n`;
+    markdown += `**Use these fields for Annual Revenue Pacing row:**\n\n`;
+
+    markdown += `**Row 2 - Annual Revenue Pacing**:\n`;
+    markdown += `- prophet_annual_revenue_base (Base Scenario forecast): $${forecast.prophet_annual_revenue_base?.toLocaleString() || 'N/A'}\n`;
+    markdown += `- annual_revenue_target (Target): $${forecast.annual_revenue_target?.toLocaleString() || 'N/A'}\n`;
+    markdown += `- probability_hit_revenue_target: ${forecast.probability_hit_revenue_target}%\n`;
+    markdown += `- days_remaining: ${forecast.days_remaining}\n`;
+    markdown += `- CALCULATE SHORTFALL: annual_revenue_target MINUS prophet_annual_revenue_base\n\n`;
+
+    markdown += `**Additional Context** (for reference only):\n`;
+    markdown += `- Forecast Year: ${forecast.forecast_year}\n`;
+    markdown += `- YTD Revenue: $${parseFloat(forecast.ytd_revenue)?.toLocaleString() || 'N/A'}\n`;
+    markdown += `- YTD Attainment: ${forecast.ytd_attainment_pct?.toFixed(1) || 0}%\n`;
+    markdown += `- Conservative Scenario: $${forecast.prophet_annual_revenue_conservative?.toLocaleString() || 'N/A'}\n`;
+    markdown += `- Optimistic Scenario: $${forecast.prophet_annual_revenue_optimistic?.toLocaleString() || 'N/A'}\n`;
+    markdown += `- Risk Level: ${forecast.revenue_risk_level}\n\n`;
+  }
+
+  // Executive Summary (MTD - for detailed breakdown)
   if (data.executiveSummary?.[0]) {
     const exec = data.executiveSummary[0];
-    markdown += `## Executive Summary (MTD)\n`;
+    markdown += `## Platform Breakdown (MTD)\n`;
     markdown += `- Revenue: $${exec.revenue_mtd?.toLocaleString() || 'N/A'} | Orders: ${exec.orders_mtd || 'N/A'} | AOV: $${exec.aov_mtd?.toFixed(2) || 'N/A'}\n`;
     markdown += `- YoY Growth: Revenue ${exec.revenue_mtd_yoy_growth_pct || 0 > 0 ? '+' : ''}${exec.revenue_mtd_yoy_growth_pct?.toFixed(1) || 0}% | Orders ${exec.orders_mtd_yoy_growth_pct || 0 > 0 ? '+' : ''}${exec.orders_mtd_yoy_growth_pct?.toFixed(1) || 0}%\n`;
 
@@ -527,7 +633,7 @@ function formatMonthlyReportAsMarkdown(data: any): string {
     markdown += `\n## Monthly Business Metrics\n`;
     markdown += `- Gross Sales: $${monthly.monthly_gross_sales?.toLocaleString() || 'N/A'} | Net Sales (after refunds): $${monthly.monthly_net_sales_after_refunds?.toLocaleString() || 'N/A'}\n`;
     markdown += `- Total Orders: ${monthly.monthly_orders || 'N/A'} | AOV: $${monthly.avg_monthly_aov?.toFixed(2) || 'N/A'}\n`;
-    markdown += `- Net Sales ROAS: ${monthly.net_sales_roas?.toFixed(2) || 'N/A'}x | Attributed ROAS: ${monthly.avg_monthly_roas?.toFixed(2) || 'N/A'}x\n`;
+    markdown += `- Total Sales ROAS: ${monthly.total_sales_roas?.toFixed(2) || 'N/A'}x | Attributed Blended ROAS: ${monthly.attributed_blended_roas?.toFixed(2) || 'N/A'}x\n`;
     markdown += `- Total Ad Spend: $${monthly.monthly_ad_spend?.toLocaleString() || 'N/A'} (FB: $${monthly.monthly_facebook_spend?.toLocaleString() || 0}, Google: $${monthly.monthly_google_spend?.toLocaleString() || 0})\n`;
   }
 
@@ -569,13 +675,18 @@ function formatMonthlyReportAsMarkdown(data: any): string {
     });
   }
 
-  // Products
+  // Products - WITH EXPLICIT ROW 5 HERO METRIC
   if (data.productIntelligence?.length > 0) {
-    markdown += `\n## Top 10 Products by Revenue\n`;
-    markdown += `| Product | Revenue (30d) | Units Sold | Revenue Change | Inventory |\n`;
-    markdown += `|---------|---------------|------------|----------------|----------|\n`;
+    markdown += `\n## TOP PERFORMING SKU (for Hero Metric Row 5)\n`;
+    markdown += `**Row 5 - Top Performing SKU**:\n`;
+    markdown += `- product_title: ${data.productIntelligence[0].product_title}\n`;
+    markdown += `- revenue_30d: $${data.productIntelligence[0].revenue_30d?.toLocaleString() || 0}\n\n`;
+
+    markdown += `**All Top 10 Products** (for context):\n`;
+    markdown += `| Product | Revenue (30d) | Units Sold | Inventory |\n`;
+    markdown += `|---------|---------------|------------|----------|\n`;
     data.productIntelligence.forEach((p: any) => {
-      markdown += `| ${p.product_title} | $${p.revenue_30d?.toLocaleString() || 0} | ${p.units_sold_30d || 0} | ${p.revenue_change_pct_30d || 0 > 0 ? '+' : ''}${p.revenue_change_pct_30d?.toFixed(1) || 0}% | ${p.total_inventory_quantity || 0} |\n`;
+      markdown += `| ${p.product_title} | $${p.revenue_30d?.toLocaleString() || 0} | ${p.units_sold_30d || 0} | ${p.total_inventory_quantity || 0} |\n`;
     });
   }
 
