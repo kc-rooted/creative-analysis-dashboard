@@ -171,6 +171,8 @@ Generate a strategic, executive-level monthly marketing report with the followin
 
    **After the table**, add 3-5 key bullet points with insights about wins and challenges
 
+   NOTE: Section headings should use the standard H2 (##) format. Subsections can use H3/H4 as appropriate.
+
 2. BUSINESS PERFORMANCE
    - Use monthly_business_summary for complete monthly metrics
    - Report on attributed_blended_roas as well as overall blended_roas which represents net revenue / ad spend
