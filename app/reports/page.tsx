@@ -3,7 +3,7 @@
 import { useChat } from '@ai-sdk/react';
 import { Input } from "@/components/conversation/input"
 import { Button } from "@/components/conversation/button"
-import { ArrowUpFromDot, ChevronLeft, ChevronRight, FileText, Download, Loader2, CheckCircle, Cog, X } from "lucide-react"
+import { ArrowUpFromDot, ChevronLeft, ChevronRight, FileText, Download, Loader2, CheckCircle, Cog, X, FileDown } from "lucide-react"
 import { MemoizedMarkdown } from '@/components/conversation/memoized-markdown';
 import { useClient } from '@/components/client-provider';
 import React, { useState } from 'react';
@@ -97,6 +97,7 @@ TONE & FORMAT:
 - Bold key metrics and findings
 - Keep total report to 1,000 words
 - Do not use any emojis
+- Do not use horizontal rules (---) or <hr> tags
 
 CRITICAL REQUIREMENTS:
 - Always compare MTD vs YoY to show context
@@ -136,19 +137,39 @@ CRITICAL REQUIREMENTS:
     category: 'performance',
     icon: '📈',
     clients: ['hb'], // Only visible to H&B
-    prompt: `You are a marketing analytics expert generating a comprehensive monthly marketing report for Holderness & Bourne for the last 30 days.
+    prompt: `You are a marketing analytics expert generating a comprehensive monthly marketing report for Holderness & Bourne.
+
+REPORT HEADER:
+Start the report with an H3 heading showing the report month and year (e.g., "### October 2025"). DO NOT use "Last 30 days" anywhere in the report.
 
 REPORT STRUCTURE:
 Generate a strategic, executive-level monthly marketing report with the following sections:
 
-1. EXECUTIVE SUMMARY (1-2 paragraphs)
-   - Use ai_executive_summary for latest MTD metrics
-   - Use client_configurations for monthlyRevenueTargets
-   - Create a budget pacing bullet discussing the percentage of this month's budget and the pacing toward annual
-   - Highlight top 3-5 key insights from the month
-   - Focus on business impact and YoY performance
-   - Include both wins and challenges
-   - Format the 3-5 insights as bullet points
+1. EXECUTIVE SUMMARY
+   **Format**: 1-2 sentence summary paragraph, followed by hero metrics table, then key insights
+
+   **Summary**: Brief strategic overview (1-2 sentences) about overall business performance
+
+   **Hero Metrics Table** (use data from HERO METRICS and ANNUAL REVENUE FORECAST sections):
+   Create a table with 3 columns: Metric | Value | Analysis
+
+   | Metric | Value | Analysis |
+   |--------|-------|----------|
+   | **Monthly Revenue** | $[current month revenue] | MoM: [+/-X]%, YoY: [+/-X]% |
+   | **Annual Revenue Pacing** | $[forecasted annual revenue - Base Scenario] | [X]% probability to hit $[target]. Shortfall: $[target minus forecast], [X] days left |
+   | **Monthly ROAS** | [X.XX]x | MoM: [+/-X]%, YoY: [+/-X]% |
+   | **Paid Media Spend** | $[current month spend] | MoM: [+/-X]%, YoY: [+/-X]% |
+   | **Top Performing SKU** | [Product Name] | Revenue: $[amount] |
+   | **Top Emerging SKU** | [Product Name] | Revenue: $[amount], MoM: [+/-X]% |
+
+   CRITICAL INSTRUCTIONS:
+   - Row 1 (Monthly Revenue): Use revenue_total from HERO METRICS with revenue_mom_pct and revenue_yoy_pct
+   - Row 2 (Annual Revenue Pacing): Use prophet_annual_revenue_base with probability_hit_revenue_target. Calculate shortfall as (annual_revenue_target - prophet_annual_revenue_base)
+   - Row 3 (Monthly ROAS): Use blended_roas from HERO METRICS with blended_roas_mom_pct and blended_roas_yoy_pct
+   - Row 4 (Paid Media Spend): Use paid_media_spend from HERO METRICS with paid_media_spend_mom_pct and paid_media_spend_yoy_pct
+   - Do NOT calculate percentages - use exact values from the data
+
+   **After the table**, add 3-5 key bullet points with insights about wins and challenges
 
 2. BUSINESS PERFORMANCE
    - Use monthly_business_summary for complete monthly metrics
@@ -190,6 +211,8 @@ TONE & FORMAT:
 - Bold key metrics and findings
 - Keep total report to 1,000 words
 - Do not use any emojis
+- CRITICAL: Do NOT use horizontal rules (---) or <hr> tags anywhere in the report
+- CRITICAL: Do NOT use "Last 30 days" - use the actual month name and year (e.g., "October 2025")
 
 CRITICAL REQUIREMENTS:
 - Always compare MTD vs YoY to show context
@@ -272,6 +295,8 @@ export default function ReportsPage() {
   const [isPrefetching, setIsPrefetching] = useState(false);
   const [exportState, setExportState] = useState<'idle' | 'exporting' | 'success' | 'error'>('idle');
   const [exportMessage, setExportMessage] = useState<string>('');
+  const [pdfExportState, setPdfExportState] = useState<'idle' | 'exporting' | 'success' | 'error'>('idle');
+  const [pdfExportMessage, setPdfExportMessage] = useState<string>('');
   const [funnelAdsData, setFunnelAdsData] = useState<any>(null); // Store funnel ads for client-side injection
 
 
@@ -288,11 +313,28 @@ export default function ReportsPage() {
   // Get templates available for current client
   const availableTemplates = getAvailableTemplates(currentClient);
 
-  // Reset messages when client changes
+  // Reset messages when client changes and auto-select client-specific template
   React.useEffect(() => {
     console.log('Client changed to:', currentClient);
     setMessages([]);
-    setSelectedTemplate(null);
+
+    // Auto-select client-specific monthly performance template if available
+    const clientSpecificTemplate = reportTemplates.find(
+      t => t.id === `${currentClient}-monthly-performance`
+    );
+
+    if (clientSpecificTemplate) {
+      console.log('[Reports] Auto-selecting client-specific template:', clientSpecificTemplate.id);
+      setSelectedTemplate(clientSpecificTemplate);
+      const promptWithClient = clientSpecificTemplate.prompt.replace(
+        /\{\{client\}\}/g,
+        getClientDisplayName(currentClient)
+      );
+      setInput(promptWithClient);
+    } else {
+      setSelectedTemplate(null);
+      setInput('');
+    }
   }, [currentClient, setMessages]);
 
   const isGenerating = status === 'streaming' || status === 'submitted';
@@ -314,6 +356,165 @@ export default function ReportsPage() {
     // Replace {{client}} placeholder with proper display name
     const promptWithClient = template.prompt.replace(/\{\{client\}\}/g, getClientDisplayName(currentClient));
     setInput(promptWithClient);
+  };
+
+  const loadSampleReport = () => {
+    // Create a sample report message
+    const sampleReport = `## Executive Summary
+
+**Holderness & Bourne** delivered strong performance in October 2024, with **$487,234** in net revenue and a blended ROAS of **3.24x**. The business is tracking at **94% of monthly revenue target** with 8 days remaining in the month.
+
+**Key Insights:**
+- Facebook advertising efficiency improved **18% MoM** with ROAS climbing to 3.8x
+- Google Shopping campaigns maintained strong **4.2x ROAS** with 15% revenue growth
+- Average order value increased to **$142.50** (+8% YoY)
+- Customer acquisition costs decreased **12%** compared to September
+- Cart abandonment rate improved to **68%** from 72% previous month
+
+## Business Performance
+
+October business metrics show healthy growth across core KPIs:
+
+| Metric | Value | vs. Last Month | vs. Last Year |
+|--------|-------|---------------|---------------|
+| **Net Revenue** | $487,234 | +12% | +24% |
+| **Gross Revenue** | $521,890 | +10% | +22% |
+| **Orders** | 3,421 | +8% | +19% |
+| **AOV** | $142.50 | +8% | +4% |
+| **Units Sold** | 8,547 | +11% | +21% |
+
+**Attributed Blended ROAS:** 3.89x (up from 3.64x last month)
+**Overall Blended ROAS:** 3.24x (net revenue / ad spend)
+
+The **discount rate** held steady at 18%, while the **return rate** improved to 6.2% from 7.1% last month, indicating better product-market fit and customer satisfaction.
+
+## Paid Media Performance
+
+### Facebook Ads
+Facebook campaigns delivered exceptional results with **$238,450** in attributed revenue on **$62,750** in spend, achieving a **3.8x ROAS**.
+
+- Prospecting campaigns improved CTR to **2.4%** (+0.3% MoM)
+- Retargeting audiences maintained **5.2x ROAS**
+- Video creative performance increased **22%** in engagement
+- Cost per purchase decreased to **$28.50** (-15% MoM)
+
+### Google Ads
+Google Ads generated **$186,890** in revenue on **$44,500** spend with a **4.2x ROAS**.
+
+- Shopping campaigns continue to be the top performer at 4.8x ROAS
+- Brand campaigns maintained high 8.2x ROAS with low CPCs
+- Search campaigns saw 12% improvement in conversion rate
+- Display remarketing contributed 18% of total Google revenue
+
+## Top Ads by Funnel Stage
+
+Performance leaders across the marketing funnel:`;
+
+    const sampleAds = {
+      TOFU: [
+        {
+          ad_name: "Fall Collection Launch - Video",
+          image_url: "https://images.unsplash.com/photo-1556306535-0f09a537f0a3?w=400",
+          creative_type: "VIDEO",
+          thumbnail_url: "https://images.unsplash.com/photo-1556306535-0f09a537f0a3?w=400",
+          all_star_rank: 95,
+          roas: 2.8,
+          ctr_percent: 3.2,
+          cpc: 0.45
+        },
+        {
+          ad_name: "Golf Performance Wear - Carousel",
+          image_url: "https://images.unsplash.com/photo-1587174486073-ae5e5cff23aa?w=400",
+          creative_type: "IMAGE",
+          all_star_rank: 88,
+          roas: 2.5,
+          ctr_percent: 2.9,
+          cpc: 0.52
+        },
+        {
+          ad_name: "New Arrivals Showcase",
+          image_url: "https://images.unsplash.com/photo-1594633313593-bab3825d0caf?w=400",
+          creative_type: "IMAGE",
+          all_star_rank: 82,
+          roas: 2.3,
+          ctr_percent: 2.7,
+          cpc: 0.58
+        }
+      ],
+      MOFU: [
+        {
+          ad_name: "Customer Testimonials - Video",
+          image_url: "https://images.unsplash.com/photo-1556306535-38febf6782e7?w=400",
+          creative_type: "VIDEO",
+          thumbnail_url: "https://images.unsplash.com/photo-1556306535-38febf6782e7?w=400",
+          all_star_rank: 92,
+          roas: 4.5,
+          ctr_percent: 4.1,
+          cpc: 0.38
+        },
+        {
+          ad_name: "Product Benefits Highlight",
+          image_url: "https://images.unsplash.com/photo-1587174486073-ae5e5cff23aa?w=400",
+          creative_type: "IMAGE",
+          all_star_rank: 87,
+          roas: 4.2,
+          ctr_percent: 3.8,
+          cpc: 0.42
+        },
+        {
+          ad_name: "Free Shipping Promo",
+          image_url: "https://images.unsplash.com/photo-1594633313593-bab3825d0caf?w=400",
+          creative_type: "IMAGE",
+          all_star_rank: 85,
+          roas: 4.0,
+          ctr_percent: 3.6,
+          cpc: 0.44
+        }
+      ],
+      BOFU: [
+        {
+          ad_name: "Limited Time 20% Off",
+          image_url: "https://images.unsplash.com/photo-1556306535-0f09a537f0a3?w=400",
+          creative_type: "IMAGE",
+          all_star_rank: 96,
+          roas: 6.8,
+          ctr_percent: 5.2,
+          cpc: 0.32
+        },
+        {
+          ad_name: "Last Chance Sale",
+          image_url: "https://images.unsplash.com/photo-1587174486073-ae5e5cff23aa?w=400",
+          creative_type: "IMAGE",
+          all_star_rank: 94,
+          roas: 6.2,
+          ctr_percent: 4.9,
+          cpc: 0.35
+        },
+        {
+          ad_name: "Cart Abandonment Reminder",
+          image_url: "https://images.unsplash.com/photo-1594633313593-bab3825d0caf?w=400",
+          creative_type: "IMAGE",
+          all_star_rank: 91,
+          roas: 5.8,
+          ctr_percent: 4.5,
+          cpc: 0.37
+        }
+      ]
+    };
+
+    // Create a mock message
+    const mockMessage = {
+      id: 'sample-report',
+      role: 'assistant' as const,
+      parts: [{
+        type: 'text' as const,
+        text: sampleReport
+      }]
+    };
+
+    setMessages([mockMessage]);
+    setFunnelAdsData(sampleAds);
+    setSelectedTemplate(reportTemplates.find(t => t.id === 'hb-monthly-performance') || null);
   };
 
 
@@ -345,6 +546,7 @@ export default function ReportsPage() {
           clientId: currentClient,
           reportType: selectedTemplate?.id || 'custom',
           markdownContent: reportContent,
+          funnelAds: funnelAdsData, // Include funnel ads data
         })
       });
 
@@ -370,6 +572,98 @@ export default function ReportsPage() {
     }
   };
 
+  const handleExportToPDF = async () => {
+    try {
+      setPdfExportState('exporting');
+      setPdfExportMessage('');
+
+      // Get the report content div
+      const reportContentDiv = document.querySelector('.report-content');
+      if (!reportContentDiv) {
+        console.error('No report content found');
+        setPdfExportState('error');
+        setPdfExportMessage('No report content to export');
+        setTimeout(() => setPdfExportState('idle'), 3000);
+        return;
+      }
+
+      console.log('[PDF Export] Capturing styles and generating PDF...');
+
+      // Function to get all computed styles for an element
+      const getComputedStylesAsString = (element: Element): string => {
+        const styles = window.getComputedStyle(element);
+        let cssText = '';
+        for (let i = 0; i < styles.length; i++) {
+          const prop = styles[i];
+          cssText += `${prop}: ${styles.getPropertyValue(prop)}; `;
+        }
+        return cssText;
+      };
+
+      // Clone the report content
+      const clonedContent = reportContentDiv.cloneNode(true) as HTMLElement;
+
+      // Apply inline styles to all elements to preserve the exact look
+      const applyInlineStyles = (element: Element) => {
+        if (element instanceof HTMLElement) {
+          const computedStyles = getComputedStylesAsString(element);
+          element.setAttribute('style', computedStyles);
+        }
+
+        // Recursively apply to children
+        Array.from(element.children).forEach(child => applyInlineStyles(child));
+      };
+
+      applyInlineStyles(clonedContent);
+
+      // Get the full HTML with inlined styles
+      const styledHtml = clonedContent.outerHTML;
+
+      // Send the HTML content with inlined styles to the backend
+      const response = await fetch('/api/reports/export-pdf', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          htmlContent: styledHtml,
+          clientId: currentClient,
+          reportType: selectedTemplate?.id || 'custom',
+          useInlineStyles: true,
+        })
+      });
+
+      if (response.ok) {
+        // Get the PDF blob
+        const blob = await response.blob();
+
+        // Create download link
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `report-${currentClient}-${Date.now()}.pdf`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        window.URL.revokeObjectURL(url);
+
+        console.log('[PDF Export] Success');
+        setPdfExportState('success');
+        setPdfExportMessage('PDF downloaded!');
+        setTimeout(() => setPdfExportState('idle'), 3000);
+      } else {
+        const result = await response.json();
+        console.error('[PDF Export] Failed:', result.error);
+        setPdfExportState('error');
+        setPdfExportMessage(result.error || 'Export failed');
+        setTimeout(() => setPdfExportState('idle'), 3000);
+      }
+    } catch (error) {
+      console.error('[PDF Export] Error:', error);
+      setPdfExportState('error');
+      setPdfExportMessage('Failed to generate PDF');
+      setTimeout(() => setPdfExportState('idle'), 3000);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (input.trim() && status === 'ready') {
@@ -379,13 +673,16 @@ export default function ReportsPage() {
           setIsPrefetching(true);
           console.log('[Reports] Pre-fetching data for:', selectedTemplate.id);
 
+          // Use 'previous-month' period for H&B monthly report, '30d' for others
+          const period = selectedTemplate.id === 'hb-monthly-performance' ? 'previous-month' : '30d';
+
           const dataResponse = await fetch('/api/reports/fetch-data', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               reportType: selectedTemplate.id,
               clientId: currentClient,
-              period: '30d'
+              period
             })
           });
 
@@ -691,37 +988,83 @@ export default function ReportsPage() {
             {/* Report Header */}
             <div className="border-b p-4" style={{ borderColor: 'var(--border-muted)', background: 'transparent' }}>
               <div className="flex items-center justify-between">
-                <h2 className="text-lg font-bold" style={{ color: 'var(--text-primary)' }}>
-                  Report Preview
-                </h2>
-                <div className="flex flex-col items-end gap-1">
-                  <Button
-                    onClick={handleExportToGoogleDocs}
-                    className={`flex items-center gap-2 text-sm px-3 py-2 ${
-                      exportState === 'success' ? 'btn-primary' :
-                      exportState === 'error' ? 'bg-[#b55c5c] text-white border-[#b55c5c]' :
-                      'btn-secondary'
-                    }`}
-                    disabled={messages.length === 0 || exportState === 'exporting'}
-                  >
-                    {exportState === 'exporting' && <Loader2 className="w-4 h-4 animate-spin" />}
-                    {exportState === 'success' && <CheckCircle className="w-4 h-4" />}
-                    {exportState === 'error' && <X className="w-4 h-4" />}
-                    {exportState === 'idle' && <Download className="w-4 h-4" />}
-                    {exportState === 'exporting' ? 'Exporting...' :
-                     exportState === 'success' ? 'Exported!' :
-                     exportState === 'error' ? 'Failed' :
-                     'Export'}
-                  </Button>
-                  {exportMessage && (
-                    <p className="text-xs" style={{
-                      color: exportState === 'success' ? 'var(--accent-primary)' :
-                             exportState === 'error' ? '#b55c5c' :
-                             'var(--text-muted)'
-                    }}>
-                      {exportMessage}
-                    </p>
+                <div className="flex items-center gap-3">
+                  <h2 className="text-lg font-bold" style={{ color: 'var(--text-primary)' }}>
+                    Report Preview
+                  </h2>
+                  {messages.length === 0 && (
+                    <Button
+                      onClick={loadSampleReport}
+                      className="flex items-center gap-2 text-xs px-3 py-1 btn-secondary"
+                      style={{ fontSize: '0.75rem' }}
+                    >
+                      <FileText className="w-3 h-3" />
+                      Load Sample
+                    </Button>
                   )}
+                </div>
+                <div className="flex items-center gap-3">
+                  {/* PDF Export Button */}
+                  <div className="flex flex-col items-end gap-1">
+                    <Button
+                      onClick={handleExportToPDF}
+                      className={`flex items-center gap-2 text-sm px-3 py-2 ${
+                        pdfExportState === 'success' ? 'btn-primary' :
+                        pdfExportState === 'error' ? 'bg-[#b55c5c] text-white border-[#b55c5c]' :
+                        'btn-secondary'
+                      }`}
+                      disabled={messages.length === 0 || pdfExportState === 'exporting'}
+                    >
+                      {pdfExportState === 'exporting' && <Loader2 className="w-4 h-4 animate-spin" />}
+                      {pdfExportState === 'success' && <CheckCircle className="w-4 h-4" />}
+                      {pdfExportState === 'error' && <X className="w-4 h-4" />}
+                      {pdfExportState === 'idle' && <FileDown className="w-4 h-4" />}
+                      {pdfExportState === 'exporting' ? 'Generating...' :
+                       pdfExportState === 'success' ? 'Downloaded!' :
+                       pdfExportState === 'error' ? 'Failed' :
+                       'PDF'}
+                    </Button>
+                    {pdfExportMessage && (
+                      <p className="text-xs" style={{
+                        color: pdfExportState === 'success' ? 'var(--accent-primary)' :
+                               pdfExportState === 'error' ? '#b55c5c' :
+                               'var(--text-muted)'
+                      }}>
+                        {pdfExportMessage}
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Google Docs Export Button */}
+                  <div className="flex flex-col items-end gap-1">
+                    <Button
+                      onClick={handleExportToGoogleDocs}
+                      className={`flex items-center gap-2 text-sm px-3 py-2 ${
+                        exportState === 'success' ? 'btn-primary' :
+                        exportState === 'error' ? 'bg-[#b55c5c] text-white border-[#b55c5c]' :
+                        'btn-secondary'
+                      }`}
+                      disabled={messages.length === 0 || exportState === 'exporting'}
+                    >
+                      {exportState === 'exporting' && <Loader2 className="w-4 h-4 animate-spin" />}
+                      {exportState === 'success' && <CheckCircle className="w-4 h-4" />}
+                      {exportState === 'error' && <X className="w-4 h-4" />}
+                      {exportState === 'idle' && <Download className="w-4 h-4" />}
+                      {exportState === 'exporting' ? 'Exporting...' :
+                       exportState === 'success' ? 'Exported!' :
+                       exportState === 'error' ? 'Failed' :
+                       'Google Docs'}
+                    </Button>
+                    {exportMessage && (
+                      <p className="text-xs" style={{
+                        color: exportState === 'success' ? 'var(--accent-primary)' :
+                               exportState === 'error' ? '#b55c5c' :
+                               'var(--text-muted)'
+                      }}>
+                        {exportMessage}
+                      </p>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>
@@ -752,7 +1095,7 @@ export default function ReportsPage() {
                   </div>
                 </div>
               ) : (
-                <div className="prose max-w-none report-content" style={{ color: 'var(--text-primary)', background: 'transparent', fontSize: '20px' }}>
+                <div className="prose max-w-none report-content">
                   <style jsx>{`
                     .report-content :global(h2) {
                       font-weight: 800;
