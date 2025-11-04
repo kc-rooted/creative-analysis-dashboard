@@ -171,37 +171,37 @@ Generate a strategic, executive-level monthly marketing report with the followin
 
    **After the table**, add 3-5 key bullet points with insights about wins and challenges
 
-   NOTE: Section headings should use the standard H2 (##) format. Subsections can use H3/H4 as appropriate.
-
-2. BUSINESS PERFORMANCE
+2. BUSINESS PERFORMANCE (use ## for section heading)
    - Use monthly_business_summary for complete monthly metrics
    - Report on attributed_blended_roas as well as overall blended_roas which represents net revenue / ad spend
    - Present revenue breakdown (gross, net, refunds)
    - Analyze operational metrics (orders, AOV, units)
    - Calculate and interpret key rates (discount, return, etc.)
 
-3. PAID MEDIA PERFORMANCE
+3. PAID MEDIA PERFORMANCE (use ## for section heading)
    IF facebook_spend_mtd > 0 in ai_executive_summary:
-      - Analyze Facebook performance and trends
+      - Analyze Facebook performance and trends (use ### for subsection heading)
    IF google_spend_mtd > 0 in ai_executive_summary:
-      - Analyze Google Ads performance and trends
+      - Analyze Google Ads performance and trends (use ### for subsection heading)
    - Present blended ROAS and attribution insights
    - Compare platform efficiency and ROI
 
-4. CAMPAIGN ANALYSIS
+4. CAMPAIGN ANALYSIS (use ## for section heading)
    - Use ai_intelligent_campaign_analysis
+   - Create subsections for "Top Performing Campaigns" (use #### for subsection heading)
+   - Create subsections for "Campaigns Needing Attention" (use #### for subsection heading)
    - Identify top 5 performing campaigns with context
    - Flag campaigns needing attention (use recommended_action, risk_flags)
    - Provide 2-3 specific optimization recommendations
    - Note: Top ads by funnel stage will be added separately
 
-5. PRODUCT INSIGHTS
+5. PRODUCT INSIGHTS (use ## for section heading)
    - Use product_intelligence for top performers
    - Identify growth trends and opportunities
    - Flag inventory or performance concerns
    - H&B Focus: Emphasize golf apparel seasonal trends
 
-6. STRATEGIC RECOMMENDATIONS
+6. STRATEGIC RECOMMENDATIONS (use ## for section heading)
    - Focus on Paid Media Performance
    - H&B-specific: Consider golf season timing and weather impact
 
@@ -215,6 +215,8 @@ TONE & FORMAT:
 - Do not use any emojis
 - CRITICAL: Do NOT use horizontal rules (---) or <hr> tags anywhere in the report
 - CRITICAL: Do NOT use "Last 30 days" - use the actual month name and year (e.g., "October 2025")
+- CRITICAL: ALL section headings MUST use proper markdown syntax (## for H2, ### for H3, #### for H4)
+- CRITICAL: Do NOT use bold text (**text**) as a substitute for headings - use actual markdown heading syntax
 
 CRITICAL REQUIREMENTS:
 - Always compare MTD vs YoY to show context
