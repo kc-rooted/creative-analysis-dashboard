@@ -719,7 +719,7 @@ async function generateMarkdownDocument(
         for (const ad of ads) {
           const cellContent: Paragraph[] = [];
 
-          // Ad name
+          // Ad name as H3
           cellContent.push(
             new Paragraph({
               children: [
@@ -727,38 +727,115 @@ async function generateMarkdownDocument(
                   text: ad.ad_name || 'Untitled Ad',
                   bold: true,
                   font: 'Roboto Condensed',
-                  size: 20,
+                  size: 24 * 2, // H3 size (24pt)
                   color: '000000',
                 }),
               ],
+              heading: HeadingLevel.HEADING_3,
+              spacing: { after: 200 },
+            })
+          );
+
+          // Metrics section header as H4
+          cellContent.push(
+            new Paragraph({
+              children: [
+                new TextRun({
+                  text: 'Metrics',
+                  bold: true,
+                  font: 'Roboto Condensed',
+                  size: 22 * 2, // H4 size (22pt)
+                  color: '000000',
+                }),
+              ],
+              heading: HeadingLevel.HEADING_4,
               spacing: { after: 100 },
             })
           );
 
-          // Metrics
-          const metrics: string[] = [];
+          // Metrics with bold values
           if (ad.all_star_rank !== null && ad.all_star_rank !== undefined) {
-            metrics.push(`⭐ All-Star Rank: ${ad.all_star_rank}`);
-          }
-          if (ad.roas !== null && ad.roas !== undefined) {
-            metrics.push(`ROAS: ${ad.roas.toFixed(2)}x`);
-          }
-          if (ad.ctr_percent !== null && ad.ctr_percent !== undefined) {
-            metrics.push(`CTR: ${ad.ctr_percent.toFixed(2)}%`);
-          }
-          if (ad.cpc !== null && ad.cpc !== undefined) {
-            metrics.push(`CPC: $${ad.cpc.toFixed(2)}`);
-          }
-
-          for (const metric of metrics) {
             cellContent.push(
               new Paragraph({
                 children: [
                   new TextRun({
-                    text: metric,
+                    text: '⭐ All-Star Rank: ',
                     font: 'Roboto Condensed',
                     size: 18,
-                    color: '374151',
+                    color: '000000',
+                  }),
+                  new TextRun({
+                    text: `${ad.all_star_rank}`,
+                    bold: true,
+                    font: 'Roboto Condensed',
+                    size: 18,
+                    color: '000000',
+                  }),
+                ],
+                spacing: { after: 50 },
+              })
+            );
+          }
+          if (ad.roas !== null && ad.roas !== undefined) {
+            cellContent.push(
+              new Paragraph({
+                children: [
+                  new TextRun({
+                    text: 'ROAS: ',
+                    font: 'Roboto Condensed',
+                    size: 18,
+                    color: '000000',
+                  }),
+                  new TextRun({
+                    text: `${ad.roas.toFixed(2)}x`,
+                    bold: true,
+                    font: 'Roboto Condensed',
+                    size: 18,
+                    color: '000000',
+                  }),
+                ],
+                spacing: { after: 50 },
+              })
+            );
+          }
+          if (ad.ctr_percent !== null && ad.ctr_percent !== undefined) {
+            cellContent.push(
+              new Paragraph({
+                children: [
+                  new TextRun({
+                    text: 'CTR: ',
+                    font: 'Roboto Condensed',
+                    size: 18,
+                    color: '000000',
+                  }),
+                  new TextRun({
+                    text: `${ad.ctr_percent.toFixed(2)}%`,
+                    bold: true,
+                    font: 'Roboto Condensed',
+                    size: 18,
+                    color: '000000',
+                  }),
+                ],
+                spacing: { after: 50 },
+              })
+            );
+          }
+          if (ad.cpc !== null && ad.cpc !== undefined) {
+            cellContent.push(
+              new Paragraph({
+                children: [
+                  new TextRun({
+                    text: 'CPC: ',
+                    font: 'Roboto Condensed',
+                    size: 18,
+                    color: '000000',
+                  }),
+                  new TextRun({
+                    text: `$${ad.cpc.toFixed(2)}`,
+                    bold: true,
+                    font: 'Roboto Condensed',
+                    size: 18,
+                    color: '000000',
                   }),
                 ],
                 spacing: { after: 50 },
@@ -766,10 +843,8 @@ async function generateMarkdownDocument(
             );
           }
 
-          // Add image URL note at bottom
-          const imageUrl = ad.creative_type === 'VIDEO' && ad.thumbnail_url
-            ? ad.thumbnail_url
-            : ad.image_url || ad.thumbnail_url;
+          // Use correct image URL based on creative type
+          const imageUrl = ad.creative_type === 'VIDEO' ? ad.thumbnail_url : ad.image_url;
 
           if (imageUrl) {
             cellContent.push(
