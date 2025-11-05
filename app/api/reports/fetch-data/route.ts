@@ -215,6 +215,24 @@ async function fetchMonthlyPerformanceData(projectId: string, dataset: string, d
         paid_spend_total as paid_media_spend,
         paid_spend_mom_pct as paid_media_spend_mom_pct,
         paid_spend_yoy_pct as paid_media_spend_yoy_pct,
+        meta_spend,
+        meta_spend_mom_pct,
+        meta_spend_yoy_pct,
+        meta_revenue,
+        meta_revenue_mom_pct,
+        meta_revenue_yoy_pct,
+        meta_roas,
+        meta_roas_mom_pct,
+        meta_roas_yoy_pct,
+        google_spend,
+        google_spend_mom_pct,
+        google_spend_yoy_pct,
+        google_revenue,
+        google_revenue_mom_pct,
+        google_revenue_yoy_pct,
+        google_roas,
+        google_roas_mom_pct,
+        google_roas_yoy_pct,
         top_emerging_product_title,
         top_emerging_product_revenue,
         top_emerging_product_growth_pct as top_emerging_product_mom_growth_pct,
@@ -753,38 +771,75 @@ function formatHBMonthlyReportAsMarkdown(data: any): string {
     }
   }
 
-  // Add paid media performance metrics for Meta and Google Ads
+  // Add platform-level performance with MoM/YoY from monthly_executive_report
+  if (data.monthlyExecutiveReport?.[0]) {
+    const hero = data.monthlyExecutiveReport[0];
+
+    // Meta Ads Performance with MoM/YoY
+    if (hero.meta_spend !== null && hero.meta_spend !== undefined) {
+      markdown += `\n## META ADS PERFORMANCE METRICS\n`;
+      markdown += `**Use these metrics with MoM/YoY changes for the Meta Ads Performance section:**\n\n`;
+
+      markdown += `**Spend:**\n`;
+      markdown += `- meta_spend: $${hero.meta_spend?.toLocaleString() || 'N/A'}\n`;
+      markdown += `- meta_spend_mom_pct: ${hero.meta_spend_mom_pct?.toFixed(1) || 0}%\n`;
+      markdown += `- meta_spend_yoy_pct: ${hero.meta_spend_yoy_pct?.toFixed(1) || 0}%\n\n`;
+
+      markdown += `**Revenue:**\n`;
+      markdown += `- meta_revenue: $${hero.meta_revenue?.toLocaleString() || 'N/A'}\n`;
+      markdown += `- meta_revenue_mom_pct: ${hero.meta_revenue_mom_pct?.toFixed(1) || 0}%\n`;
+      markdown += `- meta_revenue_yoy_pct: ${hero.meta_revenue_yoy_pct?.toFixed(1) || 0}%\n\n`;
+
+      markdown += `**ROAS:**\n`;
+      markdown += `- meta_roas: ${hero.meta_roas?.toFixed(2) || 'N/A'}x\n`;
+      markdown += `- meta_roas_mom_pct: ${hero.meta_roas_mom_pct?.toFixed(1) || 0}%\n`;
+      markdown += `- meta_roas_yoy_pct: ${hero.meta_roas_yoy_pct?.toFixed(1) || 0}%\n\n`;
+    }
+
+    // Google Ads Performance with MoM/YoY
+    if (hero.google_spend !== null && hero.google_spend !== undefined) {
+      markdown += `\n## GOOGLE ADS PERFORMANCE METRICS\n`;
+      markdown += `**Use these metrics with MoM/YoY changes for the Google Ads Performance section:**\n\n`;
+
+      markdown += `**Spend:**\n`;
+      markdown += `- google_spend: $${hero.google_spend?.toLocaleString() || 'N/A'}\n`;
+      markdown += `- google_spend_mom_pct: ${hero.google_spend_mom_pct?.toFixed(1) || 0}%\n`;
+      markdown += `- google_spend_yoy_pct: ${hero.google_spend_yoy_pct?.toFixed(1) || 0}%\n\n`;
+
+      markdown += `**Revenue:**\n`;
+      markdown += `- google_revenue: $${hero.google_revenue?.toLocaleString() || 'N/A'}\n`;
+      markdown += `- google_revenue_mom_pct: ${hero.google_revenue_mom_pct?.toFixed(1) || 0}%\n`;
+      markdown += `- google_revenue_yoy_pct: ${hero.google_revenue_yoy_pct?.toFixed(1) || 0}%\n\n`;
+
+      markdown += `**ROAS:**\n`;
+      markdown += `- google_roas: ${hero.google_roas?.toFixed(2) || 'N/A'}x\n`;
+      markdown += `- google_roas_mom_pct: ${hero.google_roas_mom_pct?.toFixed(1) || 0}%\n`;
+      markdown += `- google_roas_yoy_pct: ${hero.google_roas_yoy_pct?.toFixed(1) || 0}%\n\n`;
+    }
+  }
+
+  // Add detailed paid media performance metrics from paid_media_performance table (for granular metrics like CPM, CPC, CTR, Frequency)
   if (data.paidMediaPerformance?.length > 0) {
     const metaData = data.paidMediaPerformance.find((p: any) => p.platform === 'Facebook');
     const googleData = data.paidMediaPerformance.find((p: any) => p.platform === 'Google Ads');
 
     if (metaData) {
-      markdown += `\n## META ADS PERFORMANCE METRICS\n`;
-      markdown += `**Use these exact metrics for the Meta Ads Performance section:**\n\n`;
-      markdown += `- ROAS: ${metaData.calculated_roas?.toFixed(2) || 'N/A'}x\n`;
+      markdown += `\n## META ADS GRANULAR METRICS (for detailed performance metrics)\n`;
       markdown += `- CPM: $${metaData.calculated_cpm?.toFixed(2) || 'N/A'}\n`;
       markdown += `- CPC: $${metaData.calculated_cpc?.toFixed(2) || 'N/A'}\n`;
       markdown += `- CTR: ${metaData.calculated_ctr?.toFixed(2) || 'N/A'}%\n`;
-      markdown += `- Frequency: ${metaData.avg_frequency?.toFixed(2) || 'N/A'}\n\n`;
-      markdown += `**Additional Context:**\n`;
-      markdown += `- Total Spend: $${metaData.total_spend?.toLocaleString() || 'N/A'}\n`;
-      markdown += `- Total Revenue: $${metaData.total_revenue?.toLocaleString() || 'N/A'}\n`;
+      markdown += `- Frequency: ${metaData.avg_frequency?.toFixed(2) || 'N/A'}\n`;
       markdown += `- Total Impressions: ${metaData.total_impressions?.toLocaleString() || 'N/A'}\n`;
       markdown += `- Total Clicks: ${metaData.total_clicks?.toLocaleString() || 'N/A'}\n`;
       markdown += `- Total Purchases: ${metaData.total_purchases?.toLocaleString() || 'N/A'}\n\n`;
     }
 
     if (googleData) {
-      markdown += `\n## GOOGLE ADS PERFORMANCE METRICS\n`;
-      markdown += `**Use these exact metrics for the Google Ads Performance section:**\n\n`;
-      markdown += `- ROAS: ${googleData.calculated_roas?.toFixed(2) || 'N/A'}x\n`;
+      markdown += `\n## GOOGLE ADS GRANULAR METRICS (for detailed performance metrics)\n`;
       markdown += `- CPM: $${googleData.calculated_cpm?.toFixed(2) || 'N/A'}\n`;
       markdown += `- CPC: $${googleData.calculated_cpc?.toFixed(2) || 'N/A'}\n`;
       markdown += `- CTR: ${googleData.calculated_ctr?.toFixed(2) || 'N/A'}%\n`;
-      markdown += `- Conversion Rate: ${googleData.avg_conversion_rate?.toFixed(2) || 'N/A'}%\n\n`;
-      markdown += `**Additional Context:**\n`;
-      markdown += `- Total Spend: $${googleData.total_spend?.toLocaleString() || 'N/A'}\n`;
-      markdown += `- Total Revenue: $${googleData.total_revenue?.toLocaleString() || 'N/A'}\n`;
+      markdown += `- Conversion Rate: ${googleData.avg_conversion_rate?.toFixed(2) || 'N/A'}%\n`;
       markdown += `- Total Impressions: ${googleData.total_impressions?.toLocaleString() || 'N/A'}\n`;
       markdown += `- Total Clicks: ${googleData.total_clicks?.toLocaleString() || 'N/A'}\n`;
       markdown += `- Total Purchases: ${googleData.total_purchases?.toLocaleString() || 'N/A'}\n\n`;

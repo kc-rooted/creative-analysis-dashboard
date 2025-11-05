@@ -178,15 +178,39 @@ Generate a strategic, executive-level monthly marketing report with the followin
    - Analyze operational metrics (orders, AOV, units)
    - Calculate and interpret key rates (discount, return, etc.)
 
-3. PAID MEDIA PERFORMANCE (use ## for section heading)
-   IF facebook_spend_mtd > 0 in ai_executive_summary:
-      - Analyze Facebook performance and trends (use ### for subsection heading)
-   IF google_spend_mtd > 0 in ai_executive_summary:
-      - Analyze Google Ads performance and trends (use ### for subsection heading)
-   - Present blended ROAS and attribution insights
-   - Compare platform efficiency and ROI
+3. META ADS PERFORMANCE (use ## for section heading)
+   **Use data from META ADS PERFORMANCE METRICS section**
 
-4. CAMPAIGN ANALYSIS (use ## for section heading)
+   Present Spend, Revenue, and ROAS with MoM and YoY changes:
+   - Spend: $[X,XXX] (MoM: [+/-X]%, YoY: [+/-X]%)
+   - Revenue: $[X,XXX] (MoM: [+/-X]%, YoY: [+/-X]%)
+   - ROAS: [X.XX]x (MoM: [+/-X]%, YoY: [+/-X]%)
+
+   Then present granular metrics:
+   - CPM: $[XX.XX]
+   - CPC: $[X.XX]
+   - CTR: [X.XX]%
+   - Frequency: [X.XX]
+
+   Add 2-3 sentences interpreting performance trends based on MoM/YoY changes
+
+4. GOOGLE ADS PERFORMANCE (use ## for section heading)
+   **Use data from GOOGLE ADS PERFORMANCE METRICS section**
+
+   Present Spend, Revenue, and ROAS with MoM and YoY changes:
+   - Spend: $[X,XXX] (MoM: [+/-X]%, YoY: [+/-X]%)
+   - Revenue: $[X,XXX] (MoM: [+/-X]%, YoY: [+/-X]%)
+   - ROAS: [X.XX]x (MoM: [+/-X]%, YoY: [+/-X]%)
+
+   Then present granular metrics:
+   - CPM: $[XX.XX]
+   - CPC: $[X.XX]
+   - CTR: [X.XX]%
+   - Conversion Rate: [X.XX]%
+
+   Add 2-3 sentences interpreting performance trends based on MoM/YoY changes
+
+5. CAMPAIGN ANALYSIS (use ## for section heading)
    - Use ai_intelligent_campaign_analysis
    - Create subsections for "Top Performing Campaigns" (use #### for subsection heading)
    - Create subsections for "Campaigns Needing Attention" (use #### for subsection heading)
