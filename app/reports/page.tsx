@@ -251,6 +251,128 @@ CRITICAL REQUIREMENTS:
 - Never speak in absolute truths around your recommendations, they are simply recommendations and not facts
 - Do not panic or use panic-sounding statements or overly enthusiastic statements as well`
   },
+
+  // JumboMax-specific monthly report
+  {
+    id: 'jumbomax-monthly-performance',
+    title: 'JumboMax Monthly Performance',
+    description: 'Custom monthly report for JumboMax',
+    category: 'performance',
+    icon: '📈',
+    clients: ['jumbomax'], // Only visible to JumboMax
+    prompt: `You are a marketing analytics expert generating a comprehensive monthly marketing report for JumboMax.
+
+REPORT HEADER:
+Start the report with an H3 heading showing the report month and year (e.g., "### October 2025"). DO NOT use "Last 30 days" anywhere in the report.
+
+REPORT STRUCTURE:
+Generate a strategic, executive-level monthly marketing report with the following sections:
+
+1. EXECUTIVE SUMMARY
+   **Format**: 1-2 sentence summary paragraph, followed by hero metrics table, then key insights
+
+   **Summary**: Brief strategic overview (1-2 sentences) about overall business performance
+
+   **Hero Metrics Table** (use data from HERO METRICS and ANNUAL REVENUE FORECAST sections):
+   Create a table with 3 columns: Metric | Value | Analysis
+
+   | Metric | Value | Analysis |
+   |--------|-------|----------|
+   | **Monthly Revenue** | $[current month revenue] | MoM: [+/-X]%, YoY: [+/-X]% |
+   | **Annual Revenue Pacing** | $[forecasted annual revenue - Base Scenario] | [X]% probability to hit $[target]. Shortfall: $[target minus forecast], [X] days left |
+   | **Monthly ROAS** | [X.XX]x | MoM: [+/-X]%, YoY: [+/-X]% |
+   | **Paid Media Spend** | $[current month spend] | MoM: [+/-X]%, YoY: [+/-X]% |
+   | **Top Performing SKU** | [Product Name] | Revenue: $[amount] |
+   | **Top Emerging SKU** | [Product Name] | Revenue: $[amount], MoM: [+/-X]% |
+
+   CRITICAL INSTRUCTIONS:
+   - Row 1 (Monthly Revenue): Use revenue_total from HERO METRICS with revenue_mom_pct and revenue_yoy_pct
+   - Row 2 (Annual Revenue Pacing): Use prophet_annual_revenue_base with probability_hit_revenue_target. Calculate shortfall as (annual_revenue_target - prophet_annual_revenue_base)
+   - Row 3 (Monthly ROAS): Use blended_roas from HERO METRICS with blended_roas_mom_pct and blended_roas_yoy_pct
+   - Row 4 (Paid Media Spend): Use paid_media_spend from HERO METRICS with paid_media_spend_mom_pct and paid_media_spend_yoy_pct
+   - Do NOT calculate percentages - use exact values from the data
+
+   **After the table**, add 3-5 key bullet points with insights about wins and challenges
+
+2. BUSINESS PERFORMANCE (use ## for section heading)
+   - Use monthly_business_summary for complete monthly metrics
+   - Report on attributed_blended_roas as well as overall blended_roas which represents net revenue / ad spend
+   - Present revenue breakdown (gross, net, refunds)
+   - Analyze operational metrics (orders, AOV, units)
+   - Calculate and interpret key rates (discount, return, etc.)
+
+3. META ADS PERFORMANCE (use ## for section heading)
+   **Use data from META ADS PERFORMANCE METRICS section**
+
+   Present Spend, Revenue, and ROAS with MoM and YoY changes:
+   - Spend: $[X,XXX] (MoM: [+/-X]%, YoY: [+/-X]%)
+   - Revenue: $[X,XXX] (MoM: [+/-X]%, YoY: [+/-X]%)
+   - ROAS: [X.XX]x (MoM: [+/-X]%, YoY: [+/-X]%)
+
+   Then present granular metrics:
+   - CPM: $[XX.XX]
+   - CPC: $[X.XX]
+   - CTR: [X.XX]%
+   - Frequency: [X.XX]
+
+   Add 2-3 sentences interpreting performance trends based on MoM/YoY changes
+
+4. GOOGLE ADS PERFORMANCE (use ## for section heading)
+   **Use data from GOOGLE ADS PERFORMANCE METRICS section**
+
+   Present Spend, Revenue, and ROAS with MoM and YoY changes:
+   - Spend: $[X,XXX] (MoM: [+/-X]%, YoY: [+/-X]%)
+   - Revenue: $[X,XXX] (MoM: [+/-X]%, YoY: [+/-X]%)
+   - ROAS: [X.XX]x (MoM: [+/-X]%, YoY: [+/-X]%)
+
+   Then present granular metrics:
+   - CPM: $[XX.XX]
+   - CPC: $[X.XX]
+   - CTR: [X.XX]%
+   - Conversion Rate: [X.XX]%
+
+   Add 2-3 sentences interpreting performance trends based on MoM/YoY changes
+
+5. CAMPAIGN ANALYSIS (use ## for section heading)
+   - Use ai_intelligent_campaign_analysis
+   - Create subsections for "Top Performing Campaigns" (use #### for subsection heading)
+   - Create subsections for "Campaigns Needing Attention" (use #### for subsection heading)
+   - Identify top 5 performing campaigns with context
+   - Flag campaigns needing attention (use recommended_action, risk_flags)
+   - Provide 2-3 specific optimization recommendations
+
+5. PRODUCT INSIGHTS (use ## for section heading)
+   - Use product_intelligence for top performers
+   - Identify growth trends and opportunities
+   - Flag inventory or performance concerns
+   - JumboMax Focus: Emphasize golf equipment and oversized driver trends
+
+6. STRATEGIC RECOMMENDATIONS (use ## for section heading)
+   - Focus on Paid Media Performance
+   - JumboMax-specific: Consider golf season timing and equipment innovation trends
+
+TONE & FORMAT:
+- Write at a strategic/executive level (50,000 foot view)
+- Use clear, uncomplicated business-focused language, avoid jargon
+- Include specific numbers but emphasize insights over data dumps
+- Use bullet points for scannability
+- Bold key metrics and findings
+- Keep total report to 1,000 words
+- Do not use any emojis
+- CRITICAL: Do NOT use horizontal rules (---) or <hr> tags anywhere in the report
+- CRITICAL: Do NOT use "Last 30 days" - use the actual month name and year (e.g., "October 2025")
+- CRITICAL: ALL section headings MUST use proper markdown syntax (## for H2, ### for H3, #### for H4)
+- CRITICAL: Do NOT use bold text (**text**) as a substitute for headings - use actual markdown heading syntax
+
+CRITICAL REQUIREMENTS:
+- Always compare MTD vs YoY to show context
+- Calculate growth rates and interpret them
+- Identify both opportunities and risks
+- Be specific with recommendations (don't be vague)
+- Focus on actionable intelligence, not just reporting numbers
+- Never speak in absolute truths around your recommendations, they are simply recommendations and not facts
+- Do not panic or use panic-sounding statements or overly enthusiastic statements as well`
+  },
 ];
 
 // Helper function to get templates available for current client
@@ -288,12 +410,15 @@ function FunnelAdsSection({ funnelAds }: { funnelAds: any }) {
             </h3>
             <div className="grid grid-cols-3 gap-4">
               {funnelAds[stage].slice(0, 3).map((ad: any, index: number) => {
-                const imageUrl =
-                  ad.creative_type === 'VIDEO' && ad.thumbnail_url
-                    ? ad.thumbnail_url
-                    : ad.image_url || ad.thumbnail_url;
+                // Use thumbnail_url for videos, image_url for images (with fallback)
+                const imageUrl = ad.creative_type === 'VIDEO'
+                  ? (ad.thumbnail_url || ad.image_url)
+                  : (ad.image_url || ad.thumbnail_url);
 
-                return imageUrl ? (
+                // Only render if we have an image URL
+                if (!imageUrl) return null;
+
+                return (
                   <AdCreativeCard
                     key={index}
                     adName={ad.ad_name}
@@ -305,7 +430,7 @@ function FunnelAdsSection({ funnelAds }: { funnelAds: any }) {
                       cpc: ad.cpc,
                     }}
                   />
-                ) : null;
+                );
               })}
             </div>
           </div>
@@ -701,8 +826,10 @@ Performance leaders across the marketing funnel:`;
           setIsPrefetching(true);
           console.log('[Reports] Pre-fetching data for:', selectedTemplate.id);
 
-          // Use 'previous-month' period for H&B monthly report, '30d' for others
-          const period = selectedTemplate.id === 'hb-monthly-performance' ? 'previous-month' : '30d';
+          // Use 'previous-month' period for H&B and JumboMax monthly reports, '30d' for others
+          const period = (selectedTemplate.id === 'hb-monthly-performance' || selectedTemplate.id === 'jumbomax-monthly-performance')
+            ? 'previous-month'
+            : '30d';
 
           const dataResponse = await fetch('/api/reports/fetch-data', {
             method: 'POST',
@@ -1148,10 +1275,7 @@ Performance leaders across the marketing funnel:`;
                     return null;
                   })}
 
-                  {/* Inject funnel ads section after Claude's report (only for H&B monthly performance) */}
-                  {selectedTemplate?.id === 'hb-monthly-performance' && funnelAdsData && !isGenerating && (
-                    <FunnelAdsSection funnelAds={funnelAdsData} />
-                  )}
+                  {/* Funnel ads section removed - will be a separate report */}
                 </div>
               )}
             </div>

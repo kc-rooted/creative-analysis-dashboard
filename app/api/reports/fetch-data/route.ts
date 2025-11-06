@@ -48,6 +48,10 @@ export async function POST(request: Request) {
         reportData = await fetchHBMonthlyPerformanceData(projectId, dataset, dateRange);
         break;
 
+      case 'jumbomax-monthly-performance':
+        reportData = await fetchJumboMaxMonthlyPerformanceData(projectId, dataset, dateRange);
+        break;
+
       case 'platform-deep-dive':
         reportData = await fetchPlatformDeepDiveData(projectId, dataset, dateRange);
         break;
@@ -481,6 +485,14 @@ async function fetchHBMonthlyPerformanceData(projectId: string, dataset: string,
 }
 
 /**
+ * Fetch data for JumboMax Monthly Performance Review (same structure as H&B)
+ */
+async function fetchJumboMaxMonthlyPerformanceData(projectId: string, dataset: string, dateRange: any) {
+  // JumboMax uses the same report structure as H&B, so we can reuse the function
+  return fetchHBMonthlyPerformanceData(projectId, dataset, dateRange);
+}
+
+/**
  * Fetch data for Platform Deep Dive
  */
 async function fetchPlatformDeepDiveData(projectId: string, dataset: string, dateRange: any) {
@@ -592,6 +604,9 @@ function formatDataAsMarkdown(data: any, reportType: string): string {
   }
   if (reportType === 'hb-monthly-performance') {
     return formatHBMonthlyReportAsMarkdown(data);
+  }
+  if (reportType === 'jumbomax-monthly-performance') {
+    return formatJumboMaxMonthlyReportAsMarkdown(data);
   }
   // Add other report types as needed
   return JSON.stringify(data, null, 2);
@@ -859,4 +874,9 @@ function formatHBMonthlyReportAsMarkdown(data: any): string {
   }
 
   return markdown;
+}
+
+function formatJumboMaxMonthlyReportAsMarkdown(data: any): string {
+  // JumboMax uses the same report structure as H&B, so we can reuse the formatter
+  return formatHBMonthlyReportAsMarkdown(data);
 }
