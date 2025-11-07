@@ -28,108 +28,9 @@ interface ReportTemplate {
 
 // Report templates
 const reportTemplates: ReportTemplate[] = [
-  {
-    id: 'weekly-executive',
-    title: 'Weekly Executive Summary',
-    description: 'High-level overview of key metrics and trends',
-    category: 'executive',
-    icon: '📊',
-    clients: ['all'], // Available to all clients
-    prompt: 'Generate a weekly executive summary report for {{client}} covering key performance metrics, trends, and notable insights from the past 7 days.'
-  },
-  {
-    id: 'monthly-performance',
-    title: 'Monthly Performance Review',
-    description: 'Comprehensive monthly analysis',
-    category: 'performance',
-    icon: '📈',
-    clients: ['all'], // Available to all clients
-    prompt: `You are a marketing analytics expert generating a comprehensive monthly marketing report for {{client}} for the last 30 days.
-
-REPORT STRUCTURE:
-Generate a strategic, executive-level monthly marketing report with the following sections:
-
-1. EXECUTIVE SUMMARY (1-2 paragraphs)
-   - Use ai_executive_summary for latest MTD metrics
-   - Use client_configurations for monthlyRevenueTargets
-   - Create a budget pacing bullet discussing the percentage of this month's budget and the pacing toward annual
-   - Highlight top 3-5 key insights from the month
-   - Focus on business impact and YoY performance
-   - Include both wins and challenges
-   - Format the 3-5 insights as bullet points
-
-2. BUSINESS PERFORMANCE
-   - Use monthly_business_summary for complete monthly metrics
-   - Report on attributed_blended_roas as well as overall blended_roas which represents net revenue / ad spend
-   - Present revenue breakdown (gross, net, refunds)
-   - Analyze operational metrics (orders, AOV, units)
-   - Calculate and interpret key rates (discount, return, etc.)
-
-3. PAID MEDIA PERFORMANCE
-   IF facebook_spend_mtd > 0 in ai_executive_summary:
-      - Analyze Facebook performance and trends
-   IF google_spend_mtd > 0 in ai_executive_summary:
-      - Analyze Google Ads performance and trends
-   - Present blended ROAS and attribution insights
-   - Compare platform efficiency and ROI
-
-4. CAMPAIGN ANALYSIS
-   - Use ai_intelligent_campaign_analysis
-   - Identify top 5 performing campaigns with context
-   - Flag campaigns needing attention (use recommended_action, risk_flags)
-   - Provide 2-3 specific optimization recommendations
-   - Highlight the best TOFU Ad (highest CTR)
-   - Highlight the best MOFU Ad (highest ROAS and/or best conversions)
-
-5. PRODUCT INSIGHTS
-   - Use product_intelligence for top performers
-   - Identify growth trends and opportunities
-   - Flag inventory or performance concerns
-
-6. STRATEGIC RECOMMENDATIONS
-   Focus the strategic recommendations only on Paid Media Performance
-
-TONE & FORMAT:
-- Write at a strategic/executive level (50,000 foot view)
-- Use clear, uncomplicated business-focused language, avoid jargon
-- Include specific numbers but emphasize insights over data dumps
-- Use bullet points for scannability
-- Bold key metrics and findings
-- Keep total report to 1,000 words
-- Do not use any emojis
-- Do not use horizontal rules (---) or <hr> tags
-
-CRITICAL REQUIREMENTS:
-- Always compare MTD vs YoY to show context
-- Calculate growth rates and interpret them
-- Identify both opportunities and risks
-- Be specific with recommendations (don't be vague)
-- Focus on actionable intelligence, not just reporting numbers
-- Never speak in absolute truths around your recommendations, they are simply recommendations and not facts
-- Do not panic or use panic-sounding statements or overly enthusiastic statements as well`
-  },
-  {
-    id: 'platform-deep-dive',
-    title: 'Platform Deep Dive',
-    description: 'In-depth analysis of a specific platform',
-    category: 'analysis',
-    icon: '🔍',
-    clients: ['all'],
-    prompt: 'Provide a deep-dive analysis of {{platform}} performance for {{client}}, including ad-level insights, audience performance, and optimization recommendations.'
-  },
-  {
-    id: 'email-retention',
-    title: 'Email & Retention Report',
-    description: 'Email marketing and customer retention metrics',
-    category: 'marketing',
-    icon: '📧',
-    clients: ['all'],
-    prompt: 'Generate an email marketing and customer retention report for {{client}}, covering campaign performance, subscriber engagement, and retention trends.'
-  },
-
   // ========== CLIENT-SPECIFIC TEMPLATES ==========
 
-  // Example: H&B-specific monthly report
+  // H&B-specific monthly report
   {
     id: 'hb-monthly-performance',
     title: 'H&B Monthly Performance',
@@ -171,12 +72,26 @@ Generate a strategic, executive-level monthly marketing report with the followin
 
    **After the table**, add 3-5 key bullet points with insights about wins and challenges
 
+   **CRITICAL - Daily Performance Trends**: Review the DAILY PERFORMANCE PROGRESSION table to identify key patterns:
+   - Did ROAS improve, decline, or stay stable throughout the month?
+   - Which week(s) showed the strongest/weakest performance?
+   - Were there any notable spikes or dips?
+   - Incorporate these trend insights into your bullet points above
+
+   **CRITICAL - Geographic Performance**: Review the COUNTRY PERFORMANCE table to identify geographic insights:
+   - How is revenue distributed across US, Canada, and UK markets?
+   - Which market shows the strongest per-unit pricing?
+   - For H&B: Which market has the highest Meta ROAS? How does Meta revenue compare to total revenue by country?
+   - Are there any notable geographic trends or opportunities?
+   - Incorporate geographic insights into your bullet points above if significant
+
 2. BUSINESS PERFORMANCE (use ## for section heading)
    - Use monthly_business_summary for complete monthly metrics
    - Report on attributed_blended_roas as well as overall blended_roas which represents net revenue / ad spend
    - Present revenue breakdown (gross, net, refunds)
    - Analyze operational metrics (orders, AOV, units)
    - Calculate and interpret key rates (discount, return, etc.)
+   - **CRITICAL**: Analyze the DAILY PERFORMANCE PROGRESSION table to identify ROAS, Revenue, and Order trends throughout the month. Note any significant patterns, improvements, or declines week-over-week.
 
 3. META ADS PERFORMANCE (use ## for section heading)
    **Use data from META ADS PERFORMANCE METRICS section**
@@ -294,12 +209,26 @@ Generate a strategic, executive-level monthly marketing report with the followin
 
    **After the table**, add 3-5 key bullet points with insights about wins and challenges
 
+   **CRITICAL - Daily Performance Trends**: Review the DAILY PERFORMANCE PROGRESSION table to identify key patterns:
+   - Did ROAS improve, decline, or stay stable throughout the month?
+   - Which week(s) showed the strongest/weakest performance?
+   - Were there any notable spikes or dips?
+   - Incorporate these trend insights into your bullet points above
+
+   **CRITICAL - Geographic Performance**: Review the COUNTRY PERFORMANCE table to identify geographic insights:
+   - How is revenue distributed across US, Canada, and UK markets?
+   - Which market shows the strongest per-unit pricing?
+   - For H&B: Which market has the highest Meta ROAS? How does Meta revenue compare to total revenue by country?
+   - Are there any notable geographic trends or opportunities?
+   - Incorporate geographic insights into your bullet points above if significant
+
 2. BUSINESS PERFORMANCE (use ## for section heading)
    - Use monthly_business_summary for complete monthly metrics
    - Report on attributed_blended_roas as well as overall blended_roas which represents net revenue / ad spend
    - Present revenue breakdown (gross, net, refunds)
    - Analyze operational metrics (orders, AOV, units)
    - Calculate and interpret key rates (discount, return, etc.)
+   - **CRITICAL**: Analyze the DAILY PERFORMANCE PROGRESSION table to identify ROAS, Revenue, and Order trends throughout the month. Note any significant patterns, improvements, or declines week-over-week.
 
 3. META ADS PERFORMANCE (use ## for section heading)
    **Use data from META ADS PERFORMANCE METRICS section**
@@ -341,15 +270,187 @@ Generate a strategic, executive-level monthly marketing report with the followin
    - Flag campaigns needing attention (use recommended_action, risk_flags)
    - Provide 2-3 specific optimization recommendations
 
-5. PRODUCT INSIGHTS (use ## for section heading)
+6. EMAIL PERFORMANCE (use ## for section heading)
+   **Use data from EMAIL PERFORMANCE OVERVIEW, EMAIL PERFORMANCE BY CATEGORY, and FLOW REVENUE BREAKDOWN sections**
+
+   Present overall email metrics for the month:
+   - Volume: Sends, Deliveries, Campaigns Sent
+   - Engagement: Open Rate, Click Rate, Click-to-Open Rate
+   - Performance: Attributed Revenue, Revenue per Send, Purchase Conversion Rate
+   - Deliverability: Delivery Rate, Bounce Rate, Unsubscribe Rate
+
+   Analyze performance by category (if available):
+   - Show top performing email categories by revenue
+   - Highlight engagement differences between categories
+
+   Analyze Campaigns vs Flows (if available):
+   - Compare campaign performance vs automated flow performance
+   - Identify which type drives more revenue
+
+   **CRITICAL - Flow Strategy Analysis:**
+   Use the FLOW REVENUE BREAKDOWN section to highlight JumboMax's automated flow strategy:
+   - Total flow revenue and number of active flows
+   - Top 3-5 performing flows by revenue
+   - Flow AOV and revenue per purchaser metrics
+   - Emphasize the importance of flows in the overall email strategy
+
+   Add 2-3 sentences interpreting email performance trends and opportunities, specifically noting the contribution of automated flows
+
+7. PRODUCT INSIGHTS (use ## for section heading)
    - Use product_intelligence for top performers
    - Identify growth trends and opportunities
    - Flag inventory or performance concerns
    - JumboMax Focus: Emphasize golf equipment and oversized driver trends
 
-6. STRATEGIC RECOMMENDATIONS (use ## for section heading)
+8. STRATEGIC RECOMMENDATIONS (use ## for section heading)
    - Focus on Paid Media Performance
    - JumboMax-specific: Consider golf season timing and equipment innovation trends
+
+TONE & FORMAT:
+- Write at a strategic/executive level (50,000 foot view)
+- Use clear, uncomplicated business-focused language, avoid jargon
+- Include specific numbers but emphasize insights over data dumps
+- Use bullet points for scannability
+- Bold key metrics and findings
+- Keep total report to 1,000 words
+- Do not use any emojis
+- CRITICAL: Do NOT use horizontal rules (---) or <hr> tags anywhere in the report
+- CRITICAL: Do NOT use "Last 30 days" - use the actual month name and year (e.g., "October 2025")
+- CRITICAL: ALL section headings MUST use proper markdown syntax (## for H2, ### for H3, #### for H4)
+- CRITICAL: Do NOT use bold text (**text**) as a substitute for headings - use actual markdown heading syntax
+
+CRITICAL REQUIREMENTS:
+- Always compare MTD vs YoY to show context
+- Calculate growth rates and interpret them
+- Identify both opportunities and risks
+- Be specific with recommendations (don't be vague)
+- Focus on actionable intelligence, not just reporting numbers
+- Never speak in absolute truths around your recommendations, they are simply recommendations and not facts
+- Do not panic or use panic-sounding statements or overly enthusiastic statements as well`
+  },
+
+  // PuttOUT-specific monthly report
+  {
+    id: 'puttout-monthly-performance',
+    title: 'PuttOUT Monthly Performance',
+    description: 'Custom monthly report for PuttOUT',
+    category: 'performance',
+    icon: '📈',
+    clients: ['puttout'], // Only visible to PuttOUT
+    prompt: `You are a marketing analytics expert generating a comprehensive monthly marketing report for PuttOUT.
+
+REPORT HEADER:
+Start the report with an H3 heading showing the report month and year (e.g., "### October 2025"). DO NOT use "Last 30 days" anywhere in the report.
+
+REPORT STRUCTURE:
+Generate a strategic, executive-level monthly marketing report with the following sections:
+
+1. EXECUTIVE SUMMARY
+   **Format**: 1-2 sentence summary paragraph, followed by hero metrics table, then key insights
+
+   **Summary**: Brief strategic overview (1-2 sentences) about overall business performance
+
+   **Hero Metrics Table** (use data from HERO METRICS and ANNUAL REVENUE FORECAST sections):
+   Create a table with 3 columns: Metric | Value | Analysis
+
+   | Metric | Value | Analysis |
+   |--------|-------|----------|
+   | **Monthly Revenue** | $[current month revenue] | MoM: [+/-X]%, YoY: [+/-X]% |
+   | **Annual Revenue Pacing** | $[forecasted annual revenue - Base Scenario] | [X]% probability to hit $[target]. Shortfall: $[target minus forecast], [X] days left |
+   | **Monthly ROAS** | [X.XX]x | MoM: [+/-X]%, YoY: [+/-X]% |
+   | **Paid Media Spend** | $[current month spend] | MoM: [+/-X]%, YoY: [+/-X]% |
+   | **Top Performing SKU** | [Product Name] | Revenue: $[amount] |
+   | **Top Emerging SKU** | [Product Name] | Revenue: $[amount], MoM: [+/-X]% |
+
+   CRITICAL INSTRUCTIONS:
+   - Row 1 (Monthly Revenue): Use revenue_total from HERO METRICS with revenue_mom_pct and revenue_yoy_pct
+   - Row 2 (Annual Revenue Pacing): Use prophet_annual_revenue_base with probability_hit_revenue_target. Calculate shortfall as (annual_revenue_target - prophet_annual_revenue_base)
+   - Row 3 (Monthly ROAS): Use blended_roas from HERO METRICS with blended_roas_mom_pct and blended_roas_yoy_pct
+   - Row 4 (Paid Media Spend): Use paid_media_spend from HERO METRICS with paid_media_spend_mom_pct and paid_media_spend_yoy_pct
+   - Do NOT calculate percentages - use exact values from the data
+
+   **After the table**, add 3-5 key bullet points with insights about wins and challenges
+
+   **CRITICAL - Daily Performance Trends**: Review the DAILY PERFORMANCE PROGRESSION table to identify key patterns:
+   - Did ROAS improve, decline, or stay stable throughout the month?
+   - Which week(s) showed the strongest/weakest performance?
+   - Were there any notable spikes or dips?
+   - Incorporate these trend insights into your bullet points above
+
+   **CRITICAL - Geographic Performance**: Review the COUNTRY PERFORMANCE table to identify geographic insights:
+   - How is revenue distributed across US, Canada, and UK markets?
+   - Which market shows the strongest per-unit pricing?
+   - For H&B: Which market has the highest Meta ROAS? How does Meta revenue compare to total revenue by country?
+   - Are there any notable geographic trends or opportunities?
+   - Incorporate geographic insights into your bullet points above if significant
+
+2. BUSINESS PERFORMANCE (use ## for section heading)
+   - Use monthly_business_summary for complete monthly metrics
+   - Report on attributed_blended_roas as well as overall blended_roas which represents net revenue / ad spend
+   - Present revenue breakdown (gross, net, refunds)
+   - Analyze operational metrics (orders, AOV, units)
+   - Calculate and interpret key rates (discount, return, etc.)
+   - **CRITICAL**: Analyze the DAILY PERFORMANCE PROGRESSION table to identify ROAS, Revenue, and Order trends throughout the month. Note any significant patterns, improvements, or declines week-over-week.
+
+3. META ADS PERFORMANCE (use ## for section heading)
+   **Use data from META ADS PERFORMANCE METRICS section**
+
+   Present Spend, Revenue, and ROAS with MoM and YoY changes:
+   - Spend: $[X,XXX] (MoM: [+/-X]%, YoY: [+/-X]%)
+   - Revenue: $[X,XXX] (MoM: [+/-X]%, YoY: [+/-X]%)
+   - ROAS: [X.XX]x (MoM: [+/-X]%, YoY: [+/-X]%)
+
+   Then present granular metrics:
+   - CPM: $[XX.XX]
+   - CPC: $[X.XX]
+   - CTR: [X.XX]%
+   - Frequency: [X.XX]
+
+   Add 2-3 sentences interpreting performance trends based on MoM/YoY changes
+
+4. CAMPAIGN ANALYSIS (use ## for section heading)
+   - Use ai_intelligent_campaign_analysis
+   - Create subsections for "Top Performing Campaigns" (use #### for subsection heading)
+   - Create subsections for "Campaigns Needing Attention" (use #### for subsection heading)
+   - Identify top 5 performing campaigns with context
+   - Flag campaigns needing attention (use recommended_action, risk_flags)
+   - Provide 2-3 specific optimization recommendations
+
+5. EMAIL PERFORMANCE (use ## for section heading)
+   **Use data from EMAIL PERFORMANCE OVERVIEW, EMAIL PERFORMANCE BY CATEGORY, and FLOW REVENUE BREAKDOWN sections**
+
+   Present overall email metrics for the month:
+   - Volume: Sends, Deliveries, Campaigns Sent
+   - Engagement: Open Rate, Click Rate, Click-to-Open Rate
+   - Performance: Attributed Revenue, Revenue per Send, Purchase Conversion Rate
+   - Deliverability: Delivery Rate, Bounce Rate, Unsubscribe Rate
+
+   Analyze performance by category (if available):
+   - Show top performing email categories by revenue
+   - Highlight engagement differences between categories
+
+   Analyze Campaigns vs Flows (if available):
+   - Compare campaign performance vs automated flow performance
+   - Identify which type drives more revenue
+
+   **CRITICAL - Flow Strategy Analysis:**
+   Use the FLOW REVENUE BREAKDOWN section to highlight PuttOUT's automated flow strategy:
+   - Total flow revenue and number of active flows
+   - Top 3-5 performing flows by revenue
+   - Flow AOV and revenue per purchaser metrics
+   - Emphasize the importance of flows in the overall email strategy
+
+   Add 2-3 sentences interpreting email performance trends and opportunities, specifically noting the contribution of automated flows
+
+6. PRODUCT INSIGHTS (use ## for section heading)
+   - Use product_intelligence for top performers
+   - Identify growth trends and opportunities
+   - Flag inventory or performance concerns
+   - PuttOUT Focus: Emphasize golf training aids and putting accessories trends
+
+7. STRATEGIC RECOMMENDATIONS (use ## for section heading)
+   - Focus on Paid Media Performance
+   - PuttOUT-specific: Consider golf season timing and training aid innovation trends
 
 TONE & FORMAT:
 - Write at a strategic/executive level (50,000 foot view)
@@ -820,16 +921,21 @@ Performance leaders across the marketing funnel:`;
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (input.trim() && status === 'ready') {
-      // If a template is selected, pre-fetch data first
-      if (selectedTemplate) {
+      // Check if this is a refinement (messages already exist) vs. new generation
+      const isRefinement = messages.length > 0;
+
+      // If a template is selected AND this is the first generation (not a refinement)
+      if (selectedTemplate && !isRefinement) {
         try {
           setIsPrefetching(true);
-          console.log('[Reports] Pre-fetching data for:', selectedTemplate.id);
+          console.log('[Reports] Pre-fetching data for initial generation:', selectedTemplate.id);
 
-          // Use 'previous-month' period for H&B and JumboMax monthly reports, '30d' for others
-          const period = (selectedTemplate.id === 'hb-monthly-performance' || selectedTemplate.id === 'jumbomax-monthly-performance')
-            ? 'previous-month'
-            : '30d';
+          // Use 'previous-month' period for H&B, JumboMax, and PuttOUT monthly reports, '30d' for others
+          const period = (
+            selectedTemplate.id === 'hb-monthly-performance' ||
+            selectedTemplate.id === 'jumbomax-monthly-performance' ||
+            selectedTemplate.id === 'puttout-monthly-performance'
+          ) ? 'previous-month' : '30d';
 
           const dataResponse = await fetch('/api/reports/fetch-data', {
             method: 'POST',
@@ -883,6 +989,23 @@ Performance leaders across the marketing funnel:`;
             }
           );
         }
+      } else if (isRefinement) {
+        // This is a refinement - just send the message with existing context
+        console.log('[Reports] Sending refinement request with existing context');
+
+        // Note: We don't clear messages here because the AI needs the previous conversation
+        // context to understand what to refine. The useChat hook will append the new response,
+        // but we'll only show the latest assistant message in the UI.
+        sendMessage(
+          { text: input },
+          {
+            body: {
+              selectedClient: currentClient,
+              expectsReport: true,
+              hasPrefetchedData: true, // Data is already in context from previous messages
+            },
+          }
+        );
       } else {
         // No template, send normally
         sendMessage(
@@ -1257,23 +1380,26 @@ Performance leaders across the marketing funnel:`;
                       margin-top: 1.24rem;
                     }
                   `}</style>
-                  {messages.map((message) => {
-                    if (message.role === 'assistant') {
-                      return message.parts?.map((part, partIndex) => {
-                        if (part.type === 'text') {
-                          return (
-                            <MemoizedMarkdown
-                              key={`${message.id}-${partIndex}`}
-                              id={`artifact-${message.id}-${partIndex}`}
-                              content={part.text}
-                            />
-                          );
-                        }
-                        return null;
-                      });
-                    }
-                    return null;
-                  })}
+                  {(() => {
+                    // Find the latest assistant message
+                    const assistantMessages = messages.filter(m => m.role === 'assistant');
+                    const latestAssistant = assistantMessages[assistantMessages.length - 1];
+
+                    if (!latestAssistant) return null;
+
+                    return latestAssistant.parts?.map((part, partIndex) => {
+                      if (part.type === 'text') {
+                        return (
+                          <MemoizedMarkdown
+                            key={`${latestAssistant.id}-${partIndex}`}
+                            id={`artifact-${latestAssistant.id}-${partIndex}`}
+                            content={part.text}
+                          />
+                        );
+                      }
+                      return null;
+                    });
+                  })()}
 
                   {/* Funnel ads section removed - will be a separate report */}
                 </div>

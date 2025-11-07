@@ -52,6 +52,10 @@ export async function POST(request: Request) {
         reportData = await fetchJumboMaxMonthlyPerformanceData(projectId, dataset, dateRange);
         break;
 
+      case 'puttout-monthly-performance':
+        reportData = await fetchPuttOutMonthlyPerformanceData(projectId, dataset, dateRange);
+        break;
+
       case 'platform-deep-dive':
         reportData = await fetchPlatformDeepDiveData(projectId, dataset, dateRange);
         break;
@@ -362,6 +366,34 @@ async function fetchMonthlyPerformanceData(projectId: string, dataset: string, d
       FROM \`${projectId}.${dataset}.bayesian_annual_probability_forecast\`
       ORDER BY report_date DESC
       LIMIT 1
+    `,
+
+    // 7. Daily Performance Progression - Revenue and ROAS by day for the month
+    dailyPerformance: `
+      SELECT
+        date,
+        spend,
+        revenue,
+        ROUND(revenue / NULLIF(spend, 0), 2) as roas,
+        orders
+      FROM \`${projectId}.${dataset}.paid_media_performance\`
+      WHERE date >= '${dateRange.start}' AND date < DATE_ADD(DATE '${dateRange.start}', INTERVAL 1 MONTH)
+      ORDER BY date ASC
+    `,
+
+    // 8. Country Performance - Revenue and units by key markets (US, Canada, UK)
+    countryPerformance: `
+      SELECT
+        country,
+        country_code,
+        SUM(total_revenue) as total_revenue,
+        SUM(total_units_sold) as total_units_sold,
+        ROUND(AVG(avg_unit_price), 2) as avg_unit_price
+      FROM \`${projectId}.${dataset}.geographic_product_performance\`
+      WHERE year_month = FORMAT_DATE('%Y-%m', DATE '${dateRange.start}')
+        AND country_code IN ('US', 'CA', 'GB')
+      GROUP BY country, country_code
+      ORDER BY total_revenue DESC
     `
   };
 
@@ -439,6 +471,73 @@ async function fetchHBMonthlyPerformanceData(projectId: string, dataset: string,
     baseData.paidMediaPerformance = [];
   }
 
+  // Add H&B-specific country performance with Meta attribution
+  const countryPerformanceEnhancedQuery = `
+    WITH meta_country_monthly AS (
+      SELECT
+        CASE
+          WHEN country = 'US' THEN 'United States'
+          WHEN country = 'CA' THEN 'Canada'
+          WHEN country = 'GB' THEN 'United Kingdom'
+          ELSE country
+        END as country_name,
+        CASE
+          WHEN country = 'US' THEN 'US'
+          WHEN country = 'CA' THEN 'CA'
+          WHEN country = 'GB' THEN 'GB'
+          ELSE country
+        END as country_code,
+        FORMAT_DATE('%Y-%m', date_start) as year_month,
+        SUM(spend) as meta_spend,
+        SUM(
+          CAST(
+            JSON_EXTRACT_SCALAR(action_value, '$.value') AS FLOAT64
+          )
+        ) as meta_revenue
+      FROM \`clients_hb.facebook_ads_insights_country\`,
+        UNNEST(JSON_EXTRACT_ARRAY(action_values)) as action_value
+      WHERE JSON_EXTRACT_SCALAR(action_value, '$.action_type') IN ('omni_purchase', 'purchase', 'offsite_conversion.fb_pixel_purchase')
+      GROUP BY country_name, country_code, year_month
+    ),
+    geo_product_agg AS (
+      SELECT
+        country,
+        country_code,
+        year_month,
+        SUM(total_revenue) as total_revenue,
+        SUM(total_units_sold) as total_units_sold,
+        AVG(avg_unit_price) as avg_unit_price
+      FROM \`${projectId}.${dataset}.geographic_product_performance\`
+      GROUP BY country, country_code, year_month
+    )
+    SELECT
+      g.country,
+      g.country_code,
+      g.year_month,
+      g.total_revenue,
+      g.total_units_sold,
+      ROUND(g.avg_unit_price, 2) as avg_unit_price,
+      COALESCE(m.meta_revenue, 0) as meta_attributed_revenue,
+      COALESCE(m.meta_spend, 0) as meta_spend,
+      ROUND(SAFE_DIVIDE(m.meta_revenue, m.meta_spend), 2) as meta_roas
+    FROM geo_product_agg g
+    LEFT JOIN meta_country_monthly m
+      ON g.country_code = m.country_code
+      AND g.year_month = m.year_month
+    WHERE g.year_month = FORMAT_DATE('%Y-%m', DATE '${dateRange.start}')
+      AND g.country_code IN ('US', 'CA', 'GB')
+    ORDER BY g.total_revenue DESC
+  `;
+
+  try {
+    const countryData = await runSQLQuery(countryPerformanceEnhancedQuery);
+    console.log(`[Report Data] countryPerformance (enhanced): ${countryData.length} rows fetched`);
+    baseData.countryPerformance = countryData;
+  } catch (error) {
+    console.error('[Report Data] Error fetching enhanced country performance:', error);
+    baseData.countryPerformance = [];
+  }
+
   // Add H&B-specific funnel ads data
   const funnelAdsQuery = `
     SELECT
@@ -485,11 +584,289 @@ async function fetchHBMonthlyPerformanceData(projectId: string, dataset: string,
 }
 
 /**
- * Fetch data for JumboMax Monthly Performance Review (same structure as H&B)
+ * Fetch data for JumboMax Monthly Performance Review (extends H&B with email performance)
  */
 async function fetchJumboMaxMonthlyPerformanceData(projectId: string, dataset: string, dateRange: any) {
-  // JumboMax uses the same report structure as H&B, so we can reuse the function
-  return fetchHBMonthlyPerformanceData(projectId, dataset, dateRange);
+  // First, get all the H&B report data (includes base metrics, paid media, funnel ads)
+  const baseData = await fetchHBMonthlyPerformanceData(projectId, dataset, dateRange);
+
+  // Add JumboMax-specific email performance from klaviyo_email_engagement_trends
+  const emailPerformanceQuery = `
+    SELECT
+      SUM(sends) as total_sends,
+      SUM(deliveries) as total_deliveries,
+      SUM(opens) as total_opens,
+      SUM(clicks) as total_clicks,
+      SUM(bounces) as total_bounces,
+      SUM(unsubscribes) as total_unsubscribes,
+      SUM(unique_recipients_sent) as unique_recipients_sent,
+      SUM(unique_recipients_opened) as unique_recipients_opened,
+      SUM(unique_recipients_clicked) as unique_recipients_clicked,
+      SUM(campaigns_sent) as campaigns_sent,
+      SUM(attributed_revenue) as total_attributed_revenue,
+      SUM(attributed_purchases) as total_attributed_purchases,
+      SUM(attributed_purchasers) as total_attributed_purchasers,
+      AVG(delivery_rate) as avg_delivery_rate,
+      AVG(open_rate) as avg_open_rate,
+      AVG(click_rate) as avg_click_rate,
+      AVG(click_to_open_rate) as avg_click_to_open_rate,
+      AVG(bounce_rate) as avg_bounce_rate,
+      AVG(unsubscribe_rate) as avg_unsubscribe_rate,
+      AVG(unique_open_rate) as avg_unique_open_rate,
+      AVG(unique_click_rate) as avg_unique_click_rate,
+      AVG(purchase_conversion_rate) as avg_purchase_conversion_rate,
+      AVG(revenue_per_send) as avg_revenue_per_send
+    FROM \`${projectId}.${dataset}.klaviyo_email_engagement_trends\`
+    WHERE event_date >= '${dateRange.start}' AND event_date < DATE_ADD(DATE '${dateRange.start}', INTERVAL 1 MONTH)
+  `;
+
+  // Email performance by campaign category
+  const emailByCategoryQuery = `
+    SELECT
+      campaign_category,
+      SUM(sends) as sends,
+      SUM(opens) as opens,
+      SUM(clicks) as clicks,
+      SUM(attributed_revenue) as attributed_revenue,
+      AVG(open_rate) as open_rate,
+      AVG(click_rate) as click_rate,
+      AVG(click_to_open_rate) as click_to_open_rate
+    FROM \`${projectId}.${dataset}.klaviyo_email_engagement_trends\`
+    WHERE event_date >= '${dateRange.start}' AND event_date < DATE_ADD(DATE '${dateRange.start}', INTERVAL 1 MONTH)
+      AND campaign_category IS NOT NULL
+    GROUP BY campaign_category
+    ORDER BY attributed_revenue DESC
+  `;
+
+  // Email performance by type (campaign vs flow)
+  const emailByTypeQuery = `
+    SELECT
+      email_type,
+      SUM(sends) as sends,
+      SUM(opens) as opens,
+      SUM(clicks) as clicks,
+      SUM(attributed_revenue) as attributed_revenue,
+      AVG(open_rate) as open_rate,
+      AVG(click_rate) as click_rate
+    FROM \`${projectId}.${dataset}.klaviyo_email_engagement_trends\`
+    WHERE event_date >= '${dateRange.start}' AND event_date < DATE_ADD(DATE '${dateRange.start}', INTERVAL 1 MONTH)
+      AND email_type IS NOT NULL
+    GROUP BY email_type
+    ORDER BY attributed_revenue DESC
+  `;
+
+  // Flow revenue details from klaviyo_daily_flow_revenue
+  const flowRevenueQuery = `
+    SELECT
+      flow_name,
+      flow_category,
+      SUM(attributed_purchasers) as attributed_purchasers,
+      SUM(attributed_purchases) as attributed_purchases,
+      SUM(attributed_revenue) as attributed_revenue,
+      AVG(avg_order_value) as avg_order_value,
+      AVG(revenue_per_purchaser) as revenue_per_purchaser
+    FROM \`${projectId}.${dataset}.klaviyo_daily_flow_revenue\`
+    WHERE purchase_date >= '${dateRange.start}' AND purchase_date < DATE_ADD(DATE '${dateRange.start}', INTERVAL 1 MONTH)
+    GROUP BY flow_name, flow_category
+    ORDER BY attributed_revenue DESC
+  `;
+
+  try {
+    const emailOverall = await runSQLQuery(emailPerformanceQuery);
+    console.log(`[Report Data] emailPerformance: ${emailOverall.length} rows fetched`);
+    baseData.emailPerformance = emailOverall;
+  } catch (error) {
+    console.error('[Report Data] Error fetching email performance:', error);
+    baseData.emailPerformance = [];
+  }
+
+  try {
+    const emailByCategory = await runSQLQuery(emailByCategoryQuery);
+    console.log(`[Report Data] emailByCategory: ${emailByCategory.length} rows fetched`);
+    baseData.emailByCategory = emailByCategory;
+  } catch (error) {
+    console.error('[Report Data] Error fetching email by category:', error);
+    baseData.emailByCategory = [];
+  }
+
+  try {
+    const emailByType = await runSQLQuery(emailByTypeQuery);
+    console.log(`[Report Data] emailByType: ${emailByType.length} rows fetched`);
+    baseData.emailByType = emailByType;
+  } catch (error) {
+    console.error('[Report Data] Error fetching email by type:', error);
+    baseData.emailByType = [];
+  }
+
+  try {
+    const flowRevenue = await runSQLQuery(flowRevenueQuery);
+    console.log(`[Report Data] flowRevenue: ${flowRevenue.length} rows fetched`);
+    baseData.flowRevenue = flowRevenue;
+  } catch (error) {
+    console.error('[Report Data] Error fetching flow revenue:', error);
+    baseData.flowRevenue = [];
+  }
+
+  return baseData;
+}
+
+/**
+ * Fetch data for PuttOUT Monthly Performance Review
+ * Similar to JumboMax but without Google Ads detailed breakouts and funnel ads
+ */
+async function fetchPuttOutMonthlyPerformanceData(projectId: string, dataset: string, dateRange: any) {
+  // Start with base monthly performance data
+  const baseData = await fetchMonthlyPerformanceData(projectId, dataset, dateRange);
+
+  // Add paid media performance metrics (Meta only - no detailed Google breakout)
+  const paidMediaQuery = `
+    SELECT
+      platform,
+      SUM(spend) as total_spend,
+      SUM(revenue) as total_revenue,
+      SUM(impressions) as total_impressions,
+      SUM(clicks) as total_clicks,
+      SUM(reach) as total_reach,
+      SUM(purchases) as total_purchases,
+      AVG(frequency) as avg_frequency,
+      AVG(conversion_rate) as avg_conversion_rate,
+      SUM(revenue) / NULLIF(SUM(spend), 0) as calculated_roas,
+      SUM(spend) / NULLIF(SUM(impressions) / 1000, 0) as calculated_cpm,
+      SUM(spend) / NULLIF(SUM(clicks), 0) as calculated_cpc,
+      (SUM(clicks) / NULLIF(SUM(impressions), 0)) * 100 as calculated_ctr
+    FROM \`${projectId}.${dataset}.paid_media_performance\`
+    WHERE date >= '${dateRange.start}' AND date < DATE_ADD(DATE '${dateRange.start}', INTERVAL 1 MONTH)
+    GROUP BY platform
+    ORDER BY platform
+  `;
+
+  try {
+    const paidMediaData = await runSQLQuery(paidMediaQuery);
+    console.log(`[Report Data] paidMediaPerformance: ${paidMediaData.length} rows fetched`);
+    baseData.paidMediaPerformance = paidMediaData;
+  } catch (error) {
+    console.error('[Report Data] Error fetching paid media performance:', error);
+    baseData.paidMediaPerformance = [];
+  }
+
+  // Add email performance from klaviyo_email_engagement_trends
+  const emailPerformanceQuery = `
+    SELECT
+      SUM(sends) as total_sends,
+      SUM(deliveries) as total_deliveries,
+      SUM(opens) as total_opens,
+      SUM(clicks) as total_clicks,
+      SUM(bounces) as total_bounces,
+      SUM(unsubscribes) as total_unsubscribes,
+      SUM(unique_recipients_sent) as unique_recipients_sent,
+      SUM(unique_recipients_opened) as unique_recipients_opened,
+      SUM(unique_recipients_clicked) as unique_recipients_clicked,
+      SUM(campaigns_sent) as campaigns_sent,
+      SUM(attributed_revenue) as total_attributed_revenue,
+      SUM(attributed_purchases) as total_attributed_purchases,
+      SUM(attributed_purchasers) as total_attributed_purchasers,
+      AVG(delivery_rate) as avg_delivery_rate,
+      AVG(open_rate) as avg_open_rate,
+      AVG(click_rate) as avg_click_rate,
+      AVG(click_to_open_rate) as avg_click_to_open_rate,
+      AVG(bounce_rate) as avg_bounce_rate,
+      AVG(unsubscribe_rate) as avg_unsubscribe_rate,
+      AVG(unique_open_rate) as avg_unique_open_rate,
+      AVG(unique_click_rate) as avg_unique_click_rate,
+      AVG(purchase_conversion_rate) as avg_purchase_conversion_rate,
+      AVG(revenue_per_send) as avg_revenue_per_send
+    FROM \`${projectId}.${dataset}.klaviyo_email_engagement_trends\`
+    WHERE event_date >= '${dateRange.start}' AND event_date < DATE_ADD(DATE '${dateRange.start}', INTERVAL 1 MONTH)
+  `;
+
+  // Email performance by campaign category
+  const emailByCategoryQuery = `
+    SELECT
+      campaign_category,
+      SUM(sends) as sends,
+      SUM(opens) as opens,
+      SUM(clicks) as clicks,
+      SUM(attributed_revenue) as attributed_revenue,
+      AVG(open_rate) as open_rate,
+      AVG(click_rate) as click_rate,
+      AVG(click_to_open_rate) as click_to_open_rate
+    FROM \`${projectId}.${dataset}.klaviyo_email_engagement_trends\`
+    WHERE event_date >= '${dateRange.start}' AND event_date < DATE_ADD(DATE '${dateRange.start}', INTERVAL 1 MONTH)
+      AND campaign_category IS NOT NULL
+    GROUP BY campaign_category
+    ORDER BY attributed_revenue DESC
+  `;
+
+  // Email performance by type (campaign vs flow)
+  const emailByTypeQuery = `
+    SELECT
+      email_type,
+      SUM(sends) as sends,
+      SUM(opens) as opens,
+      SUM(clicks) as clicks,
+      SUM(attributed_revenue) as attributed_revenue,
+      AVG(open_rate) as open_rate,
+      AVG(click_rate) as click_rate
+    FROM \`${projectId}.${dataset}.klaviyo_email_engagement_trends\`
+    WHERE event_date >= '${dateRange.start}' AND event_date < DATE_ADD(DATE '${dateRange.start}', INTERVAL 1 MONTH)
+      AND email_type IS NOT NULL
+    GROUP BY email_type
+    ORDER BY attributed_revenue DESC
+  `;
+
+  // Flow revenue details from klaviyo_daily_flow_revenue
+  const flowRevenueQuery = `
+    SELECT
+      flow_name,
+      flow_category,
+      SUM(attributed_purchasers) as attributed_purchasers,
+      SUM(attributed_purchases) as attributed_purchases,
+      SUM(attributed_revenue) as attributed_revenue,
+      AVG(avg_order_value) as avg_order_value,
+      AVG(revenue_per_purchaser) as revenue_per_purchaser
+    FROM \`${projectId}.${dataset}.klaviyo_daily_flow_revenue\`
+    WHERE purchase_date >= '${dateRange.start}' AND purchase_date < DATE_ADD(DATE '${dateRange.start}', INTERVAL 1 MONTH)
+    GROUP BY flow_name, flow_category
+    ORDER BY attributed_revenue DESC
+  `;
+
+  try {
+    const emailOverall = await runSQLQuery(emailPerformanceQuery);
+    console.log(`[Report Data] emailPerformance: ${emailOverall.length} rows fetched`);
+    baseData.emailPerformance = emailOverall;
+  } catch (error) {
+    console.error('[Report Data] Error fetching email performance:', error);
+    baseData.emailPerformance = [];
+  }
+
+  try {
+    const emailByCategory = await runSQLQuery(emailByCategoryQuery);
+    console.log(`[Report Data] emailByCategory: ${emailByCategory.length} rows fetched`);
+    baseData.emailByCategory = emailByCategory;
+  } catch (error) {
+    console.error('[Report Data] Error fetching email by category:', error);
+    baseData.emailByCategory = [];
+  }
+
+  try {
+    const emailByType = await runSQLQuery(emailByTypeQuery);
+    console.log(`[Report Data] emailByType: ${emailByType.length} rows fetched`);
+    baseData.emailByType = emailByType;
+  } catch (error) {
+    console.error('[Report Data] Error fetching email by type:', error);
+    baseData.emailByType = [];
+  }
+
+  try {
+    const flowRevenue = await runSQLQuery(flowRevenueQuery);
+    console.log(`[Report Data] flowRevenue: ${flowRevenue.length} rows fetched`);
+    baseData.flowRevenue = flowRevenue;
+  } catch (error) {
+    console.error('[Report Data] Error fetching flow revenue:', error);
+    baseData.flowRevenue = [];
+  }
+
+  return baseData;
 }
 
 /**
@@ -608,12 +985,24 @@ function formatDataAsMarkdown(data: any, reportType: string): string {
   if (reportType === 'jumbomax-monthly-performance') {
     return formatJumboMaxMonthlyReportAsMarkdown(data);
   }
+  if (reportType === 'puttout-monthly-performance') {
+    return formatPuttOutMonthlyReportAsMarkdown(data);
+  }
   // Add other report types as needed
   return JSON.stringify(data, null, 2);
 }
 
 function formatMonthlyReportAsMarkdown(data: any): string {
   let markdown = '# PRE-FETCHED DATA\n\n';
+
+  // ⚠️ CRITICAL INSTRUCTION AT THE TOP
+  markdown += `**⚠️ CRITICAL INSTRUCTION - READ THIS FIRST:**\n`;
+  markdown += `Review the DAILY PERFORMANCE PROGRESSION and COUNTRY PERFORMANCE tables (at the bottom of this data) to analyze:\n`;
+  markdown += `1. Daily trends - how ROAS evolved throughout the month\n`;
+  markdown += `2. Geographic breakdown - revenue distribution across US, Canada, and UK markets\n`;
+  markdown += `3. Meta attribution by country - which markets drive the strongest Meta ROAS (H&B only)\n`;
+  markdown += `Include insights about ROAS trends, geographic performance, and Meta attribution in your Executive Summary bullet points.\n\n`;
+  markdown += `---\n\n`;
 
   // Hero Metrics from Monthly Executive Report (NEW)
   if (data.monthlyExecutiveReport?.[0]) {
@@ -754,6 +1143,88 @@ function formatMonthlyReportAsMarkdown(data: any): string {
     });
   }
 
+  // Daily Performance Progression - Show ROAS and Revenue trends throughout the month
+  if (data.dailyPerformance?.length > 0) {
+    markdown += `\n## DAILY PERFORMANCE PROGRESSION\n`;
+    markdown += `**Use this data to analyze how performance trended throughout the month:**\n\n`;
+    markdown += `| Date | Spend | Revenue | ROAS | Orders |\n`;
+    markdown += `|------|-------|---------|------|--------|\n`;
+    data.dailyPerformance.forEach((day: any) => {
+      const dateStr = day.date?.value || day.date;
+      markdown += `| ${dateStr} | $${day.spend?.toLocaleString() || 0} | $${day.revenue?.toLocaleString() || 0} | ${day.roas?.toFixed(2) || '0.00'}x | ${day.orders || 0} |\n`;
+    });
+
+    // Add weekly averages for easier pattern recognition
+    if (data.dailyPerformance.length >= 7) {
+      markdown += `\n**Weekly Averages:**\n`;
+      const weeks = Math.floor(data.dailyPerformance.length / 7);
+      for (let i = 0; i < weeks; i++) {
+        const weekData = data.dailyPerformance.slice(i * 7, (i + 1) * 7);
+        const avgSpend = weekData.reduce((sum: number, d: any) => sum + (d.spend || 0), 0) / weekData.length;
+        const avgRevenue = weekData.reduce((sum: number, d: any) => sum + (d.revenue || 0), 0) / weekData.length;
+        const avgRoas = weekData.reduce((sum: number, d: any) => sum + (d.roas || 0), 0) / weekData.length;
+        const avgOrders = weekData.reduce((sum: number, d: any) => sum + (d.orders || 0), 0) / weekData.length;
+        markdown += `- Week ${i + 1}: Avg Spend $${avgSpend.toLocaleString('en-US', { maximumFractionDigits: 0 })}, Avg Revenue $${avgRevenue.toLocaleString('en-US', { maximumFractionDigits: 0 })}, Avg ROAS ${avgRoas.toFixed(2)}x, Avg Orders ${avgOrders.toFixed(0)}\n`;
+      }
+      markdown += `\n`;
+    }
+  }
+
+  // Country Performance - Revenue by key markets
+  if (data.countryPerformance?.length > 0) {
+    markdown += `\n## COUNTRY PERFORMANCE (Geographic Breakdown)\n`;
+
+    // Check if we have Meta attribution data (H&B only)
+    const hasMetaData = data.countryPerformance.some((c: any) => c.meta_attributed_revenue !== undefined);
+
+    if (hasMetaData) {
+      markdown += `**Revenue and units sold by key markets with Meta attribution (US, Canada, UK):**\n\n`;
+      markdown += `| Country | Total Revenue | Meta Revenue | Meta ROAS | Units Sold | Avg Unit Price |\n`;
+      markdown += `|---------|---------------|--------------|-----------|------------|----------------|\n`;
+      data.countryPerformance.forEach((country: any) => {
+        const metaRoas = country.meta_roas ? `${country.meta_roas.toFixed(2)}x` : 'N/A';
+        markdown += `| ${country.country} (${country.country_code}) | $${country.total_revenue?.toLocaleString() || 0} | $${country.meta_attributed_revenue?.toLocaleString() || 0} | ${metaRoas} | ${country.total_units_sold?.toLocaleString() || 0} | $${country.avg_unit_price?.toFixed(2) || '0.00'} |\n`;
+      });
+
+      // Calculate percentage breakdowns
+      const totalRevenue = data.countryPerformance.reduce((sum: number, c: any) => sum + (c.total_revenue || 0), 0);
+      const totalMetaRevenue = data.countryPerformance.reduce((sum: number, c: any) => sum + (c.meta_attributed_revenue || 0), 0);
+
+      if (totalRevenue > 0) {
+        markdown += `\n**Revenue Distribution:**\n`;
+        data.countryPerformance.forEach((country: any) => {
+          const pct = ((country.total_revenue / totalRevenue) * 100).toFixed(1);
+          const metaPct = totalMetaRevenue > 0 ? ((country.meta_attributed_revenue / totalMetaRevenue) * 100).toFixed(1) : 0;
+          markdown += `- ${country.country}: ${pct}% of total revenue`;
+          if (totalMetaRevenue > 0) {
+            markdown += `, ${metaPct}% of Meta revenue`;
+          }
+          markdown += `\n`;
+        });
+        markdown += `\n`;
+      }
+    } else {
+      // Standard version without Meta data (JumboMax, PuttOUT)
+      markdown += `**Revenue and units sold by key markets (US, Canada, UK):**\n\n`;
+      markdown += `| Country | Revenue | Units Sold | Avg Unit Price |\n`;
+      markdown += `|---------|---------|------------|----------------|\n`;
+      data.countryPerformance.forEach((country: any) => {
+        markdown += `| ${country.country} (${country.country_code}) | $${country.total_revenue?.toLocaleString() || 0} | ${country.total_units_sold?.toLocaleString() || 0} | $${country.avg_unit_price?.toFixed(2) || '0.00'} |\n`;
+      });
+
+      // Calculate percentage breakdown
+      const totalRevenue = data.countryPerformance.reduce((sum: number, c: any) => sum + (c.total_revenue || 0), 0);
+      if (totalRevenue > 0) {
+        markdown += `\n**Revenue Distribution:**\n`;
+        data.countryPerformance.forEach((country: any) => {
+          const pct = ((country.total_revenue / totalRevenue) * 100).toFixed(1);
+          markdown += `- ${country.country}: ${pct}% of tracked markets\n`;
+        });
+        markdown += `\n`;
+      }
+    }
+  }
+
   return markdown;
 }
 
@@ -877,6 +1348,236 @@ function formatHBMonthlyReportAsMarkdown(data: any): string {
 }
 
 function formatJumboMaxMonthlyReportAsMarkdown(data: any): string {
-  // JumboMax uses the same report structure as H&B, so we can reuse the formatter
-  return formatHBMonthlyReportAsMarkdown(data);
+  // Start with the H&B report formatting (includes hero metrics, campaigns, products, paid media, funnel ads)
+  let markdown = formatHBMonthlyReportAsMarkdown(data);
+
+  // Add JumboMax-specific email performance section
+  if (data.emailPerformance?.[0]) {
+    const email = data.emailPerformance[0];
+
+    markdown += `\n## EMAIL PERFORMANCE OVERVIEW\n`;
+    markdown += `**Overall Email Metrics for the Month:**\n\n`;
+
+    markdown += `**Volume:**\n`;
+    markdown += `- Total Sends: ${email.total_sends?.toLocaleString() || 'N/A'}\n`;
+    markdown += `- Total Deliveries: ${email.total_deliveries?.toLocaleString() || 'N/A'}\n`;
+    markdown += `- Campaigns Sent: ${email.campaigns_sent || 'N/A'}\n`;
+    markdown += `- Unique Recipients: ${email.unique_recipients_sent?.toLocaleString() || 'N/A'}\n\n`;
+
+    markdown += `**Engagement:**\n`;
+    markdown += `- Open Rate: ${(email.avg_open_rate * 100)?.toFixed(2) || 'N/A'}% (${email.total_opens?.toLocaleString() || 'N/A'} opens)\n`;
+    markdown += `- Click Rate: ${(email.avg_click_rate * 100)?.toFixed(2) || 'N/A'}% (${email.total_clicks?.toLocaleString() || 'N/A'} clicks)\n`;
+    markdown += `- Click-to-Open Rate: ${(email.avg_click_to_open_rate * 100)?.toFixed(2) || 'N/A'}%\n`;
+    markdown += `- Unique Open Rate: ${(email.avg_unique_open_rate * 100)?.toFixed(2) || 'N/A'}%\n`;
+    markdown += `- Unique Click Rate: ${(email.avg_unique_click_rate * 100)?.toFixed(2) || 'N/A'}%\n\n`;
+
+    markdown += `**Performance:**\n`;
+    markdown += `- Attributed Revenue: $${email.total_attributed_revenue?.toLocaleString() || 'N/A'}\n`;
+    markdown += `- Attributed Purchases: ${email.total_attributed_purchases?.toLocaleString() || 'N/A'}\n`;
+    markdown += `- Attributed Purchasers: ${email.total_attributed_purchasers?.toLocaleString() || 'N/A'}\n`;
+    markdown += `- Purchase Conversion Rate: ${(email.avg_purchase_conversion_rate * 100)?.toFixed(2) || 'N/A'}%\n`;
+    markdown += `- Revenue per Send: $${email.avg_revenue_per_send?.toFixed(2) || 'N/A'}\n\n`;
+
+    markdown += `**Deliverability:**\n`;
+    markdown += `- Delivery Rate: ${(email.avg_delivery_rate * 100)?.toFixed(2) || 'N/A'}%\n`;
+    markdown += `- Bounce Rate: ${(email.avg_bounce_rate * 100)?.toFixed(2) || 'N/A'}% (${email.total_bounces || 'N/A'} bounces)\n`;
+    markdown += `- Unsubscribe Rate: ${(email.avg_unsubscribe_rate * 100)?.toFixed(2) || 'N/A'}% (${email.total_unsubscribes || 'N/A'} unsubscribes)\n\n`;
+  }
+
+  // Email performance by campaign category
+  if (data.emailByCategory?.length > 0) {
+    markdown += `\n## EMAIL PERFORMANCE BY CATEGORY\n`;
+    markdown += `| Category | Sends | Opens | Clicks | Revenue | Open Rate | Click Rate | CTOR |\n`;
+    markdown += `|----------|-------|-------|--------|---------|-----------|------------|---------|\n`;
+    data.emailByCategory.forEach((cat: any) => {
+      markdown += `| ${cat.campaign_category} | ${cat.sends?.toLocaleString() || 0} | ${cat.opens?.toLocaleString() || 0} | ${cat.clicks?.toLocaleString() || 0} | $${cat.attributed_revenue?.toLocaleString() || 0} | ${(cat.open_rate * 100)?.toFixed(2) || 0}% | ${(cat.click_rate * 100)?.toFixed(2) || 0}% | ${(cat.click_to_open_rate * 100)?.toFixed(2) || 0}% |\n`;
+    });
+    markdown += `\n`;
+  }
+
+  // Email performance by type (campaigns vs flows)
+  if (data.emailByType?.length > 0) {
+    markdown += `\n## EMAIL PERFORMANCE BY TYPE (Campaigns vs Flows)\n`;
+    markdown += `| Type | Sends | Opens | Clicks | Revenue | Open Rate | Click Rate |\n`;
+    markdown += `|------|-------|-------|--------|---------|-----------|------------|\n`;
+    data.emailByType.forEach((type: any) => {
+      markdown += `| ${type.email_type} | ${type.sends?.toLocaleString() || 0} | ${type.opens?.toLocaleString() || 0} | ${type.clicks?.toLocaleString() || 0} | $${type.attributed_revenue?.toLocaleString() || 0} | ${(type.open_rate * 100)?.toFixed(2) || 0}% | ${(type.click_rate * 100)?.toFixed(2) || 0}% |\n`;
+    });
+    markdown += `\n`;
+  }
+
+  // Detailed flow revenue breakdown
+  if (data.flowRevenue?.length > 0) {
+    markdown += `\n## FLOW REVENUE BREAKDOWN (Detailed by Flow)\n`;
+    markdown += `**Individual Flow Performance:**\n\n`;
+    markdown += `| Flow Name | Category | Revenue | Purchases | Purchasers | AOV | Revenue/Purchaser |\n`;
+    markdown += `|-----------|----------|---------|-----------|------------|-----|-------------------|\n`;
+    data.flowRevenue.forEach((flow: any) => {
+      markdown += `| ${flow.flow_name} | ${flow.flow_category || 'N/A'} | $${flow.attributed_revenue?.toLocaleString() || 0} | ${flow.attributed_purchases?.toLocaleString() || 0} | ${flow.attributed_purchasers?.toLocaleString() || 0} | $${flow.avg_order_value?.toFixed(2) || 0} | $${flow.revenue_per_purchaser?.toFixed(2) || 0} |\n`;
+    });
+
+    // Add summary metrics
+    const totalFlowRevenue = data.flowRevenue.reduce((sum: number, flow: any) => sum + (flow.attributed_revenue || 0), 0);
+    const totalFlowPurchases = data.flowRevenue.reduce((sum: number, flow: any) => sum + (flow.attributed_purchases || 0), 0);
+    const totalFlowPurchasers = data.flowRevenue.reduce((sum: number, flow: any) => sum + (flow.attributed_purchasers || 0), 0);
+
+    markdown += `\n**Flow Summary:**\n`;
+    markdown += `- Total Flow Revenue: $${totalFlowRevenue?.toLocaleString() || 0}\n`;
+    markdown += `- Total Flow Purchases: ${totalFlowPurchases?.toLocaleString() || 0}\n`;
+    markdown += `- Total Flow Purchasers: ${totalFlowPurchasers?.toLocaleString() || 0}\n`;
+    markdown += `- Active Flows: ${data.flowRevenue.length}\n\n`;
+  }
+
+  return markdown;
+}
+
+function formatPuttOutMonthlyReportAsMarkdown(data: any): string {
+  // Start with the base monthly report formatting
+  let markdown = formatMonthlyReportAsMarkdown(data);
+
+  // Add report month information at the top
+  if (data.monthlyExecutiveReport?.[0]?.report_month) {
+    const reportMonthValue = data.monthlyExecutiveReport[0].report_month;
+
+    // Handle BigQuery date object or string
+    let reportMonth: Date;
+    if (reportMonthValue.value) {
+      // BigQuery returns dates as { value: "2024-10-01" }
+      reportMonth = new Date(reportMonthValue.value + 'T00:00:00');
+    } else if (typeof reportMonthValue === 'string') {
+      // If it's a string, append time to ensure local timezone
+      reportMonth = new Date(reportMonthValue + 'T00:00:00');
+    } else {
+      reportMonth = new Date(reportMonthValue);
+    }
+
+    // Validate the date is valid
+    if (!isNaN(reportMonth.getTime())) {
+      const monthName = reportMonth.toLocaleString('en-US', { month: 'long', year: 'numeric' });
+      markdown = `# REPORT MONTH: ${monthName}\n**CRITICAL: Use this month name in the H3 header at the start of the report**\n\n` + markdown;
+    } else {
+      console.error('[PuttOUT Report] Invalid date from report_month:', reportMonthValue);
+    }
+  }
+
+  // Add Meta Ads performance with MoM/YoY from monthly_executive_report
+  if (data.monthlyExecutiveReport?.[0]) {
+    const hero = data.monthlyExecutiveReport[0];
+
+    // Meta Ads Performance with MoM/YoY (focus on Meta only, no detailed Google breakout)
+    if (hero.meta_spend !== null && hero.meta_spend !== undefined) {
+      markdown += `\n## META ADS PERFORMANCE METRICS\n`;
+      markdown += `**Use these metrics with MoM/YoY changes for the Meta Ads Performance section:**\n\n`;
+
+      markdown += `**Spend:**\n`;
+      markdown += `- meta_spend: $${hero.meta_spend?.toLocaleString() || 'N/A'}\n`;
+      markdown += `- meta_spend_mom_pct: ${hero.meta_spend_mom_pct?.toFixed(1) || 0}%\n`;
+      markdown += `- meta_spend_yoy_pct: ${hero.meta_spend_yoy_pct?.toFixed(1) || 0}%\n\n`;
+
+      markdown += `**Revenue:**\n`;
+      markdown += `- meta_revenue: $${hero.meta_revenue?.toLocaleString() || 'N/A'}\n`;
+      markdown += `- meta_revenue_mom_pct: ${hero.meta_revenue_mom_pct?.toFixed(1) || 0}%\n`;
+      markdown += `- meta_revenue_yoy_pct: ${hero.meta_revenue_yoy_pct?.toFixed(1) || 0}%\n\n`;
+
+      markdown += `**ROAS:**\n`;
+      markdown += `- meta_roas: ${hero.meta_roas?.toFixed(2) || 'N/A'}x\n`;
+      markdown += `- meta_roas_mom_pct: ${hero.meta_roas_mom_pct?.toFixed(1) || 0}%\n`;
+      markdown += `- meta_roas_yoy_pct: ${hero.meta_roas_yoy_pct?.toFixed(1) || 0}%\n\n`;
+    }
+  }
+
+  // Add detailed Meta paid media performance metrics (granular metrics like CPM, CPC, CTR, Frequency)
+  if (data.paidMediaPerformance?.length > 0) {
+    const metaData = data.paidMediaPerformance.find((p: any) => p.platform === 'Facebook');
+
+    if (metaData) {
+      markdown += `\n## META ADS GRANULAR METRICS (for detailed performance metrics)\n`;
+      markdown += `- CPM: $${metaData.calculated_cpm?.toFixed(2) || 'N/A'}\n`;
+      markdown += `- CPC: $${metaData.calculated_cpc?.toFixed(2) || 'N/A'}\n`;
+      markdown += `- CTR: ${metaData.calculated_ctr?.toFixed(2) || 'N/A'}%\n`;
+      markdown += `- Frequency: ${metaData.avg_frequency?.toFixed(2) || 'N/A'}\n`;
+      markdown += `- Total Impressions: ${metaData.total_impressions?.toLocaleString() || 'N/A'}\n`;
+      markdown += `- Total Clicks: ${metaData.total_clicks?.toLocaleString() || 'N/A'}\n`;
+      markdown += `- Total Purchases: ${metaData.total_purchases?.toLocaleString() || 'N/A'}\n\n`;
+    }
+  }
+
+  // Add email performance section (same as JumboMax)
+  if (data.emailPerformance?.[0]) {
+    const email = data.emailPerformance[0];
+
+    markdown += `\n## EMAIL PERFORMANCE OVERVIEW\n`;
+    markdown += `**Overall Email Metrics for the Month:**\n\n`;
+
+    markdown += `**Volume:**\n`;
+    markdown += `- Total Sends: ${email.total_sends?.toLocaleString() || 'N/A'}\n`;
+    markdown += `- Total Deliveries: ${email.total_deliveries?.toLocaleString() || 'N/A'}\n`;
+    markdown += `- Campaigns Sent: ${email.campaigns_sent || 'N/A'}\n`;
+    markdown += `- Unique Recipients: ${email.unique_recipients_sent?.toLocaleString() || 'N/A'}\n\n`;
+
+    markdown += `**Engagement:**\n`;
+    markdown += `- Open Rate: ${(email.avg_open_rate * 100)?.toFixed(2) || 'N/A'}% (${email.total_opens?.toLocaleString() || 'N/A'} opens)\n`;
+    markdown += `- Click Rate: ${(email.avg_click_rate * 100)?.toFixed(2) || 'N/A'}% (${email.total_clicks?.toLocaleString() || 'N/A'} clicks)\n`;
+    markdown += `- Click-to-Open Rate: ${(email.avg_click_to_open_rate * 100)?.toFixed(2) || 'N/A'}%\n`;
+    markdown += `- Unique Open Rate: ${(email.avg_unique_open_rate * 100)?.toFixed(2) || 'N/A'}%\n`;
+    markdown += `- Unique Click Rate: ${(email.avg_unique_click_rate * 100)?.toFixed(2) || 'N/A'}%\n\n`;
+
+    markdown += `**Performance:**\n`;
+    markdown += `- Attributed Revenue: $${email.total_attributed_revenue?.toLocaleString() || 'N/A'}\n`;
+    markdown += `- Attributed Purchases: ${email.total_attributed_purchases?.toLocaleString() || 'N/A'}\n`;
+    markdown += `- Attributed Purchasers: ${email.total_attributed_purchasers?.toLocaleString() || 'N/A'}\n`;
+    markdown += `- Purchase Conversion Rate: ${(email.avg_purchase_conversion_rate * 100)?.toFixed(2) || 'N/A'}%\n`;
+    markdown += `- Revenue per Send: $${email.avg_revenue_per_send?.toFixed(2) || 'N/A'}\n\n`;
+
+    markdown += `**Deliverability:**\n`;
+    markdown += `- Delivery Rate: ${(email.avg_delivery_rate * 100)?.toFixed(2) || 'N/A'}%\n`;
+    markdown += `- Bounce Rate: ${(email.avg_bounce_rate * 100)?.toFixed(2) || 'N/A'}% (${email.total_bounces || 'N/A'} bounces)\n`;
+    markdown += `- Unsubscribe Rate: ${(email.avg_unsubscribe_rate * 100)?.toFixed(2) || 'N/A'}% (${email.total_unsubscribes || 'N/A'} unsubscribes)\n\n`;
+  }
+
+  // Email performance by campaign category
+  if (data.emailByCategory?.length > 0) {
+    markdown += `\n## EMAIL PERFORMANCE BY CATEGORY\n`;
+    markdown += `| Category | Sends | Opens | Clicks | Revenue | Open Rate | Click Rate | CTOR |\n`;
+    markdown += `|----------|-------|-------|--------|---------|-----------|------------|---------|\n`;
+    data.emailByCategory.forEach((cat: any) => {
+      markdown += `| ${cat.campaign_category} | ${cat.sends?.toLocaleString() || 0} | ${cat.opens?.toLocaleString() || 0} | ${cat.clicks?.toLocaleString() || 0} | $${cat.attributed_revenue?.toLocaleString() || 0} | ${(cat.open_rate * 100)?.toFixed(2) || 0}% | ${(cat.click_rate * 100)?.toFixed(2) || 0}% | ${(cat.click_to_open_rate * 100)?.toFixed(2) || 0}% |\n`;
+    });
+    markdown += `\n`;
+  }
+
+  // Email performance by type (campaigns vs flows)
+  if (data.emailByType?.length > 0) {
+    markdown += `\n## EMAIL PERFORMANCE BY TYPE (Campaigns vs Flows)\n`;
+    markdown += `| Type | Sends | Opens | Clicks | Revenue | Open Rate | Click Rate |\n`;
+    markdown += `|------|-------|-------|--------|---------|-----------|------------|\n`;
+    data.emailByType.forEach((type: any) => {
+      markdown += `| ${type.email_type} | ${type.sends?.toLocaleString() || 0} | ${type.opens?.toLocaleString() || 0} | ${type.clicks?.toLocaleString() || 0} | $${type.attributed_revenue?.toLocaleString() || 0} | ${(type.open_rate * 100)?.toFixed(2) || 0}% | ${(type.click_rate * 100)?.toFixed(2) || 0}% |\n`;
+    });
+    markdown += `\n`;
+  }
+
+  // Detailed flow revenue breakdown
+  if (data.flowRevenue?.length > 0) {
+    markdown += `\n## FLOW REVENUE BREAKDOWN (Detailed by Flow)\n`;
+    markdown += `**Individual Flow Performance:**\n\n`;
+    markdown += `| Flow Name | Category | Revenue | Purchases | Purchasers | AOV | Revenue/Purchaser |\n`;
+    markdown += `|-----------|----------|---------|-----------|------------|-----|-------------------|\n`;
+    data.flowRevenue.forEach((flow: any) => {
+      markdown += `| ${flow.flow_name} | ${flow.flow_category || 'N/A'} | $${flow.attributed_revenue?.toLocaleString() || 0} | ${flow.attributed_purchases?.toLocaleString() || 0} | ${flow.attributed_purchasers?.toLocaleString() || 0} | $${flow.avg_order_value?.toFixed(2) || 0} | $${flow.revenue_per_purchaser?.toFixed(2) || 0} |\n`;
+    });
+
+    // Add summary metrics
+    const totalFlowRevenue = data.flowRevenue.reduce((sum: number, flow: any) => sum + (flow.attributed_revenue || 0), 0);
+    const totalFlowPurchases = data.flowRevenue.reduce((sum: number, flow: any) => sum + (flow.attributed_purchases || 0), 0);
+    const totalFlowPurchasers = data.flowRevenue.reduce((sum: number, flow: any) => sum + (flow.attributed_purchasers || 0), 0);
+
+    markdown += `\n**Flow Summary:**\n`;
+    markdown += `- Total Flow Revenue: $${totalFlowRevenue?.toLocaleString() || 0}\n`;
+    markdown += `- Total Flow Purchases: ${totalFlowPurchases?.toLocaleString() || 0}\n`;
+    markdown += `- Total Flow Purchasers: ${totalFlowPurchasers?.toLocaleString() || 0}\n`;
+    markdown += `- Active Flows: ${data.flowRevenue.length}\n\n`;
+  }
+
+  return markdown;
 }
