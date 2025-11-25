@@ -61,6 +61,12 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
   const [emailDatePreset, setEmailDatePreset] = useState<DatePreset>('mtd');
   const [emailCustomDates, setEmailCustomDates] = useState<{ start?: string; end?: string }>({});
   const [emailComparisonType, setEmailComparisonType] = useState<ComparisonType>('previous-period');
+  const [organicSocialData, setOrganicSocialData] = useState<any>(null);
+  const [organicSocialLoading, setOrganicSocialLoading] = useState(true);
+  const [organicSocialError, setOrganicSocialError] = useState<string | null>(null);
+  const [organicSocialPlatform, setOrganicSocialPlatform] = useState<string>('all');
+  const [organicSocialPeriod, setOrganicSocialPeriod] = useState<string>('30d');
+  const [organicSocialComparisonType, setOrganicSocialComparisonType] = useState<ComparisonType>('previous-period');
   const [productData, setProductData] = useState<any>(null);
   const [productLoading, setProductLoading] = useState(true);
   const [productError, setProductError] = useState<string | null>(null);
@@ -84,7 +90,7 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
   const [operationalLoading, setOperationalLoading] = useState(true);
   const [operationalError, setOperationalError] = useState<string | null>(null);
   const [customPrices, setCustomPrices] = useState<{[key: string]: number}>({});
-  const [overviewPeriod, setOverviewPeriod] = useState<'7d' | 'mtd' | '30d' | 'ytd'>('7d');
+  const [overviewPeriod, setOverviewPeriod] = useState<'7d' | 'mtd' | 'last-month' | '30d' | 'ytd'>('7d');
   const [forecastData, setForecastData] = useState<any>(null);
   const [forecastLoading, setForecastLoading] = useState(true);
   const [forecastError, setForecastError] = useState<string | null>(null);
@@ -275,6 +281,29 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
     };
     fetchProductData();
   }, [section, productPeriod, currencyLoaded, isClientLoading, currentClient, fetchWithClient]);
+
+  // Fetch organic social data when on organic-social section
+  useEffect(() => {
+    if (section !== 'organic-social' || !currencyLoaded || isClientLoading) return;
+
+    const fetchOrganicSocialData = async () => {
+      try {
+        setOrganicSocialLoading(true);
+        setOrganicSocialError(null);
+        const response = await fetchWithClient(`/api/organic-social?platform=${organicSocialPlatform}&period=${organicSocialPeriod}&comparison=${organicSocialComparisonType}`);
+        if (!response.ok) {
+          throw new Error('Failed to fetch organic social data');
+        }
+        const data = await response.json();
+        setOrganicSocialData(data);
+      } catch (err) {
+        setOrganicSocialError(err instanceof Error ? err.message : 'Unknown error');
+      } finally {
+        setOrganicSocialLoading(false);
+      }
+    };
+    fetchOrganicSocialData();
+  }, [section, organicSocialPlatform, organicSocialPeriod, organicSocialComparisonType, currencyLoaded, isClientLoading, currentClient, fetchWithClient]);
 
   // Fetch customer data when on customers section
   useEffect(() => {
@@ -494,6 +523,8 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
           return kpi.periodData.sevenDay;
         case 'mtd':
           return kpi.periodData.monthToDate;
+        case 'last-month':
+          return kpi.periodData.lastMonth;
         case '30d':
           return kpi.periodData.thirtyDay;
         case 'ytd':
@@ -600,6 +631,14 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
             Month to Date
           </button>
           <button
+            onClick={() => setOverviewPeriod('last-month')}
+            className={`px-4 py-2 text-sm font-medium rounded-lg transition-all ${
+              overviewPeriod === 'last-month' ? 'btn-primary' : 'bg-[var(--bg-elevated)] text-[var(--text-secondary)]'
+            }`}
+          >
+            Last Month
+          </button>
+          <button
             onClick={() => setOverviewPeriod('30d')}
             className={`px-4 py-2 text-sm font-medium rounded-lg transition-all ${
               overviewPeriod === '30d' ? 'btn-primary' : 'bg-[var(--bg-elevated)] text-[var(--text-secondary)]'
@@ -619,7 +658,7 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
         </div>
 
         {/* Big 5 KPIs - Large Cards */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-4 gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-5 gap-6">
           {/* Total Revenue */}
           <KPICard
             title="TOTAL REVENUE"
@@ -695,8 +734,8 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
             dateRange={dateRange}
           />
 
-          {/* Email Revenue - Hidden for HB (no Klaviyo) */}
-          {currentClient !== 'hb' && dashboardData.kpis.emailPerformance && (
+          {/* Email Revenue - Hidden for HB and BenHogan (no Klaviyo) */}
+          {currentClient !== 'hb' && currentClient !== 'benhogan' && dashboardData.kpis.emailPerformance && (
             <KPICard
               title="EMAIL REVENUE"
               currentValue={formatCurrency(getPeriodData(dashboardData.kpis.emailPerformance).value)}
@@ -898,10 +937,10 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
           </div>
         </div>
 
-        {/* Platform Performance - 6 Cards in One Row (hide Google for PuttOut) */}
-        <div className={`grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 ${currentClient !== 'puttout' ? 'xl:grid-cols-6' : ''}`}>
-          {/* Google Spend - Only show for JumboMax */}
-          {currentClient !== 'puttout' && <KPICard
+        {/* Platform Performance - 6 Cards in One Row (hide Google for PuttOut and BenHogan) */}
+        <div className={`grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 ${currentClient !== 'puttout' && currentClient !== 'benhogan' ? 'xl:grid-cols-6' : ''}`}>
+          {/* Google Spend - Only show for JumboMax and H&B */}
+          {currentClient !== 'puttout' && currentClient !== 'benhogan' && <KPICard
             title="GOOGLE SPEND"
             currentValue={formatCurrency(getPeriodData(dashboardData.kpis.googleSpend).value)}
             previousValue={undefined}
@@ -925,8 +964,8 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
             dateRange={dateRange}
           />}
 
-          {/* Google Revenue - Only show for JumboMax */}
-          {currentClient !== 'puttout' && <KPICard
+          {/* Google Revenue - Only show for JumboMax and H&B */}
+          {currentClient !== 'puttout' && currentClient !== 'benhogan' && <KPICard
             title="GOOGLE REVENUE"
             currentValue={formatCurrency(getPeriodData(dashboardData.kpis.googleRevenue).value)}
             previousValue={undefined}
@@ -950,8 +989,8 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
             dateRange={dateRange}
           />}
 
-          {/* Google ROAS - Only show for JumboMax */}
-          {currentClient !== 'puttout' && <KPICard
+          {/* Google ROAS - Only show for JumboMax and H&B */}
+          {currentClient !== 'puttout' && currentClient !== 'benhogan' && <KPICard
             title="GOOGLE ROAS"
             currentValue={`${getPeriodData(dashboardData.kpis.googleROAS).value.toFixed(2)}x`}
             previousValue={undefined}
@@ -2464,6 +2503,217 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
     );
   }
 
+  // Organic Social section
+  if (section === 'organic-social') {
+    // Show loading state
+    if (organicSocialLoading) {
+      return (
+        <div className="flex justify-center items-center py-12">
+          <div className="flex items-center gap-3">
+            <Loader2 className="h-8 w-8 animate-spin" style={{color: 'var(--accent-primary)'}} />
+            <span className="text-lg" style={{color: 'var(--text-secondary)'}}>Loading organic social data...</span>
+          </div>
+        </div>
+      );
+    }
+
+    // Show error state
+    if (organicSocialError) {
+      return (
+        <div className="text-center py-12">
+          <div className="card p-6 max-w-md mx-auto">
+            <h3 className="text-lg font-semibold mb-2" style={{color: 'var(--text-primary)'}}>Error Loading Data</h3>
+            <p className="text-sm mb-4" style={{color: 'var(--text-muted)'}}>{organicSocialError}</p>
+            <button
+              onClick={() => window.location.reload()}
+              className="btn-primary px-4 py-2"
+            >
+              Retry
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    // Show organic social dashboard
+    if (!organicSocialData) {
+      return (
+        <div className="text-center py-12">
+          <p style={{color: 'var(--text-muted)'}}>No data available</p>
+        </div>
+      );
+    }
+
+    const kpis = organicSocialData.kpis || {};
+
+    return (
+      <div className="space-y-8">
+        {/* Platform, Period, and Comparison Filters */}
+        <div className="flex items-center justify-end gap-4">
+          {/* Platform Filter */}
+          <div className="flex items-center gap-2">
+            <label className="text-sm font-medium" style={{color: 'var(--text-secondary)'}}>Platform:</label>
+            <select
+              value={organicSocialPlatform}
+              onChange={(e) => setOrganicSocialPlatform(e.target.value)}
+              className="px-3 py-2 rounded-lg border text-sm"
+              style={{
+                background: 'var(--bg-elevated)',
+                borderColor: 'var(--border-muted)',
+                color: 'var(--text-primary)'
+              }}
+            >
+              <option value="all">All Platforms</option>
+              <option value="instagram">Instagram</option>
+              <option value="facebook">Facebook</option>
+              <option value="tiktok">TikTok</option>
+              <option value="youtube">YouTube</option>
+            </select>
+          </div>
+
+          {/* Period Filter */}
+          <div className="flex items-center gap-2">
+            <label className="text-sm font-medium" style={{color: 'var(--text-secondary)'}}>Period:</label>
+            <select
+              value={organicSocialPeriod}
+              onChange={(e) => setOrganicSocialPeriod(e.target.value)}
+              className="px-3 py-2 rounded-lg border text-sm"
+              style={{
+                background: 'var(--bg-elevated)',
+                borderColor: 'var(--border-muted)',
+                color: 'var(--text-primary)'
+              }}
+            >
+              <option value="7d">Last 7 Days</option>
+              <option value="30d">Last 30 Days</option>
+              <option value="90d">Last 90 Days</option>
+            </select>
+          </div>
+
+          {/* Comparison Selector */}
+          <ComparisonSelector
+            onComparisonChange={setOrganicSocialComparisonType}
+            value={organicSocialComparisonType}
+          />
+        </div>
+
+        {/* KPI Cards */}
+        <div className="grid grid-cols-4 gap-4">
+          {/* Engagement Rate */}
+          <KPICard
+            title="Avg Engagement Rate"
+            currentValue={`${(kpis.current_engagement_rate || 0).toFixed(2)}%`}
+            previousValue={`${(kpis.previous_engagement_rate || 0).toFixed(2)}%`}
+            trend={kpis.engagement_rate_change || 0}
+            gaugeValue={kpis.current_engagement_rate || 0}
+            gaugeMax={(kpis.current_engagement_rate || 0) * 1.5}
+            gaugeLabel="Engagement"
+            status={(kpis.engagement_rate_change || 0) > 0 ? 'excellent' : 'monitor'}
+            dateRange={dateRange}
+          />
+
+          {/* Total Impressions */}
+          <KPICard
+            title="Total Impressions"
+            currentValue={formatNumber(kpis.current_impressions || 0, 0)}
+            previousValue={formatNumber(kpis.previous_impressions || 0, 0)}
+            trend={kpis.impressions_change || 0}
+            gaugeValue={kpis.current_impressions || 0}
+            gaugeMax={(kpis.current_impressions || 0) * 1.5}
+            gaugeLabel="Impressions"
+            status={(kpis.impressions_change || 0) > 0 ? 'good' : 'monitor'}
+            dateRange={dateRange}
+          />
+
+          {/* Total Followers */}
+          <KPICard
+            title="Total Followers"
+            currentValue={formatNumber(kpis.current_total_followers || 0, 0)}
+            previousValue={formatNumber(kpis.previous_total_followers || 0, 0)}
+            trend={kpis.total_followers_change || 0}
+            gaugeValue={kpis.current_total_followers || 0}
+            gaugeMax={(kpis.current_total_followers || 0) * 1.5}
+            gaugeLabel="Followers"
+            status={(kpis.total_followers_change || 0) > 0 ? 'good' : 'monitor'}
+            dateRange={dateRange}
+          />
+
+          {/* Followers Gained */}
+          <KPICard
+            title="Followers Gained"
+            currentValue={formatNumber(kpis.current_followers_gained || 0, 0)}
+            previousValue={formatNumber(kpis.previous_followers_gained || 0, 0)}
+            trend={kpis.followers_gained_change || 0}
+            gaugeValue={kpis.current_followers_gained || 0}
+            gaugeMax={(kpis.current_followers_gained || 0) * 1.5}
+            gaugeLabel="New Followers"
+            status={(kpis.followers_gained_change || 0) > 0 ? 'excellent' : 'monitor'}
+            dateRange={dateRange}
+          />
+        </div>
+
+        {/* Total Followers Chart */}
+        <div className="card p-6">
+          <h3 className="text-lg font-semibold mb-6" style={{color: 'var(--text-primary)'}}>Total Followers Over Time</h3>
+          <div style={{width: '100%', height: 400}}>
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={organicSocialData.timeSeries || []}>
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--border-muted)" />
+                <XAxis
+                  dataKey="metric_date"
+                  stroke="var(--text-muted)"
+                  style={{fontSize: '12px'}}
+                />
+                <YAxis
+                  stroke="var(--text-muted)"
+                  style={{fontSize: '12px'}}
+                  domain={(() => {
+                    const data = organicSocialData.timeSeries || [];
+                    if (data.length === 0) return ['auto', 'auto'];
+                    const values = data.map((d: any) => d.total_followers || 0);
+                    const mean = values.reduce((sum, val) => sum + val, 0) / values.length;
+                    const padding = mean * 0.15;
+                    return [Math.floor(mean - padding), Math.ceil(mean + padding)];
+                  })()}
+                />
+                <Tooltip
+                  contentStyle={{
+                    background: 'var(--card-bg)',
+                    border: '1px solid var(--border-muted)',
+                    borderRadius: '8px',
+                    color: 'var(--text-primary)'
+                  }}
+                />
+                <Legend />
+                {organicSocialPlatform === 'all' ? (
+                  <>
+                    <Line
+                      type="monotone"
+                      dataKey="total_followers"
+                      stroke="var(--accent-primary)"
+                      strokeWidth={2}
+                      dot={false}
+                      name="Followers"
+                    />
+                  </>
+                ) : (
+                  <Line
+                    type="monotone"
+                    dataKey="total_followers"
+                    stroke="var(--accent-primary)"
+                    strokeWidth={2}
+                    dot={false}
+                    name="Followers"
+                  />
+                )}
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   // Product section
   if (section === 'product') {
     // Show loading state
@@ -2591,11 +2841,11 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
         </div>
 
         {/* Grip Customer Behavior Analysis - 2/3 and 1/3 split (JumboMax only) */}
-        {currentClient !== 'puttout' && currentClient !== 'hb' && <div className="grid grid-cols-3 gap-6">
+        {currentClient === 'jumbomax' && productData.gripSwitching && productData.gripAnalysis && <div className="grid grid-cols-3 gap-6">
           {/* Grip Switching Patterns - 2/3 width */}
           <div className="col-span-2 card p-6">
             <h3 className="text-lg font-semibold mb-8" style={{color: 'var(--text-primary)'}}>Grip Switching & Loyalty Patterns</h3>
-            <GripSwitchingSankey data={productData.gripSwitching || []} />
+            <GripSwitchingSankey data={productData.gripSwitching} />
           </div>
 
           {/* Repeat Purchase Table - 1/3 width */}
@@ -2660,9 +2910,9 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
         </div>}
 
         {/* Putter Grip Switching & Loyalty Patterns (JumboMax only) */}
-        {currentClient !== 'puttout' && currentClient !== 'hb' && <div className="card p-6">
+        {currentClient === 'jumbomax' && productData.putterGripSwitching && <div className="card p-6">
           <h3 className="text-lg font-semibold mb-8" style={{color: 'var(--text-primary)'}}>Putter Grip Switching & Loyalty Patterns</h3>
-          <PutterGripSwitchingSankey data={productData.putterGripSwitching || []} />
+          <PutterGripSwitchingSankey data={productData.putterGripSwitching} />
         </div>}
 
         {/* Product Affinity - Three columns */}

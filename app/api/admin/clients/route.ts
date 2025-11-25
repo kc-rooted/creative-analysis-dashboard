@@ -23,14 +23,23 @@ export async function GET() {
     `;
 
     const [rows] = await bigquery.query(query);
-    
+
     // Parse JSON fields back to objects
     const clients = rows.map(row => ({
       ...row,
+      platform: row.platform || 'shopify', // Default to shopify for backwards compatibility
       bigquery: JSON.parse(row.bigquery_config),
       brand: JSON.parse(row.brand_config),
       analysis: JSON.parse(row.analysis_config),
       dashboard: row.dashboard_config ? JSON.parse(row.dashboard_config) : undefined,
+      features: row.features_config ? JSON.parse(row.features_config) : {
+        // Default to all features enabled for backwards compatibility
+        googleAds: true,
+        metaAds: true,
+        email: true,
+        googleAnalytics: true,
+        searchConsole: true,
+      },
     }));
 
     console.log('Returning clients from DB:', clients.map(c => c.id));
@@ -119,24 +128,28 @@ export async function POST(request: NextRequest) {
         SELECT
           @id as id,
           @name as name,
+          @platform as platform,
           PARSE_JSON(@bigquery_config) as bigquery_config,
           PARSE_JSON(@brand_config) as brand_config,
           PARSE_JSON(@analysis_config) as analysis_config,
           PARSE_JSON(@dashboard_config) as dashboard_config,
+          PARSE_JSON(@features_config) as features_config,
           CURRENT_TIMESTAMP() as updated_at
       ) AS source
       ON target.id = source.id
       WHEN MATCHED THEN UPDATE SET
         name = source.name,
+        platform = source.platform,
         bigquery_config = source.bigquery_config,
         brand_config = source.brand_config,
         analysis_config = source.analysis_config,
         dashboard_config = source.dashboard_config,
+        features_config = source.features_config,
         updated_at = source.updated_at
       WHEN NOT MATCHED THEN INSERT
-        (id, name, bigquery_config, brand_config, analysis_config, dashboard_config, created_at, updated_at)
+        (id, name, platform, bigquery_config, brand_config, analysis_config, dashboard_config, features_config, created_at, updated_at)
       VALUES
-        (source.id, source.name, source.bigquery_config, source.brand_config, source.analysis_config, source.dashboard_config, CURRENT_TIMESTAMP(), source.updated_at)
+        (source.id, source.name, source.platform, source.bigquery_config, source.brand_config, source.analysis_config, source.dashboard_config, source.features_config, CURRENT_TIMESTAMP(), source.updated_at)
     `;
 
     await bigquery.query({
@@ -144,10 +157,18 @@ export async function POST(request: NextRequest) {
       params: {
         id: clientConfig.id,
         name: clientConfig.name,
+        platform: clientConfig.platform || 'shopify',
         bigquery_config: JSON.stringify(clientConfig.bigquery),
         brand_config: JSON.stringify(clientConfig.brand),
         analysis_config: JSON.stringify(clientConfig.analysis),
         dashboard_config: JSON.stringify(clientConfig.dashboard || {}),
+        features_config: JSON.stringify(clientConfig.features || {
+          googleAds: true,
+          metaAds: true,
+          email: true,
+          googleAnalytics: true,
+          searchConsole: true,
+        }),
       },
     });
 

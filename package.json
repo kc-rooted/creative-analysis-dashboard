@@ -39,7 +39,7 @@
     "marked": "^15.0.7",
     "next": "15.5.0",
     "next-auth": "^5.0.0-beta.29",
-    "puppeteer": "^24.26.1",
+    "puppeteer": "^24.28.0",
     "react": "19.1.0",
     "react-dom": "19.1.0",
     "react-markdown": "^10.1.0",

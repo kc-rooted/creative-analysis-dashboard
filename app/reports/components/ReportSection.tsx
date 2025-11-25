@@ -45,50 +45,38 @@ interface AdCreativeCardProps {
 
 export function AdCreativeCard({ adName, imageUrl, metrics }: AdCreativeCardProps) {
   return (
-    <div className="card p-4" style={{ background: 'var(--bg-card)' }}>
-      <div className="font-semibold mb-2" style={{ color: 'var(--text-primary)' }}>
+    <div className="card p-4" style={{ background: '#ffffff', border: '1px solid #e5e7eb' }}>
+      <h3 className="text-xl font-bold mb-3" style={{ color: '#000000' }}>
         {adName}
-      </div>
+      </h3>
 
       <img
         src={imageUrl}
         alt={adName}
-        className="w-full h-48 object-cover rounded mb-3"
-        style={{ background: 'var(--bg-elevated)' }}
+        className="w-full aspect-square object-cover rounded mb-3"
+        style={{ background: '#f3f4f6' }}
       />
 
-      <div className="grid grid-cols-2 gap-2 text-sm">
-        {metrics.allStarRank && (
-          <div>
-            <span style={{ color: 'var(--text-muted)' }}>Rank: </span>
-            <span style={{ color: 'var(--text-primary)' }} className="font-semibold">
-              #{metrics.allStarRank}
-            </span>
-          </div>
+      <div className="grid grid-cols-2 gap-2">
+        {metrics.allStarRank !== null && metrics.allStarRank !== undefined && (
+          <h4 className="text-base font-semibold" style={{ color: '#000000' }}>
+            Rank: <span className="font-bold">#{metrics.allStarRank}</span>
+          </h4>
         )}
-        {metrics.roas && (
-          <div>
-            <span style={{ color: 'var(--text-muted)' }}>ROAS: </span>
-            <span style={{ color: 'var(--text-primary)' }} className="font-semibold">
-              {metrics.roas.toFixed(2)}x
-            </span>
-          </div>
+        {metrics.roas !== null && metrics.roas !== undefined && (
+          <h4 className="text-base font-semibold" style={{ color: '#000000' }}>
+            ROAS: <span className="font-bold">{metrics.roas.toFixed(2)}x</span>
+          </h4>
         )}
-        {metrics.ctr && (
-          <div>
-            <span style={{ color: 'var(--text-muted)' }}>CTR: </span>
-            <span style={{ color: 'var(--text-primary)' }} className="font-semibold">
-              {metrics.ctr.toFixed(2)}%
-            </span>
-          </div>
+        {metrics.ctr !== null && metrics.ctr !== undefined && (
+          <h4 className="text-base font-semibold" style={{ color: '#000000' }}>
+            CTR: <span className="font-bold">{metrics.ctr.toFixed(2)}%</span>
+          </h4>
         )}
-        {metrics.cpc && (
-          <div>
-            <span style={{ color: 'var(--text-muted)' }}>CPC: </span>
-            <span style={{ color: 'var(--text-primary)' }} className="font-semibold">
-              ${metrics.cpc.toFixed(2)}
-            </span>
-          </div>
+        {metrics.cpc !== null && metrics.cpc !== undefined && (
+          <h4 className="text-base font-semibold" style={{ color: '#000000' }}>
+            CPC: <span className="font-bold">${metrics.cpc.toFixed(2)}</span>
+          </h4>
         )}
       </div>
     </div>

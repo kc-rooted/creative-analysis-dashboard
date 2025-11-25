@@ -25,21 +25,23 @@ export async function GET() {
     `;
 
     const [rows] = await bigquery.query(query);
-    
+
     if (rows.length > 0) {
       return NextResponse.json({ clientId: rows[0].client_id });
     } else {
-      // Fallback to environment variable
-      return NextResponse.json({ 
-        clientId: process.env.CURRENT_CLIENT_ID || 'jumbomax' 
-      });
+      // No client selected - return 404
+      return NextResponse.json(
+        { error: 'No client selected. Please select a client from the admin panel.' },
+        { status: 404 }
+      );
     }
   } catch (error) {
     console.error('Error fetching current client:', error);
-    // Fallback to environment variable
-    return NextResponse.json({ 
-      clientId: process.env.CURRENT_CLIENT_ID || 'jumbomax' 
-    });
+    // Table doesn't exist or other error - return 404
+    return NextResponse.json(
+      { error: 'No client selected. Please select a client from the admin panel.' },
+      { status: 404 }
+    );
   }
 }
 

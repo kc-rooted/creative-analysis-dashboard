@@ -31,6 +31,8 @@ export async function POST(request: Request) {
 
     // Calculate date range based on period
     const dateRange = getPeriodDateRange(period);
+    console.log('[Report Data Fetch] Date range calculated:', dateRange);
+    console.log('[Report Data Fetch] Server date:', new Date().toISOString());
 
     // Fetch data based on report type
     let reportData: any = {};
@@ -217,12 +219,15 @@ async function fetchMonthlyPerformanceData(projectId: string, dataset: string, d
         revenue_total,
         revenue_mom_pct,
         revenue_yoy_pct,
-        blended_roas,
-        blended_roas_mom_pct,
-        blended_roas_yoy_pct,
+        paid_revenue_total,
+        paid_revenue_mom_pct,
+        paid_revenue_yoy_pct,
         paid_spend_total as paid_media_spend,
         paid_spend_mom_pct as paid_media_spend_mom_pct,
         paid_spend_yoy_pct as paid_media_spend_yoy_pct,
+        ROUND(SAFE_DIVIDE(paid_revenue_total, paid_spend_total), 2) as attributed_blended_roas,
+        ROUND(paid_revenue_mom_pct, 1) as attributed_blended_roas_mom_pct,
+        ROUND(paid_revenue_yoy_pct, 1) as attributed_blended_roas_yoy_pct,
         meta_spend,
         meta_spend_mom_pct,
         meta_spend_yoy_pct,
@@ -246,6 +251,7 @@ async function fetchMonthlyPerformanceData(projectId: string, dataset: string, d
         top_emerging_product_growth_pct as top_emerging_product_mom_growth_pct,
         top_emerging_product_category
       FROM \`${projectId}.${dataset}.monthly_executive_report\`
+      WHERE report_month < DATE_TRUNC(CURRENT_DATE(), MONTH)
       ORDER BY report_month DESC
       LIMIT 1
     `,
@@ -997,6 +1003,7 @@ function formatMonthlyReportAsMarkdown(data: any): string {
 
   // ⚠️ CRITICAL INSTRUCTION AT THE TOP
   markdown += `**⚠️ CRITICAL INSTRUCTION - READ THIS FIRST:**\n`;
+  markdown += `**ROAS DEFINITION:** We ONLY report on ATTRIBUTED BLENDED ROAS, which is paid media attributed revenue divided by paid media spend. Never use total sales ROAS or any other ROAS calculation.\n\n`;
   markdown += `Review the DAILY PERFORMANCE PROGRESSION and COUNTRY PERFORMANCE tables (at the bottom of this data) to analyze:\n`;
   markdown += `1. Daily trends - how ROAS evolved throughout the month\n`;
   markdown += `2. Geographic breakdown - revenue distribution across US, Canada, and UK markets\n`;
@@ -1015,10 +1022,10 @@ function formatMonthlyReportAsMarkdown(data: any): string {
     markdown += `- revenue_mom_pct: ${hero.revenue_mom_pct?.toFixed(1) || 0}%\n`;
     markdown += `- revenue_yoy_pct: ${hero.revenue_yoy_pct?.toFixed(1) || 0}%\n\n`;
 
-    markdown += `**Row 3 - Monthly ROAS**:\n`;
-    markdown += `- blended_roas: ${hero.blended_roas?.toFixed(2) || 'N/A'}x\n`;
-    markdown += `- blended_roas_mom_pct: ${hero.blended_roas_mom_pct?.toFixed(1) || 0}%\n`;
-    markdown += `- blended_roas_yoy_pct: ${hero.blended_roas_yoy_pct?.toFixed(1) || 0}%\n\n`;
+    markdown += `**Row 3 - Monthly ROAS (Attributed Blended ROAS - Paid Media Only)**:\n`;
+    markdown += `- attributed_blended_roas: ${hero.attributed_blended_roas?.toFixed(2) || 'N/A'}x\n`;
+    markdown += `- attributed_blended_roas_mom_pct: ${hero.attributed_blended_roas_mom_pct?.toFixed(1) || 0}%\n`;
+    markdown += `- attributed_blended_roas_yoy_pct: ${hero.attributed_blended_roas_yoy_pct?.toFixed(1) || 0}%\n\n`;
 
     markdown += `**Row 4 - Paid Media Spend**:\n`;
     markdown += `- paid_media_spend: $${hero.paid_media_spend?.toLocaleString() || 'N/A'}\n`;
@@ -1086,7 +1093,7 @@ function formatMonthlyReportAsMarkdown(data: any): string {
     markdown += `\n## Monthly Business Metrics\n`;
     markdown += `- Gross Sales: $${monthly.monthly_gross_sales?.toLocaleString() || 'N/A'} | Net Sales (after refunds): $${monthly.monthly_net_sales_after_refunds?.toLocaleString() || 'N/A'}\n`;
     markdown += `- Total Orders: ${monthly.monthly_orders || 'N/A'} | AOV: $${monthly.avg_monthly_aov?.toFixed(2) || 'N/A'}\n`;
-    markdown += `- Total Sales ROAS: ${monthly.total_sales_roas?.toFixed(2) || 'N/A'}x | Attributed Blended ROAS: ${monthly.attributed_blended_roas?.toFixed(2) || 'N/A'}x\n`;
+    markdown += `- Attributed Blended ROAS (Paid Media Only): ${monthly.attributed_blended_roas?.toFixed(2) || 'N/A'}x\n`;
     markdown += `- Total Ad Spend: $${monthly.monthly_ad_spend?.toLocaleString() || 'N/A'} (FB: $${monthly.monthly_facebook_spend?.toLocaleString() || 0}, Google: $${monthly.monthly_google_spend?.toLocaleString() || 0})\n`;
   }
 
@@ -1235,6 +1242,7 @@ function formatHBMonthlyReportAsMarkdown(data: any): string {
   // Add report month information at the top
   if (data.monthlyExecutiveReport?.[0]?.report_month) {
     const reportMonthValue = data.monthlyExecutiveReport[0].report_month;
+    console.log('[HB Report] Raw report_month from DB:', reportMonthValue);
 
     // Handle BigQuery date object or string
     let reportMonth: Date;
@@ -1248,9 +1256,14 @@ function formatHBMonthlyReportAsMarkdown(data: any): string {
       reportMonth = new Date(reportMonthValue);
     }
 
+    console.log('[HB Report] Parsed reportMonth date:', reportMonth);
+    console.log('[HB Report] reportMonth.getMonth():', reportMonth.getMonth());
+    console.log('[HB Report] reportMonth.getFullYear():', reportMonth.getFullYear());
+
     // Validate the date is valid
     if (!isNaN(reportMonth.getTime())) {
       const monthName = reportMonth.toLocaleString('en-US', { month: 'long', year: 'numeric' });
+      console.log('[HB Report] Formatted month name:', monthName);
       markdown = `# REPORT MONTH: ${monthName}\n**CRITICAL: Use this month name in the H3 header at the start of the report**\n\n` + markdown;
     } else {
       console.error('[HB Report] Invalid date from report_month:', reportMonthValue);
@@ -1348,6 +1361,8 @@ function formatHBMonthlyReportAsMarkdown(data: any): string {
 }
 
 function formatJumboMaxMonthlyReportAsMarkdown(data: any): string {
+  console.log('[JumboMax Report] Starting formatting with report_month:', data.monthlyExecutiveReport?.[0]?.report_month);
+
   // Start with the H&B report formatting (includes hero metrics, campaigns, products, paid media, funnel ads)
   let markdown = formatHBMonthlyReportAsMarkdown(data);
 

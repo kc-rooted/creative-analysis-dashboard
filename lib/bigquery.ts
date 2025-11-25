@@ -27,29 +27,39 @@ async function getCurrentDatasetNameAsync(): Promise<string> {
     hasInitialized = true;
   }
 
-  const clientId = cachedCurrentClientIdForBQ || process.env.CURRENT_CLIENT_ID || 'jumbomax';
+  const clientId = cachedCurrentClientIdForBQ;
+
+  if (!clientId) {
+    throw new Error('[getCurrentDatasetName] No client ID available. Client must be selected first.');
+  }
 
   const { getClientConfig } = require('./client-config');
   try {
     const clientConfig = getClientConfig(clientId);
+    console.log('[getCurrentDatasetNameAsync] Using dataset:', clientConfig.bigquery.dataset, 'for client:', clientId);
     return clientConfig.bigquery.dataset;
   } catch (error) {
     console.error('[getCurrentDatasetName] Error getting client config for', clientId, error);
-    return 'jumbomax_analytics'; // Safe fallback
+    throw new Error(`No configuration found for client: ${clientId}`);
   }
 }
 
 // Synchronous version for backwards compatibility - uses cached value only
 function getCurrentDatasetName(): string {
-  const clientId = cachedCurrentClientIdForBQ || process.env.CURRENT_CLIENT_ID || 'jumbomax';
+  const clientId = cachedCurrentClientIdForBQ;
+
+  if (!clientId) {
+    throw new Error('[getCurrentDatasetName] No client ID available. Client must be selected first.');
+  }
 
   const { getClientConfig } = require('./client-config');
   try {
     const clientConfig = getClientConfig(clientId);
+    console.log('[getCurrentDatasetName] Using dataset:', clientConfig.bigquery.dataset, 'for client:', clientId);
     return clientConfig.bigquery.dataset;
   } catch (error) {
     console.error('[getCurrentDatasetName] Error getting client config for', clientId, error);
-    return 'jumbomax_analytics'; // Safe fallback
+    throw new Error(`No configuration found for client: ${clientId}`);
   }
 }
 
@@ -3360,13 +3370,11 @@ export async function getCurrentClientId(): Promise<string> {
     }
   } catch (error) {
     console.error('[BigQuery] Error fetching current client:', error);
+    throw new Error('No client selected. Please select a client from the admin panel.');
   }
 
-  // Fallback to environment variable or default
-  const fallback = process.env.CURRENT_CLIENT_ID || 'jumbomax';
-  console.log('[BigQuery] Using fallback client:', fallback);
-  cachedCurrentClientIdForBQ = fallback;
-  return fallback;
+  // No fallback - throw error if no client is set
+  throw new Error('No client selected. Please select a client from the admin panel.');
 }
 
 // Export function to initialize current client (must be called before any BigQuery operations)
@@ -3440,16 +3448,21 @@ export async function getClientDashboardConfig(): Promise<any> {
 // Get executive summary data for dashboard
 export async function getExecutiveSummary(): Promise<ExecutiveSummary | null> {
   // Determine which clients have Klaviyo
-  const currentClientId = cachedCurrentClientIdForBQ || process.env.CURRENT_CLIENT_ID || 'jumbomax';
-  const hasKlaviyo = currentClientId !== 'hb';
+  const currentClientId = cachedCurrentClientIdForBQ;
+  if (!currentClientId) {
+    throw new Error('[getExecutiveSummary] No client ID available. Client must be selected first.');
+  }
+  const hasKlaviyo = currentClientId !== 'hb' && currentClientId !== 'benhogan';
 
   // Build Klaviyo fields conditionally
   const klaviyoFields = hasKlaviyo ? `
       klaviyo_total_revenue_mtd,
+      klaviyo_total_revenue_lm,
       klaviyo_total_revenue_7d,
       klaviyo_total_revenue_30d,
       klaviyo_total_revenue_ytd,
       klaviyo_total_revenue_mtd_yoy_growth_pct,
+      klaviyo_total_revenue_lm_yoy_growth_pct,
       klaviyo_total_revenue_7d_yoy_growth_pct,
       klaviyo_total_revenue_30d_yoy_growth_pct,
       klaviyo_total_revenue_ytd_yoy_growth_pct,
@@ -3457,10 +3470,12 @@ export async function getExecutiveSummary(): Promise<ExecutiveSummary | null> {
       klaviyo_revenue_per_send_7d,
       klaviyo_revenue_per_send_30d,` : `
       0 as klaviyo_total_revenue_mtd,
+      0 as klaviyo_total_revenue_lm,
       0 as klaviyo_total_revenue_7d,
       0 as klaviyo_total_revenue_30d,
       0 as klaviyo_total_revenue_ytd,
       0 as klaviyo_total_revenue_mtd_yoy_growth_pct,
+      0 as klaviyo_total_revenue_lm_yoy_growth_pct,
       0 as klaviyo_total_revenue_7d_yoy_growth_pct,
       0 as klaviyo_total_revenue_30d_yoy_growth_pct,
       0 as klaviyo_total_revenue_ytd_yoy_growth_pct,
@@ -3472,6 +3487,8 @@ export async function getExecutiveSummary(): Promise<ExecutiveSummary | null> {
     SELECT
       revenue_mtd,
       revenue_mtd_yoy_growth_pct,
+      revenue_lm,
+      revenue_lm_yoy_growth_pct,
       revenue_7d,
       revenue_7d_yoy_growth_pct,
       revenue_30d,
@@ -3480,6 +3497,8 @@ export async function getExecutiveSummary(): Promise<ExecutiveSummary | null> {
       revenue_ytd_yoy_growth_pct,
       blended_roas_mtd,
       blended_roas_mtd_yoy_growth_pct,
+      blended_roas_lm,
+      blended_roas_lm_yoy_growth_pct,
       blended_roas_7d,
       blended_roas_7d_yoy_growth_pct,
       blended_roas_30d,
@@ -3487,9 +3506,12 @@ export async function getExecutiveSummary(): Promise<ExecutiveSummary | null> {
       blended_roas_ytd,
       blended_roas_ytd_yoy_growth_pct,
       blended_spend_mtd,
+      blended_spend_lm,
       blended_spend_7d,
       blended_spend_30d,
       blended_spend_ytd,
+      blended_spend_lm_yoy,
+      SAFE_DIVIDE((blended_spend_lm - blended_spend_lm_yoy), blended_spend_lm_yoy) * 100 as blended_spend_lm_yoy_growth_pct,
       blended_spend_mtd_yoy,
       blended_spend_7d_yoy,
       blended_spend_30d_yoy,
@@ -3500,50 +3522,62 @@ export async function getExecutiveSummary(): Promise<ExecutiveSummary | null> {
       SAFE_DIVIDE((blended_spend_ytd - blended_spend_ytd_yoy), blended_spend_ytd_yoy) * 100 as blended_spend_ytd_yoy_growth_pct,
       ${klaviyoFields}
       google_spend_mtd,
+      google_spend_lm,
       google_spend_7d,
       google_spend_30d,
       google_spend_ytd,
       google_revenue_mtd,
+      google_revenue_lm,
       google_revenue_7d,
       google_revenue_30d,
       google_revenue_ytd,
       google_roas_mtd,
+      google_roas_lm,
       google_roas_7d,
       google_roas_30d,
       google_roas_ytd,
       google_roas_mtd_yoy_growth_pct,
+      google_roas_lm_yoy_growth_pct,
       google_roas_7d_yoy_growth_pct,
       google_roas_30d_yoy_growth_pct,
       google_roas_ytd_yoy_growth_pct,
       SAFE_DIVIDE((google_spend_mtd - google_spend_mtd_yoy), google_spend_mtd_yoy) * 100 as google_spend_mtd_yoy_growth_pct,
+      SAFE_DIVIDE((google_spend_lm - google_spend_lm_yoy), google_spend_lm_yoy) * 100 as google_spend_lm_yoy_growth_pct,
       SAFE_DIVIDE((google_spend_7d - google_spend_7d_yoy), google_spend_7d_yoy) * 100 as google_spend_7d_yoy_growth_pct,
       SAFE_DIVIDE((google_spend_30d - google_spend_30d_yoy), google_spend_30d_yoy) * 100 as google_spend_30d_yoy_growth_pct,
       SAFE_DIVIDE((google_spend_ytd - google_spend_ytd_yoy), google_spend_ytd_yoy) * 100 as google_spend_ytd_yoy_growth_pct,
       SAFE_DIVIDE((google_revenue_mtd - google_revenue_mtd_yoy), google_revenue_mtd_yoy) * 100 as google_revenue_mtd_yoy_growth_pct,
+      SAFE_DIVIDE((google_revenue_lm - google_revenue_lm_yoy), google_revenue_lm_yoy) * 100 as google_revenue_lm_yoy_growth_pct,
       SAFE_DIVIDE((google_revenue_7d - google_revenue_7d_yoy), google_revenue_7d_yoy) * 100 as google_revenue_7d_yoy_growth_pct,
       SAFE_DIVIDE((google_revenue_30d - google_revenue_30d_yoy), google_revenue_30d_yoy) * 100 as google_revenue_30d_yoy_growth_pct,
       SAFE_DIVIDE((google_revenue_ytd - google_revenue_ytd_yoy), google_revenue_ytd_yoy) * 100 as google_revenue_ytd_yoy_growth_pct,
       facebook_spend_mtd,
+      facebook_spend_lm,
       facebook_spend_7d,
       facebook_spend_30d,
       facebook_spend_ytd,
       facebook_revenue_mtd,
+      facebook_revenue_lm,
       facebook_revenue_7d,
       facebook_revenue_30d,
       facebook_revenue_ytd,
       facebook_roas_mtd,
+      facebook_roas_lm,
       facebook_roas_7d,
       facebook_roas_30d,
       facebook_roas_ytd,
       facebook_roas_mtd_yoy_growth_pct,
+      facebook_roas_lm_yoy_growth_pct,
       facebook_roas_7d_yoy_growth_pct,
       facebook_roas_30d_yoy_growth_pct,
       facebook_roas_ytd_yoy_growth_pct,
       SAFE_DIVIDE((facebook_spend_mtd - facebook_spend_mtd_yoy), facebook_spend_mtd_yoy) * 100 as facebook_spend_mtd_yoy_growth_pct,
+      SAFE_DIVIDE((facebook_spend_lm - facebook_spend_lm_yoy), facebook_spend_lm_yoy) * 100 as facebook_spend_lm_yoy_growth_pct,
       SAFE_DIVIDE((facebook_spend_7d - facebook_spend_7d_yoy), facebook_spend_7d_yoy) * 100 as facebook_spend_7d_yoy_growth_pct,
       SAFE_DIVIDE((facebook_spend_30d - facebook_spend_30d_yoy), facebook_spend_30d_yoy) * 100 as facebook_spend_30d_yoy_growth_pct,
       SAFE_DIVIDE((facebook_spend_ytd - facebook_spend_ytd_yoy), facebook_spend_ytd_yoy) * 100 as facebook_spend_ytd_yoy_growth_pct,
       SAFE_DIVIDE((facebook_revenue_mtd - facebook_revenue_mtd_yoy), facebook_revenue_mtd_yoy) * 100 as facebook_revenue_mtd_yoy_growth_pct,
+      SAFE_DIVIDE((facebook_revenue_lm - facebook_revenue_lm_yoy), facebook_revenue_lm_yoy) * 100 as facebook_revenue_lm_yoy_growth_pct,
       SAFE_DIVIDE((facebook_revenue_7d - facebook_revenue_7d_yoy), facebook_revenue_7d_yoy) * 100 as facebook_revenue_7d_yoy_growth_pct,
       SAFE_DIVIDE((facebook_revenue_30d - facebook_revenue_30d_yoy), facebook_revenue_30d_yoy) * 100 as facebook_revenue_30d_yoy_growth_pct,
       SAFE_DIVIDE((facebook_revenue_ytd - facebook_revenue_ytd_yoy), facebook_revenue_ytd_yoy) * 100 as facebook_revenue_ytd_yoy_growth_pct
@@ -3998,6 +4032,160 @@ export async function getAdPerformance(adName: string, adsetName: string, preset
     };
   } catch (error) {
     console.error('Error fetching ad performance:', error);
+    throw error;
+  }
+}
+
+// Organic Social Data
+export async function getOrganicSocialData(platform: string = 'all', period: string = '30d', comparison: string = 'previous-period'): Promise<any> {
+  try {
+    const dataset = getCurrentDatasetName();
+
+    // Build platform filter
+    let platformFilter = '';
+    if (platform !== 'all') {
+      platformFilter = `AND LOWER(platform) = LOWER('${platform}')`;
+    }
+
+    // Calculate period days
+    const periodDays = period === '7d' ? 7 : period === '30d' ? 30 : 90;
+
+    // Build query that gets current and comparison periods
+    const query = `
+      WITH current_period AS (
+        SELECT
+          metric_date,
+          platform,
+          total_followers,
+          followers_gained,
+          followers_lost,
+          impressions,
+          engagements,
+          engagement_rate_pct
+        FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${dataset}.daily_organic_social_performance\`
+        WHERE metric_date >= DATE_SUB(CURRENT_DATE(), INTERVAL ${periodDays} DAY)
+          ${platformFilter}
+      ),
+      previous_period AS (
+        SELECT
+          metric_date,
+          platform,
+          total_followers,
+          followers_gained,
+          followers_lost,
+          impressions,
+          engagements,
+          engagement_rate_pct
+        FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${dataset}.daily_organic_social_performance\`
+        WHERE metric_date >= DATE_SUB(CURRENT_DATE(), INTERVAL ${comparison === 'previous-year' ? `${periodDays} + 365` : `${periodDays * 2}`} DAY)
+          AND metric_date < DATE_SUB(CURRENT_DATE(), INTERVAL ${comparison === 'previous-year' ? '365' : periodDays} DAY)
+          ${platformFilter}
+      ),
+      current_metrics AS (
+        SELECT
+          AVG(engagement_rate_pct) as avg_engagement_rate,
+          SUM(impressions) as total_impressions,
+          SUM(followers_gained) as total_followers_gained
+        FROM current_period
+      ),
+      previous_metrics AS (
+        SELECT
+          AVG(engagement_rate_pct) as avg_engagement_rate,
+          SUM(impressions) as total_impressions,
+          SUM(followers_gained) as total_followers_gained
+        FROM previous_period
+      ),
+      current_followers AS (
+        SELECT
+          platform,
+          total_followers,
+          ROW_NUMBER() OVER (PARTITION BY platform ORDER BY metric_date DESC) as rn
+        FROM current_period
+      ),
+      previous_followers AS (
+        SELECT
+          platform,
+          total_followers,
+          ROW_NUMBER() OVER (PARTITION BY platform ORDER BY metric_date DESC) as rn
+        FROM previous_period
+      )
+      SELECT
+        -- Current period KPIs
+        cm.avg_engagement_rate as current_engagement_rate,
+        cm.total_impressions as current_impressions,
+        cm.total_followers_gained as current_followers_gained,
+        (SELECT SUM(total_followers) FROM current_followers WHERE rn = 1) as current_total_followers,
+
+        -- Previous period KPIs
+        pm.avg_engagement_rate as previous_engagement_rate,
+        pm.total_impressions as previous_impressions,
+        pm.total_followers_gained as previous_followers_gained,
+        (SELECT SUM(total_followers) FROM previous_followers WHERE rn = 1) as previous_total_followers,
+
+        -- Percentage changes
+        SAFE_DIVIDE((cm.avg_engagement_rate - pm.avg_engagement_rate), pm.avg_engagement_rate) * 100 as engagement_rate_change,
+        SAFE_DIVIDE((cm.total_impressions - pm.total_impressions), pm.total_impressions) * 100 as impressions_change,
+        SAFE_DIVIDE((cm.total_followers_gained - pm.total_followers_gained), pm.total_followers_gained) * 100 as followers_gained_change,
+        SAFE_DIVIDE(
+          ((SELECT SUM(total_followers) FROM current_followers WHERE rn = 1) - (SELECT SUM(total_followers) FROM previous_followers WHERE rn = 1)),
+          (SELECT SUM(total_followers) FROM previous_followers WHERE rn = 1)
+        ) * 100 as total_followers_change
+
+      FROM current_metrics cm, previous_metrics pm
+    `;
+
+    const [rows] = await bigquery.query({
+      query,
+      timeoutMs: 30000,
+    });
+
+    // Also get time series data for charting
+    // When platform is 'all', sum followers across platforms for each date
+    // Exclude today's data as it's incomplete
+    const timeSeriesQuery = platform === 'all' ? `
+      SELECT
+        metric_date,
+        SUM(total_followers) as total_followers
+      FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${dataset}.daily_organic_social_performance\`
+      WHERE metric_date >= DATE_SUB(CURRENT_DATE(), INTERVAL ${periodDays} DAY)
+        AND metric_date < CURRENT_DATE()
+      GROUP BY metric_date
+      ORDER BY metric_date ASC
+    ` : `
+      SELECT
+        metric_date,
+        total_followers
+      FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${dataset}.daily_organic_social_performance\`
+      WHERE metric_date >= DATE_SUB(CURRENT_DATE(), INTERVAL ${periodDays} DAY)
+        AND metric_date < CURRENT_DATE()
+        ${platformFilter}
+      ORDER BY metric_date ASC
+    `;
+
+    const [timeSeriesRows] = await bigquery.query({
+      query: timeSeriesQuery,
+      timeoutMs: 30000,
+    });
+
+    console.log('[Organic Social] KPI data:', rows[0]);
+    console.log('[Organic Social] Time series rows count:', timeSeriesRows.length);
+    console.log('[Organic Social] First time series row:', timeSeriesRows[0]);
+
+    // Convert date objects to strings for the chart
+    const formattedTimeSeries = timeSeriesRows.map((row: any) => ({
+      ...row,
+      metric_date: row.metric_date?.value || row.metric_date
+    }));
+
+    return {
+      kpis: rows[0] || {},
+      timeSeries: formattedTimeSeries
+    };
+  } catch (error) {
+    console.error('Error fetching organic social data:', error);
+    if (error instanceof Error && error.message.includes('Not found')) {
+      throw new Error('Organic social data not available for this client');
+    }
     throw error;
   }
 }

@@ -12,9 +12,10 @@ export async function GET(request: Request) {
     // Get current client ID to determine which features to include
     const currentClientId = await getCurrentClientId();
 
-    // Get period from query params (7d, mtd, or 30d)
+    // Get period from query params (7d, mtd, last-month, 30d, or ytd)
     const { searchParams } = new URL(request.url);
     const period = searchParams.get('period') || '7d';
+    console.log('[Dashboard API] Received period:', period);
 
     // Convert period to days for BigQuery functions
     let days = 7;
@@ -23,6 +24,10 @@ export async function GET(request: Request) {
       const now = new Date();
       days = now.getDate() - 1; // Days elapsed in current month
     } else if (period === '30d') {
+      days = 30;
+    } else if (period === 'last-month') {
+      // For last month, we'll use 30 days for trend calculations
+      // but will pull _lm fields instead
       days = 30;
     }
 
@@ -48,10 +53,12 @@ export async function GET(request: Request) {
     const revenue_7d = parseFloat((data.revenue_7d as any) || '0');
     const revenue_30d = parseFloat((data.revenue_30d as any) || '0');
     const revenue_ytd = parseFloat((data.revenue_ytd as any) || '0');
+    const revenue_lm = parseFloat((data.revenue_lm as any) || '0');
     const blended_spend_mtd = parseFloat((data.blended_spend_mtd as any) || '0');
     const blended_spend_7d = parseFloat((data.blended_spend_7d as any) || '0');
     const blended_spend_30d = parseFloat((data.blended_spend_30d as any) || '0');
     const blended_spend_ytd = parseFloat((data.blended_spend_ytd as any) || '0');
+    const blended_spend_lm = parseFloat((data.blended_spend_lm as any) || '0');
 
     // Get current month (0-indexed)
     const currentMonth = new Date().getMonth();
@@ -66,6 +73,12 @@ export async function GET(request: Request) {
 
     console.log('[Dashboard API] Using revenue target:', revenueTarget);
     console.log('[Dashboard API] Using ROAS target:', roasTarget);
+    console.log('[Dashboard API] Last Month Data:', {
+      revenue_lm,
+      blended_roas_lm: data.blended_roas_lm,
+      blended_spend_lm,
+      klaviyo_total_revenue_lm: data.klaviyo_total_revenue_lm
+    });
 
     // Determine which clients have Klaviyo integration
     const hasKlaviyo = currentClientId !== 'hb'; // HB doesn't have Klaviyo
@@ -79,6 +92,10 @@ export async function GET(request: Request) {
             monthToDate: {
               value: revenue_mtd,
               trend: data.revenue_mtd_yoy_growth_pct || 0
+            },
+            lastMonth: {
+              value: revenue_lm,
+              trend: data.revenue_lm_yoy_growth_pct || 0
             },
             thirtyDay: {
               value: revenue_30d,
@@ -104,6 +121,10 @@ export async function GET(request: Request) {
               value: data.blended_roas_mtd || 0,
               trend: data.blended_roas_mtd_yoy_growth_pct || 0
             },
+            lastMonth: {
+              value: data.blended_roas_lm || 0,
+              trend: data.blended_roas_lm_yoy_growth_pct || 0
+            },
             thirtyDay: {
               value: data.blended_roas_30d || 0,
               trend: data.blended_roas_30d_yoy_growth_pct || 0
@@ -122,6 +143,7 @@ export async function GET(request: Request) {
           gaugeTarget: roasTarget,
           spend: {
             monthToDate: blended_spend_mtd,
+            lastMonth: blended_spend_lm,
             thirtyDay: blended_spend_30d,
             sevenDay: blended_spend_7d,
             yearToDate: blended_spend_ytd
@@ -134,6 +156,10 @@ export async function GET(request: Request) {
               monthToDate: {
                 value: data.klaviyo_total_revenue_mtd || 0,
                 trend: data.klaviyo_total_revenue_mtd_yoy_growth_pct || 0
+              },
+              lastMonth: {
+                value: data.klaviyo_total_revenue_lm || 0,
+                trend: data.klaviyo_total_revenue_lm_yoy_growth_pct || 0
               },
               thirtyDay: {
                 value: data.klaviyo_total_revenue_30d || 0,
@@ -165,6 +191,10 @@ export async function GET(request: Request) {
               value: blended_spend_mtd,
               trend: data.blended_spend_mtd_yoy_growth_pct || 0
             },
+            lastMonth: {
+              value: blended_spend_lm,
+              trend: data.blended_spend_lm_yoy_growth_pct || 0
+            },
             thirtyDay: {
               value: blended_spend_30d,
               trend: data.blended_spend_30d_yoy_growth_pct || 0
@@ -188,6 +218,10 @@ export async function GET(request: Request) {
             monthToDate: {
               value: parseFloat((data.google_spend_mtd as any) || '0'),
               trend: data.google_spend_mtd_yoy_growth_pct || 0
+            },
+            lastMonth: {
+              value: parseFloat((data.google_spend_lm as any) || '0'),
+              trend: data.google_spend_lm_yoy_growth_pct || 0
             },
             thirtyDay: {
               value: parseFloat((data.google_spend_30d as any) || '0'),
@@ -213,6 +247,10 @@ export async function GET(request: Request) {
               value: parseFloat((data.google_revenue_mtd as any) || '0'),
               trend: data.google_revenue_mtd_yoy_growth_pct || 0
             },
+            lastMonth: {
+              value: parseFloat((data.google_revenue_lm as any) || '0'),
+              trend: data.google_revenue_lm_yoy_growth_pct || 0
+            },
             thirtyDay: {
               value: parseFloat((data.google_revenue_30d as any) || '0'),
               trend: data.google_revenue_30d_yoy_growth_pct || 0
@@ -236,6 +274,10 @@ export async function GET(request: Request) {
             monthToDate: {
               value: data.google_roas_mtd || 0,
               trend: data.google_roas_mtd_yoy_growth_pct || 0
+            },
+            lastMonth: {
+              value: data.google_roas_lm || 0,
+              trend: data.google_roas_lm_yoy_growth_pct || 0
             },
             thirtyDay: {
               value: data.google_roas_30d || 0,
@@ -261,6 +303,10 @@ export async function GET(request: Request) {
               value: parseFloat((data.facebook_spend_mtd as any) || '0'),
               trend: data.facebook_spend_mtd_yoy_growth_pct || 0
             },
+            lastMonth: {
+              value: parseFloat((data.facebook_spend_lm as any) || '0'),
+              trend: data.facebook_spend_lm_yoy_growth_pct || 0
+            },
             thirtyDay: {
               value: parseFloat((data.facebook_spend_30d as any) || '0'),
               trend: data.facebook_spend_30d_yoy_growth_pct || 0
@@ -285,6 +331,10 @@ export async function GET(request: Request) {
               value: parseFloat((data.facebook_revenue_mtd as any) || '0'),
               trend: data.facebook_revenue_mtd_yoy_growth_pct || 0
             },
+            lastMonth: {
+              value: parseFloat((data.facebook_revenue_lm as any) || '0'),
+              trend: data.facebook_revenue_lm_yoy_growth_pct || 0
+            },
             thirtyDay: {
               value: parseFloat((data.facebook_revenue_30d as any) || '0'),
               trend: data.facebook_revenue_30d_yoy_growth_pct || 0
@@ -308,6 +358,10 @@ export async function GET(request: Request) {
             monthToDate: {
               value: data.facebook_roas_mtd || 0,
               trend: data.facebook_roas_mtd_yoy_growth_pct || 0
+            },
+            lastMonth: {
+              value: data.facebook_roas_lm || 0,
+              trend: data.facebook_roas_lm_yoy_growth_pct || 0
             },
             thirtyDay: {
               value: data.facebook_roas_30d || 0,

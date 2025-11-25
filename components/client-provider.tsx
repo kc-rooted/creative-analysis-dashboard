@@ -3,7 +3,7 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 
 interface ClientContextType {
-  currentClient: string;
+  currentClient: string | null;
   setCurrentClient: (client: string) => void;
   isLoading: boolean;
 }
@@ -11,7 +11,7 @@ interface ClientContextType {
 const ClientContext = createContext<ClientContextType | undefined>(undefined);
 
 export function ClientProvider({ children }: { children: ReactNode }) {
-  const [currentClient, setCurrentClientState] = useState<string>('jumbomax');
+  const [currentClient, setCurrentClientState] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   // Fetch current client on mount
@@ -22,9 +22,14 @@ export function ClientProvider({ children }: { children: ReactNode }) {
         if (response.ok) {
           const data = await response.json();
           setCurrentClientState(data.clientId);
+        } else {
+          // No client selected - leave as null
+          setCurrentClientState(null);
         }
       } catch (error) {
         console.error('Error fetching current client:', error);
+        // On error, leave as null (no fallback)
+        setCurrentClientState(null);
       } finally {
         setIsLoading(false);
       }

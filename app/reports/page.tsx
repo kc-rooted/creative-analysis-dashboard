@@ -65,8 +65,8 @@ Generate a strategic, executive-level monthly marketing report with the followin
 
    CRITICAL INSTRUCTIONS:
    - Row 1 (Monthly Revenue): Use revenue_total from HERO METRICS with revenue_mom_pct and revenue_yoy_pct
-   - Row 2 (Annual Revenue Pacing): Use prophet_annual_revenue_base with probability_hit_revenue_target. Calculate shortfall as (annual_revenue_target - prophet_annual_revenue_base)
-   - Row 3 (Monthly ROAS): Use blended_roas from HERO METRICS with blended_roas_mom_pct and blended_roas_yoy_pct
+   - Row 2 (Annual Revenue Pacing): Use prophet_annual_revenue_base with probability_hit_revenue_target. Calculate shortfall as (annual_revenue_target - prophet_annual_revenue_base). **IMPORTANT:** If probability_hit_revenue_target is 100%, do NOT mention the probability. Instead, show how much OVER projection we are (e.g., "Tracking $[X] over target, [X] days left")
+   - Row 3 (Monthly ROAS): Use attributed_blended_roas from HERO METRICS with attributed_blended_roas_mom_pct and attributed_blended_roas_yoy_pct (this is PAID MEDIA ONLY ROAS)
    - Row 4 (Paid Media Spend): Use paid_media_spend from HERO METRICS with paid_media_spend_mom_pct and paid_media_spend_yoy_pct
    - Do NOT calculate percentages - use exact values from the data
 
@@ -87,7 +87,7 @@ Generate a strategic, executive-level monthly marketing report with the followin
 
 2. BUSINESS PERFORMANCE (use ## for section heading)
    - Use monthly_business_summary for complete monthly metrics
-   - Report on attributed_blended_roas as well as overall blended_roas which represents net revenue / ad spend
+   - Report on attributed_blended_roas (paid media attributed revenue / ad spend) - this is the ONLY ROAS we report
    - Present revenue breakdown (gross, net, refunds)
    - Analyze operational metrics (orders, AOV, units)
    - Calculate and interpret key rates (discount, return, etc.)
@@ -202,8 +202,8 @@ Generate a strategic, executive-level monthly marketing report with the followin
 
    CRITICAL INSTRUCTIONS:
    - Row 1 (Monthly Revenue): Use revenue_total from HERO METRICS with revenue_mom_pct and revenue_yoy_pct
-   - Row 2 (Annual Revenue Pacing): Use prophet_annual_revenue_base with probability_hit_revenue_target. Calculate shortfall as (annual_revenue_target - prophet_annual_revenue_base)
-   - Row 3 (Monthly ROAS): Use blended_roas from HERO METRICS with blended_roas_mom_pct and blended_roas_yoy_pct
+   - Row 2 (Annual Revenue Pacing): Use prophet_annual_revenue_base with probability_hit_revenue_target. Calculate shortfall as (annual_revenue_target - prophet_annual_revenue_base). **IMPORTANT:** If probability_hit_revenue_target is 100%, do NOT mention the probability. Instead, show how much OVER projection we are (e.g., "Tracking $[X] over target, [X] days left")
+   - Row 3 (Monthly ROAS): Use attributed_blended_roas from HERO METRICS with attributed_blended_roas_mom_pct and attributed_blended_roas_yoy_pct (this is PAID MEDIA ONLY ROAS)
    - Row 4 (Paid Media Spend): Use paid_media_spend from HERO METRICS with paid_media_spend_mom_pct and paid_media_spend_yoy_pct
    - Do NOT calculate percentages - use exact values from the data
 
@@ -224,7 +224,7 @@ Generate a strategic, executive-level monthly marketing report with the followin
 
 2. BUSINESS PERFORMANCE (use ## for section heading)
    - Use monthly_business_summary for complete monthly metrics
-   - Report on attributed_blended_roas as well as overall blended_roas which represents net revenue / ad spend
+   - Report on attributed_blended_roas (paid media attributed revenue / ad spend) - this is the ONLY ROAS we report
    - Present revenue breakdown (gross, net, refunds)
    - Analyze operational metrics (orders, AOV, units)
    - Calculate and interpret key rates (discount, return, etc.)
@@ -364,8 +364,8 @@ Generate a strategic, executive-level monthly marketing report with the followin
 
    CRITICAL INSTRUCTIONS:
    - Row 1 (Monthly Revenue): Use revenue_total from HERO METRICS with revenue_mom_pct and revenue_yoy_pct
-   - Row 2 (Annual Revenue Pacing): Use prophet_annual_revenue_base with probability_hit_revenue_target. Calculate shortfall as (annual_revenue_target - prophet_annual_revenue_base)
-   - Row 3 (Monthly ROAS): Use blended_roas from HERO METRICS with blended_roas_mom_pct and blended_roas_yoy_pct
+   - Row 2 (Annual Revenue Pacing): Use prophet_annual_revenue_base with probability_hit_revenue_target. Calculate shortfall as (annual_revenue_target - prophet_annual_revenue_base). **IMPORTANT:** If probability_hit_revenue_target is 100%, do NOT mention the probability. Instead, show how much OVER projection we are (e.g., "Tracking $[X] over target, [X] days left")
+   - Row 3 (Monthly ROAS): Use attributed_blended_roas from HERO METRICS with attributed_blended_roas_mom_pct and attributed_blended_roas_yoy_pct (this is PAID MEDIA ONLY ROAS)
    - Row 4 (Paid Media Spend): Use paid_media_spend from HERO METRICS with paid_media_spend_mom_pct and paid_media_spend_yoy_pct
    - Do NOT calculate percentages - use exact values from the data
 
@@ -386,7 +386,7 @@ Generate a strategic, executive-level monthly marketing report with the followin
 
 2. BUSINESS PERFORMANCE (use ## for section heading)
    - Use monthly_business_summary for complete monthly metrics
-   - Report on attributed_blended_roas as well as overall blended_roas which represents net revenue / ad spend
+   - Report on attributed_blended_roas (paid media attributed revenue / ad spend) - this is the ONLY ROAS we report
    - Present revenue breakdown (gross, net, refunds)
    - Analyze operational metrics (orders, AOV, units)
    - Calculate and interpret key rates (discount, return, etc.)
@@ -477,7 +477,8 @@ CRITICAL REQUIREMENTS:
 ];
 
 // Helper function to get templates available for current client
-function getAvailableTemplates(currentClient: string) {
+function getAvailableTemplates(currentClient: string | null) {
+  if (!currentClient) return [];
   return reportTemplates.filter(template =>
     !template.clients ||
     template.clients.includes('all') ||
@@ -595,11 +596,13 @@ export default function ReportsPage() {
   const isProcessing = isGenerating || isPrefetching;
 
   // Helper to get display name for client
-  const getClientDisplayName = (clientId: string) => {
+  const getClientDisplayName = (clientId: string | null) => {
+    if (!clientId) return 'No Client Selected';
     const clientNames: Record<string, string> = {
       'jumbomax': 'JumboMax',
       'puttout': 'PuttOut',
-      'hb': 'Holderness & Bourne'
+      'hb': 'Holderness & Bourne',
+      'benhogan': 'Ben Hogan Golf'
     };
     return clientNames[clientId] || clientId.toUpperCase();
   };

@@ -8,29 +8,36 @@ import DashboardHeader from '@/components/dashboards/DashboardHeader';
 import DashboardGrid from '@/components/dashboards/DashboardGrid';
 import { DateRange } from '@/types/dashboard';
 import { useClient } from '@/components/client-provider';
+import { NoClientSelected } from '@/components/NoClientSelected';
 
 // All available dashboard sections
 const ALL_DASHBOARD_SECTIONS = [
-  { id: 'overview', label: 'Business Overview', clients: ['jumbomax', 'puttout', 'hb'] },
-  { id: 'facebook', label: 'Meta Ads', clients: ['jumbomax', 'puttout', 'hb'] },
+  { id: 'overview', label: 'Business Overview', clients: ['jumbomax', 'puttout', 'hb', 'benhogan'] },
+  { id: 'facebook', label: 'Meta Ads', clients: ['jumbomax', 'puttout', 'hb', 'benhogan'] },
   { id: 'meta-ads-optimization', label: 'Meta Ads Optimization', clients: ['puttout'] },
   { id: 'google', label: 'Google Ads', clients: ['jumbomax', 'hb'] },
   { id: 'funnel', label: 'Funnel Optimization', clients: ['puttout'] },
   { id: 'email', label: 'Email & Retention', clients: ['jumbomax', 'puttout'] },
-  { id: 'product', label: 'Product', clients: ['jumbomax', 'puttout', 'hb'] },
-  { id: 'customers', label: 'Customers', clients: ['jumbomax', 'puttout', 'hb'] },
-  { id: 'forecasting', label: 'Forecasting', clients: ['jumbomax', 'puttout', 'hb'] },
+  { id: 'organic-social', label: 'Organic Social', clients: ['jumbomax', 'benhogan'] },
+  { id: 'product', label: 'Product', clients: ['jumbomax', 'puttout', 'hb', 'benhogan'] },
+  { id: 'customers', label: 'Customers', clients: ['jumbomax', 'puttout', 'hb', 'benhogan'] },
+  { id: 'forecasting', label: 'Forecasting', clients: ['jumbomax', 'puttout', 'hb', 'benhogan'] },
   { id: 'operational', label: 'Operational', clients: ['jumbomax'] },
 ] as const;
 
 function DashboardContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { currentClient } = useClient();
+  const { currentClient, isLoading } = useClient();
+
+  // If no client is selected, show message
+  if (!isLoading && !currentClient) {
+    return <NoClientSelected />;
+  }
 
   // Filter sections based on current client
   const availableSections = ALL_DASHBOARD_SECTIONS.filter(section =>
-    section.clients.includes(currentClient as any)
+    currentClient && section.clients.includes(currentClient as any)
   );
 
   // Initialize from URL query params, fallback to 'overview'

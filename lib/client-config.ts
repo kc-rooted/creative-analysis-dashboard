@@ -9,9 +9,21 @@ export interface ClientConfig {
   id: string;
   name: string;
 
+  // Platform Configuration
+  platform: 'shopify' | 'bigcommerce' | 'other';
+
   // BigQuery Configuration (only dataset varies by client)
   bigquery: {
     dataset: string;
+  };
+
+  // Feature Flags - Control which features/tabs are available for this client
+  features?: {
+    googleAds?: boolean;
+    metaAds?: boolean;
+    email?: boolean;
+    googleAnalytics?: boolean;
+    searchConsole?: boolean;
   };
 
   // Brand Guidelines
@@ -43,9 +55,18 @@ export const CLIENT_CONFIGS: Record<string, ClientConfig> = {
   jumbomax: {
     id: "jumbomax",
     name: "JumboMax Golf",
+    platform: 'shopify',
 
     bigquery: {
       dataset: "jumbomax_analytics",
+    },
+
+    features: {
+      googleAds: true,
+      metaAds: true,
+      email: true,
+      googleAnalytics: true,
+      searchConsole: true,
     },
 
     brand: {
@@ -117,9 +138,18 @@ export const CLIENT_CONFIGS: Record<string, ClientConfig> = {
   puttout: {
     id: "puttout",
     name: "PuttOut",
+    platform: 'shopify',
 
     bigquery: {
       dataset: "puttout_analytics",
+    },
+
+    features: {
+      googleAds: true,
+      metaAds: true,
+      email: true,
+      googleAnalytics: true,
+      searchConsole: true,
     },
 
     brand: {
@@ -191,9 +221,18 @@ export const CLIENT_CONFIGS: Record<string, ClientConfig> = {
   hb: {
     id: "hb",
     name: "Holderness & Bourne",
+    platform: 'shopify',
 
     bigquery: {
       dataset: "hb_analytics",
+    },
+
+    features: {
+      googleAds: true,
+      metaAds: true,
+      email: true,
+      googleAnalytics: true,
+      searchConsole: true,
     },
 
     brand: {
@@ -257,6 +296,160 @@ export const CLIENT_CONFIGS: Record<string, ClientConfig> = {
         400000  // December
       ],
       monthlyRoasTarget: 5.5,
+      currency: 'USD',
+      currencySymbol: '$'
+    }
+  },
+
+  bh: {
+    id: "bh",
+    name: "BH",
+    platform: 'bigcommerce',
+
+    bigquery: {
+      dataset: "bh_analytics",
+    },
+
+    features: {
+      googleAds: false,       // No Google Ads
+      metaAds: true,          // Has Meta Ads
+      email: false,           // No Email
+      googleAnalytics: false, // No Google Analytics
+      searchConsole: false,   // No Search Console
+    },
+
+    brand: {
+      colors: [
+        {
+          name: "Primary Blue",
+          hex: "#1B4F72",
+          description: "Primary brand color",
+          usage: "primary_brand"
+        },
+        {
+          name: "White",
+          hex: "#FFFFFF",
+          description: "Clean background and text contrast",
+          usage: "background"
+        },
+        {
+          name: "Dark Gray",
+          hex: "#2C3E50",
+          description: "Primary text and strong contrast",
+          usage: "text"
+        },
+        {
+          name: "Light Gray",
+          hex: "#95A5A6",
+          description: "Secondary text and subtle elements",
+          usage: "secondary_text"
+        }
+      ],
+      industry: "ecommerce",
+      targetAudience: ["online_shoppers", "value_seekers"],
+      productCategories: ["consumer_products"],
+      brandPersonality: "modern_approachable_valuedriven",
+      competitiveContext: "online_retail_competitive_landscape"
+    },
+
+    analysis: {
+      focusAreas: ["performance", "brand_compliance", "value_proposition"],
+      customPromptAdditions: "Focus on e-commerce appeal and value-driven messaging that resonates with online shoppers."
+    },
+
+    dashboard: {
+      monthlyRevenueTargets: [
+        350000, // January
+        350000, // February
+        350000, // March
+        350000, // April
+        350000, // May
+        350000, // June
+        350000, // July
+        350000, // August
+        350000, // September
+        350000, // October
+        350000, // November
+        350000  // December
+      ],
+      monthlyRoasTarget: 5.0,
+      currency: 'USD',
+      currencySymbol: '$'
+    }
+  },
+
+  benhogan: {
+    id: "benhogan",
+    name: "Ben Hogan Golf",
+    platform: 'bigcommerce',
+
+    bigquery: {
+      dataset: "benhogan_analytics",
+    },
+
+    features: {
+      googleAds: false,       // No Google Ads
+      metaAds: true,          // Has Meta Ads
+      email: false,           // No Email
+      googleAnalytics: false, // No Google Analytics
+      searchConsole: false,   // No Search Console
+    },
+
+    brand: {
+      colors: [
+        {
+          name: "Primary Blue",
+          hex: "#1B4F72",
+          description: "Primary brand color",
+          usage: "primary_brand"
+        },
+        {
+          name: "White",
+          hex: "#FFFFFF",
+          description: "Clean background and text contrast",
+          usage: "background"
+        },
+        {
+          name: "Dark Gray",
+          hex: "#2C3E50",
+          description: "Primary text and strong contrast",
+          usage: "text"
+        },
+        {
+          name: "Light Gray",
+          hex: "#95A5A6",
+          description: "Secondary text and subtle elements",
+          usage: "secondary_text"
+        }
+      ],
+      industry: "ecommerce",
+      targetAudience: ["online_shoppers", "value_seekers"],
+      productCategories: ["consumer_products"],
+      brandPersonality: "modern_approachable_valuedriven",
+      competitiveContext: "online_retail_competitive_landscape"
+    },
+
+    analysis: {
+      focusAreas: ["performance", "brand_compliance", "value_proposition"],
+      customPromptAdditions: "Focus on e-commerce appeal and value-driven messaging that resonates with online shoppers."
+    },
+
+    dashboard: {
+      monthlyRevenueTargets: [
+        350000, // January
+        350000, // February
+        350000, // March
+        350000, // April
+        350000, // May
+        350000, // June
+        350000, // July
+        350000, // August
+        350000, // September
+        350000, // October
+        350000, // November
+        350000  // December
+      ],
+      monthlyRoasTarget: 5.0,
       currency: 'USD',
       currencySymbol: '$'
     }

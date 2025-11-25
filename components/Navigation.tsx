@@ -1,7 +1,7 @@
 'use client';
 
 import { usePathname, useRouter } from 'next/navigation';
-import { MessageSquare, LayoutGrid, Settings, Users, BarChart3, FileText } from 'lucide-react';
+import { MessageSquare, LayoutGrid, Settings, Users, BarChart3, FileText, BookOpen } from 'lucide-react';
 import { UserMenu } from './auth/user-menu';
 import { useClient } from './client-provider';
 
@@ -15,6 +15,7 @@ export function Navigation() {
   const isInfluencer = pathname.startsWith('/influencer');
   const isDashboards = pathname.startsWith('/dashboards');
   const isReports = pathname.startsWith('/reports');
+  const isContext = pathname.startsWith('/context');
   const isAdmin = pathname.startsWith('/admin');
 
   return (
@@ -130,6 +131,23 @@ export function Navigation() {
               REPORTS
             </button>
 
+            <button
+              onClick={() => router.push('/context')}
+              className={`px-4 py-2 rounded-lg font-medium transition-all duration-200 flex items-center gap-2 ${
+                isContext ? 'btn-primary' : ''
+              }`}
+              style={!isContext ? {
+                background: 'var(--bg-elevated)',
+                border: '1px solid var(--border-muted)',
+                color: 'var(--text-secondary)'
+              } : {}}
+              onMouseEnter={(e) => !isContext && (e.currentTarget.style.background = 'var(--bg-card)')}
+              onMouseLeave={(e) => !isContext && (e.currentTarget.style.background = 'var(--bg-elevated)')}
+            >
+              <BookOpen className="w-4 h-4" />
+              CONTEXT
+            </button>
+
             <div className="w-px h-8 mx-2" style={{background: 'var(--border-muted)'}}></div>
 
             {/* Current Client Indicator */}
@@ -139,12 +157,12 @@ export function Navigation() {
               style={{
                 background: 'var(--bg-elevated)',
                 border: '1px solid var(--border-muted)',
-                color: 'var(--accent-primary)'
+                color: currentClient ? 'var(--accent-primary)' : 'var(--text-tertiary)'
               }}
               onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--bg-card)')}
               onMouseLeave={(e) => (e.currentTarget.style.background = 'var(--bg-elevated)')}
             >
-              {currentClient.toUpperCase()}
+              {currentClient ? currentClient.toUpperCase() : 'NO CLIENT SELECTED'}
             </div>
 
             <div className="w-px h-8 mx-2" style={{background: 'var(--border-muted)'}}></div>

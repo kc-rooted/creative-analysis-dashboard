@@ -651,19 +651,72 @@ button:focus {
   font-size: 14px;
 }
 
-/* Meursault Variable font ONLY for report content preview */
-.reports-page .report-content,
-.reports-page .report-content * {
-  font-family: var(--font-meursault) !important;
-  font-size: 20px;
+/* PRINT PREVIEW MODE - Light gray background with print styling */
+.reports-page .report-content {
+  font-family: 'Roboto Condensed', sans-serif !important;
+  font-size: 16px !important;
+  background: #f9f9f9 !important;
+  color: #1a1a1a !important;
+  padding: 40px !important;
+  border-radius: 8px;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
 }
 
-/* Override prose headings in report content to use Meursault */
-.reports-page .report-content.prose h1,
-.reports-page .report-content.prose h2,
-.reports-page .report-content.prose h3,
-.reports-page .report-content.prose h4,
-.reports-page .report-content.prose h5,
-.reports-page .report-content.prose h6 {
-  font-family: var(--font-meursault) !important;
+/* Override all text colors for print preview */
+.reports-page .report-content * {
+  font-family: 'Roboto Condensed', sans-serif !important;
+}
+
+.reports-page .report-content p {
+  color: #374151 !important;
+}
+
+.reports-page .report-content h1,
+.reports-page .report-content h2,
+.reports-page .report-content h3,
+.reports-page .report-content h4,
+.reports-page .report-content h5,
+.reports-page .report-content h6 {
+  color: #0a0e13 !important;
+  font-family: 'Roboto Condensed', sans-serif !important;
+}
+
+.reports-page .report-content strong {
+  color: #0a0e13 !important;
+}
+
+.reports-page .report-content li {
+  color: #374151 !important;
+}
+
+/* Card styling for print preview */
+.reports-page .report-content .card {
+  background: #ffffff !important;
+  border: none !important;
+  border-radius: 12px !important;
+  padding: 16px !important;
+  margin-bottom: 16px !important;
+  box-shadow: 0px 0px 20px 0px rgba(0, 0, 0, 0.05) !important;
+}
+
+/* Tables in print preview */
+.reports-page .report-content table {
+  border: 1px solid #d1d5db !important;
+}
+
+.reports-page .report-content th {
+  background-color: #f3f4f6 !important;
+  color: #0a0e13 !important;
+  border: 1px solid #d1d5db !important;
+  padding: 12px 16px !important;
+}
+
+.reports-page .report-content td {
+  border: 1px solid #d1d5db !important;
+  color: #374151 !important;
+  padding: 12px 16px !important;
+}
+
+.reports-page .report-content tr:nth-child(even) {
+  background-color: #f9fafb !important;
 }
