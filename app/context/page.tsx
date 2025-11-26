@@ -273,7 +273,7 @@ export default function ContextPage() {
               </button>
             </div>
             <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
-              {currentClient.toUpperCase()}
+              {currentClient?.toUpperCase() || 'NO CLIENT'}
             </p>
           </div>
 
