@@ -937,10 +937,10 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
           </div>
         </div>
 
-        {/* Platform Performance - 6 Cards in One Row (hide Google for PuttOut and BenHogan) */}
-        <div className={`grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 ${currentClient !== 'puttout' && currentClient !== 'benhogan' ? 'xl:grid-cols-6' : ''}`}>
-          {/* Google Spend - Only show for JumboMax and H&B */}
-          {currentClient !== 'puttout' && currentClient !== 'benhogan' && <KPICard
+        {/* Platform Performance - 6 Cards in One Row (hide Google for BenHogan only) */}
+        <div className={`grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 ${currentClient !== 'benhogan' ? 'xl:grid-cols-6' : ''}`}>
+          {/* Google Spend - Only show for JumboMax, H&B, and PuttOUT */}
+          {currentClient !== 'benhogan' && <KPICard
             title="GOOGLE SPEND"
             currentValue={formatCurrency(getPeriodData(dashboardData.kpis.googleSpend).value)}
             previousValue={undefined}
@@ -964,8 +964,8 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
             dateRange={dateRange}
           />}
 
-          {/* Google Revenue - Only show for JumboMax and H&B */}
-          {currentClient !== 'puttout' && currentClient !== 'benhogan' && <KPICard
+          {/* Google Revenue - Only show for JumboMax, H&B, and PuttOUT */}
+          {currentClient !== 'benhogan' && <KPICard
             title="GOOGLE REVENUE"
             currentValue={formatCurrency(getPeriodData(dashboardData.kpis.googleRevenue).value)}
             previousValue={undefined}
@@ -989,8 +989,8 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
             dateRange={dateRange}
           />}
 
-          {/* Google ROAS - Only show for JumboMax and H&B */}
-          {currentClient !== 'puttout' && currentClient !== 'benhogan' && <KPICard
+          {/* Google ROAS - Only show for JumboMax, H&B, and PuttOUT */}
+          {currentClient !== 'benhogan' && <KPICard
             title="GOOGLE ROAS"
             currentValue={`${getPeriodData(dashboardData.kpis.googleROAS).value.toFixed(2)}x`}
             previousValue={undefined}
@@ -2678,10 +2678,12 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
                 />
                 <Tooltip
                   contentStyle={{
-                    background: 'var(--card-bg)',
-                    border: '1px solid var(--border-muted)',
+                    background: 'var(--bg-tooltip)',
+                    border: '1px solid var(--border-subtle)',
                     borderRadius: '8px',
-                    color: 'var(--text-primary)'
+                    color: 'var(--text-primary)',
+                    backdropFilter: 'blur(10px)',
+                    boxShadow: '0 4px 12px rgba(0, 0, 0, 0.3)'
                   }}
                 />
                 <Legend />
@@ -3718,10 +3720,12 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
                   />
                   <Tooltip
                     contentStyle={{
-                      backgroundColor: 'var(--bg-primary)',
-                      border: '1px solid var(--border-muted)',
+                      backgroundColor: 'var(--bg-tooltip)',
+                      border: '1px solid var(--border-subtle)',
                       borderRadius: '8px',
-                      color: 'var(--text-primary)'
+                      color: 'var(--text-primary)',
+                      backdropFilter: 'blur(10px)',
+                      boxShadow: '0 4px 12px rgba(0, 0, 0, 0.3)'
                     }}
                     formatter={(value: number) => formatCurrency(value, 1)}
                     labelFormatter={(label) => {

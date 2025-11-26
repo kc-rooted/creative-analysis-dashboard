@@ -191,6 +191,7 @@
   --bg-card: rgba(255, 255, 255, 0.025);
   --bg-elevated: rgba(255, 255, 255, 0.04);
   --bg-overlay: rgba(10, 14, 19, 0.95);
+  --bg-tooltip: rgba(10, 14, 19, 0.95);
   --card-overlay: #0f141a;
 
   /* Borders and dividers */
@@ -612,10 +613,11 @@ button:focus {
 }
 
 .tremor-Tooltip {
-  background: var(--bg-card) !important;
+  background: var(--bg-tooltip) !important;
   color: var(--text-primary) !important;
-  border: 1px solid var(--border-muted) !important;
+  border: 1px solid var(--border-subtle) !important;
   backdrop-filter: blur(10px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
 }
 
 /* Force Tremor chart colors */

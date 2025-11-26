@@ -43,8 +43,8 @@ const CHART_COLORS = {
 const CHART_THEME = {
   textColor: '#94a3b8', // var(--text-muted)
   gridColor: 'rgba(255, 255, 255, 0.05)', // var(--border-muted)
-  tooltipBg: 'rgba(255, 255, 255, 0.025)', // var(--bg-card)
-  tooltipBorder: 'rgba(255, 255, 255, 0.05)', // var(--border-muted)
+  tooltipBg: 'rgba(10, 14, 19, 0.95)', // var(--bg-tooltip) - less transparent for better readability
+  tooltipBorder: 'rgba(255, 255, 255, 0.1)', // var(--border-subtle) - more visible border
 };
 
 export default function ChartCard({ title, type, dateRange, data, className = '', comparisonType = 'previous-period' }: ChartCardProps) {
@@ -99,6 +99,7 @@ export default function ChartCard({ title, type, dateRange, data, className = ''
                   border: `1px solid ${CHART_THEME.tooltipBorder}`,
                   borderRadius: '8px',
                   backdropFilter: 'blur(10px)',
+                  boxShadow: '0 4px 12px rgba(0, 0, 0, 0.3)',
                   color: '#f8fafc'
                 }}
                 labelFormatter={(value) => {
@@ -142,6 +143,7 @@ export default function ChartCard({ title, type, dateRange, data, className = ''
                   border: `1px solid ${CHART_THEME.tooltipBorder}`,
                   borderRadius: '8px',
                   backdropFilter: 'blur(10px)',
+                  boxShadow: '0 4px 12px rgba(0, 0, 0, 0.3)',
                   color: '#f8fafc'
                 }}
                 formatter={(value: number) => [`$${value.toLocaleString()}`, 'Revenue']}
@@ -191,6 +193,7 @@ export default function ChartCard({ title, type, dateRange, data, className = ''
                   border: `1px solid ${CHART_THEME.tooltipBorder}`,
                   borderRadius: '8px',
                   backdropFilter: 'blur(10px)',
+                  boxShadow: '0 4px 12px rgba(0, 0, 0, 0.3)',
                   color: '#f8fafc'
                 }}
               />
@@ -222,6 +225,7 @@ export default function ChartCard({ title, type, dateRange, data, className = ''
                   border: `1px solid ${CHART_THEME.tooltipBorder}`,
                   borderRadius: '8px',
                   backdropFilter: 'blur(10px)',
+                  boxShadow: '0 4px 12px rgba(0, 0, 0, 0.3)',
                   color: '#f8fafc'
                 }}
                 formatter={(value: number) => [value.toLocaleString(), 'Count']}
@@ -284,6 +288,7 @@ export default function ChartCard({ title, type, dateRange, data, className = ''
                   border: `1px solid ${CHART_THEME.tooltipBorder}`,
                   borderRadius: '8px',
                   backdropFilter: 'blur(10px)',
+                  boxShadow: '0 4px 12px rgba(0, 0, 0, 0.3)',
                   color: '#f8fafc'
                 }}
                 labelFormatter={(value) => {
