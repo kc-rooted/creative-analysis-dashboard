@@ -2,6 +2,9 @@ FROM node:20-alpine
 
 WORKDIR /app
 
+# Install system dependencies for healthcheck
+RUN apk add --no-cache curl
+
 # Install dependencies first (better Docker layer caching)
 COPY package*.json ./
 RUN npm ci --prefer-offline --no-audit --progress=false --legacy-peer-deps
