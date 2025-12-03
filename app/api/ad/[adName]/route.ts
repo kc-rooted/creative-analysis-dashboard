@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getAdIntelligentAnalysis, getAdPerformanceTimeseries, initializeCurrentClient } from '@/lib/bigquery';
+import { getAdIntelligentAnalysis, getAdPerformanceTimeseries } from '@/lib/bigquery';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -10,10 +10,11 @@ export async function GET(
 ) {
   try {
     // Get requested client from header (sent from frontend)
-    const requestedClient = request.headers.get('x-client-id');
+    const clientId = request.headers.get('x-client-id');
 
-    // Initialize with requested client to ensure correct dataset
-    await initializeCurrentClient(requestedClient || undefined);
+    if (!clientId) {
+      return NextResponse.json({ error: 'x-client-id header is required' }, { status: 400 });
+    }
 
     const { adName: rawAdName } = await params;
     const adName = decodeURIComponent(rawAdName);
@@ -31,8 +32,8 @@ export async function GET(
     console.log(`[AD API] Fetching data for ad: ${adName}, adset: ${adsetName}, days: ${days}`);
 
     const [analysis, timeseries] = await Promise.all([
-      getAdIntelligentAnalysis(adName, adsetName),
-      getAdPerformanceTimeseries(adName, adsetName, days)
+      getAdIntelligentAnalysis(clientId, adName, adsetName),
+      getAdPerformanceTimeseries(clientId, adName, adsetName, days)
     ]);
 
     if (!analysis) {

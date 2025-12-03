@@ -1,18 +1,19 @@
 import { NextResponse } from 'next/server';
-import { getForecastScenarios, getForecastDaily, getForecastActuals, initializeCurrentClient } from '@/lib/bigquery';
+import { getForecastScenarios, getForecastDaily, getForecastActuals } from '@/lib/bigquery';
 
 export async function GET(request: Request) {
   try {
     // Get requested client from header (sent from frontend)
-    const requestedClient = request.headers.get('x-client-id');
+    const clientId = request.headers.get('x-client-id');
 
-    // Initialize with requested client to ensure correct dataset
-    await initializeCurrentClient(requestedClient || undefined);
+    if (!clientId) {
+      return NextResponse.json({ error: 'x-client-id header is required' }, { status: 400 });
+    }
 
     const [scenarios, daily, actuals] = await Promise.all([
-      getForecastScenarios(),
-      getForecastDaily(),
-      getForecastActuals()
+      getForecastScenarios(clientId),
+      getForecastDaily(clientId),
+      getForecastActuals(clientId)
     ]);
 
     // Find BFCM and Q4 data (or first two scenarios if not found)

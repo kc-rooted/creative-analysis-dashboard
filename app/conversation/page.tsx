@@ -69,6 +69,9 @@ export default function ConversationPage() {
   // Updated useChat API for AI SDK 5.0 / @ai-sdk/react 2.0.10
   const { messages, sendMessage, status, error, setMessages } = useChat({
     id: currentClient, // This will create a new chat instance per client
+    headers: {
+      'x-client-id': currentClient || '',
+    },
     onError: (error) => {
       console.error('Chat error:', error);
     },

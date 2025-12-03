@@ -1,5 +1,5 @@
 import { BigQuery } from '@google-cloud/bigquery';
-import { getCurrentClientConfigSync, CLIENT_CONFIGS } from './client-config';
+import { getClientConfig, CLIENT_CONFIGS } from './client-config';
 
 // Initialize BigQuery client (same for all clients)
 const bigquery = new BigQuery({
@@ -10,62 +10,19 @@ const bigquery = new BigQuery({
   ),
 });
 
-// Get current client's dataset
-function getCurrentDataset() {
-  const clientConfig = getCurrentClientConfigSync();
-  return bigquery.dataset(clientConfig.bigquery.dataset);
-}
-
-// Track if we've initialized at least once in this function instance
-let hasInitialized = false;
-
-// Helper to get current dataset name safely
-async function getCurrentDatasetNameAsync(): Promise<string> {
-  // If we haven't initialized yet in this function instance, do it once
-  if (!hasInitialized) {
-    await getCurrentClientId();
-    hasInitialized = true;
-  }
-
-  const clientId = cachedCurrentClientIdForBQ;
-
+// Pure function: get dataset name for a specific client
+// This is the new preferred approach - always pass clientId explicitly
+function getDatasetName(clientId: string): string {
   if (!clientId) {
-    throw new Error('[getCurrentDatasetName] No client ID available. Client must be selected first.');
+    throw new Error('[getDatasetName] clientId is required');
   }
-
-  const { getClientConfig } = require('./client-config');
-  try {
-    const clientConfig = getClientConfig(clientId);
-    console.log('[getCurrentDatasetNameAsync] Using dataset:', clientConfig.bigquery.dataset, 'for client:', clientId);
-    return clientConfig.bigquery.dataset;
-  } catch (error) {
-    console.error('[getCurrentDatasetName] Error getting client config for', clientId, error);
-    throw new Error(`No configuration found for client: ${clientId}`);
-  }
+  const clientConfig = getClientConfig(clientId);
+  return clientConfig.bigquery.dataset;
 }
 
-// Synchronous version for backwards compatibility - uses cached value only
-function getCurrentDatasetName(): string {
-  const clientId = cachedCurrentClientIdForBQ;
-
-  if (!clientId) {
-    throw new Error('[getCurrentDatasetName] No client ID available. Client must be selected first.');
-  }
-
-  const { getClientConfig } = require('./client-config');
-  try {
-    const clientConfig = getClientConfig(clientId);
-    console.log('[getCurrentDatasetName] Using dataset:', clientConfig.bigquery.dataset, 'for client:', clientId);
-    return clientConfig.bigquery.dataset;
-  } catch (error) {
-    console.error('[getCurrentDatasetName] Error getting client config for', clientId, error);
-    throw new Error(`No configuration found for client: ${clientId}`);
-  }
-}
-
-// Helper to build table reference with current client config
-function getTableReference(tableName: string): string {
-  const datasetName = getCurrentDatasetName();
+// Helper to build table reference with explicit client ID
+function getTableReference(tableName: string, clientId: string): string {
+  const datasetName = getDatasetName(clientId);
   return `\`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${datasetName}.${tableName}\``;
 }
 
@@ -112,11 +69,13 @@ export interface CampaignUsage {
 }
 
 export async function getDeduplicatedCreatives(
+  clientId: string,
   status?: string,
   limit: number = 50,
   offset: number = 0,
   sortBy: 'priority' | 'date' | 'usage' | 'roas' | 'analyzed' = 'roas'
 ): Promise<Creative[]> {
+  const datasetName = getDatasetName(clientId);
   let query = `
     SELECT DISTINCT
       cpd.content_id,
@@ -143,7 +102,7 @@ export async function getDeduplicatedCreatives(
       ca.confidence_score,
       FORMAT_TIMESTAMP('%Y-%m-%d %H:%M:%S', cpd.last_seen) as last_updated,
       FORMAT_TIMESTAMP('%Y-%m-%d %H:%M:%S', cpd.first_seen) as first_seen,
-      
+
       -- Add fields needed for ORDER BY when using DISTINCT
       ca.analysis_priority,
       cpd.last_seen as last_seen_raw,
@@ -151,8 +110,8 @@ export async function getDeduplicatedCreatives(
       cpd.total_usage_count as total_usage_count_sort,
       cpd.roas as roas_sort,
       ca.analysis_date as analysis_date_sort
-    FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${getCurrentDatasetName()}.creative_performance_dashboard\` cpd
-    LEFT JOIN \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${getCurrentDatasetName()}.creative_analysis\` ca
+    FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${datasetName}.creative_performance_dashboard\` cpd
+    LEFT JOIN \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${datasetName}.creative_analysis\` ca
       ON cpd.content_id = ca.content_id
   `;
 
@@ -201,29 +160,30 @@ export async function getDeduplicatedCreatives(
   return rows as Creative[];
 }
 
-export async function getAnalysisStatistics(): Promise<AnalysisStats[]> {
+export async function getAnalysisStatistics(clientId: string): Promise<AnalysisStats[]> {
+  const datasetName = getDatasetName(clientId);
   const query = `
-    SELECT 
+    SELECT
       'pending' as analysis_status,
       COUNT(DISTINCT cpd.content_id) as unique_images,
       CAST(IFNULL(SUM(cpd.total_campaigns), 0) AS INT64) as total_campaign_impact
-    FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${getCurrentDatasetName()}.creative_performance_dashboard\` cpd
-    LEFT JOIN \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${getCurrentDatasetName()}.creative_analysis\` ca
+    FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${datasetName}.creative_performance_dashboard\` cpd
+    LEFT JOIN \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${datasetName}.creative_analysis\` ca
       ON cpd.content_id = ca.content_id
-    WHERE cpd.creative_type != 'NO_VISUAL' 
+    WHERE cpd.creative_type != 'NO_VISUAL'
       AND cpd.video_id IS NULL
       AND (ca.content_id IS NULL OR ca.analysis_status IS NULL OR ca.analysis_status = 'pending')
-    
+
     UNION ALL
-    
-    SELECT 
+
+    SELECT
       ca.analysis_status,
       COUNT(DISTINCT ca.content_id) as unique_images,
       CAST(IFNULL(SUM(cpd.total_campaigns), 0) AS INT64) as total_campaign_impact
-    FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${getCurrentDatasetName()}.creative_analysis\` ca
-    JOIN \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${getCurrentDatasetName()}.creative_performance_dashboard\` cpd
+    FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${datasetName}.creative_analysis\` ca
+    JOIN \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${datasetName}.creative_performance_dashboard\` cpd
       ON ca.content_id = cpd.content_id
-    WHERE cpd.creative_type != 'NO_VISUAL' 
+    WHERE cpd.creative_type != 'NO_VISUAL'
       AND cpd.video_id IS NULL
       AND ca.analysis_status IS NOT NULL AND ca.analysis_status != 'pending'
     GROUP BY ca.analysis_status
@@ -233,16 +193,17 @@ export async function getAnalysisStatistics(): Promise<AnalysisStats[]> {
   return rows as AnalysisStats[];
 }
 
-export async function getCampaignUsage(imageUrl: string): Promise<CampaignUsage[]> {
+export async function getCampaignUsage(clientId: string, imageUrl: string): Promise<CampaignUsage[]> {
+  const datasetName = getDatasetName(clientId);
   const query = `
-    SELECT 
+    SELECT
       creative_id,
       creative_name,
       platform,
       ad_text,
       ad_title,
       FORMAT_TIMESTAMP('%Y-%m-%d %H:%M:%S', last_updated) as last_updated
-    FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${getCurrentDatasetName()}.unified_creative_inventory\`
+    FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${datasetName}.unified_creative_inventory\`
     WHERE primary_image_url = @imageUrl
     ORDER BY last_updated DESC
   `;
@@ -257,11 +218,13 @@ export async function getCampaignUsage(imageUrl: string): Promise<CampaignUsage[
 }
 
 export async function updateAnalysisStatus(
+  clientId: string,
   creativeId: string,
   status: 'analyzing' | 'completed' | 'failed',
   analysisData?: any
 ) {
-  const table = dataset.table('creative_analysis');
+  const datasetName = getDatasetName(clientId);
+  const table = bigquery.dataset(datasetName).table('creative_analysis');
 
   const row = {
     creative_id: creativeId,
@@ -273,19 +236,21 @@ export async function updateAnalysisStatus(
   await table.insert([row]);
 }
 
-export async function triggerAnalysis(contentIds: string[]): Promise<void> {
+export async function triggerAnalysis(clientId: string, contentIds: string[]): Promise<void> {
   // Mark creatives for analysis
   for (const contentId of contentIds) {
-    await updateAnalysisStatus(contentId, 'analyzing');
+    await updateAnalysisStatus(clientId, contentId, 'analyzing');
   }
 }
 
 export async function updateCreativeTags(
+  clientId: string,
   contentId: string,
   tags: string[]
 ): Promise<void> {
+  const datasetName = getDatasetName(clientId);
   const query = `
-    UPDATE \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${getCurrentDatasetName()}.creative_analysis\`
+    UPDATE \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${datasetName}.creative_analysis\`
     SET creative_tags = @tags,
         last_updated = CURRENT_TIMESTAMP()
     WHERE content_id = @contentId
@@ -372,7 +337,8 @@ export interface ExecutiveSummary {
 }
 
 // Get paid media trend data for dashboard
-export async function getPaidMediaTrend(days: number = 30): Promise<any[]> {
+export async function getPaidMediaTrend(clientId: string, days: number = 30): Promise<any[]> {
+  const datasetName = getDatasetName(clientId);
   const query = `
     SELECT
       date,
@@ -380,7 +346,7 @@ export async function getPaidMediaTrend(days: number = 30): Promise<any[]> {
       SUM(spend) as spend,
       SUM(purchases) as orders,
       ROUND(SAFE_DIVIDE(SUM(revenue), SUM(spend)), 2) as roas
-    FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${getCurrentDatasetName()}.paid_media_performance\`
+    FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${datasetName}.paid_media_performance\`
     WHERE date >= DATE_SUB(CURRENT_DATE(), INTERVAL ${days} DAY)
       AND date < CURRENT_DATE()
     GROUP BY date
@@ -407,7 +373,8 @@ export async function getPaidMediaTrend(days: number = 30): Promise<any[]> {
 }
 
 // Get 7-day revenue forecast aggregates
-export async function getRevenueForecast7Day(): Promise<any> {
+export async function getRevenueForecast7Day(clientId: string): Promise<any> {
+  const datasetName = getDatasetName(clientId);
   const query = `
     SELECT
       SUM(forecasted_revenue) as total_forecasted_revenue,
@@ -416,7 +383,7 @@ export async function getRevenueForecast7Day(): Promise<any> {
       SUM(suggested_spend) as total_suggested_spend,
       AVG(expected_roas) as avg_expected_roas,
       COUNT(*) as forecast_days
-    FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${getCurrentDatasetName()}.ai_comprehensive_revenue_forecast_7day\`
+    FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${datasetName}.ai_comprehensive_revenue_forecast_7day\`
   `;
 
   try {
@@ -519,7 +486,8 @@ function getDateFilterSQL(preset: string, startDate?: string, endDate?: string, 
 }
 
 // Get email dashboard KPIs and metrics
-export async function getEmailDashboardData(preset: string = 'mtd', startDate?: string, endDate?: string, comparisonType: string = 'previous-period'): Promise<any> {
+export async function getEmailDashboardData(clientId: string, preset: string = 'mtd', startDate?: string, endDate?: string, comparisonType: string = 'previous-period'): Promise<any> {
+  const datasetName = getDatasetName(clientId);
   const filters = getDateFilterSQL(preset, startDate, endDate, comparisonType);
 
   // Choose which comparison filter to use
@@ -532,7 +500,7 @@ export async function getEmailDashboardData(preset: string = 'mtd', startDate?: 
         SUM(CASE WHEN attributed_email_type = 'Campaign' THEN attributed_revenue ELSE 0 END) as campaign_revenue_mtd,
         SUM(CASE WHEN attributed_email_type = 'Flow' THEN attributed_revenue ELSE 0 END) as flow_revenue_mtd,
         SUM(attributed_revenue) as total_email_revenue_mtd
-      FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${getCurrentDatasetName()}.klaviyo_daily_unified_attribution\`
+      FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${datasetName}.klaviyo_daily_unified_attribution\`
       WHERE ${filters.revenueFilter}
     ),
     prev_revenue_data AS (
@@ -540,19 +508,19 @@ export async function getEmailDashboardData(preset: string = 'mtd', startDate?: 
         SUM(CASE WHEN attributed_email_type = 'Campaign' THEN attributed_revenue ELSE 0 END) as prev_campaign_revenue,
         SUM(CASE WHEN attributed_email_type = 'Flow' THEN attributed_revenue ELSE 0 END) as prev_flow_revenue,
         SUM(attributed_revenue) as prev_total_email_revenue
-      FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${getCurrentDatasetName()}.klaviyo_daily_unified_attribution\`
+      FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${datasetName}.klaviyo_daily_unified_attribution\`
       WHERE ${comparisonRevenueFilter}
     ),
     total_shopify_revenue AS (
       SELECT
         SUM(revenue) as total_revenue
-      FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${getCurrentDatasetName()}.daily_business_metrics\`
+      FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${datasetName}.daily_business_metrics\`
       WHERE ${filters.revenueFilter.replace(/purchase_date/g, 'date')}
     ),
     prev_total_shopify_revenue AS (
       SELECT
         SUM(revenue) as prev_total_revenue
-      FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${getCurrentDatasetName()}.daily_business_metrics\`
+      FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${datasetName}.daily_business_metrics\`
       WHERE ${comparisonRevenueFilter.replace(/purchase_date/g, 'date')}
     ),
     metrics_data AS (
@@ -567,7 +535,7 @@ export async function getEmailDashboardData(preset: string = 'mtd', startDate?: 
         SUM(deliveries) as total_deliveries,
         SUM(bounces) as total_bounces,
         SUM(unsubscribes) as total_unsubscribes
-      FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${getCurrentDatasetName()}.klaviyo_campaigns_detailed\`
+      FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${datasetName}.klaviyo_campaigns_detailed\`
       WHERE ${filters.campaignFilter}
     ),
     prev_metrics_data AS (
@@ -581,7 +549,7 @@ export async function getEmailDashboardData(preset: string = 'mtd', startDate?: 
         SUM(deliveries) as prev_total_deliveries,
         SUM(bounces) as prev_total_bounces,
         SUM(unsubscribes) as prev_total_unsubscribes
-      FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${getCurrentDatasetName()}.klaviyo_campaigns_detailed\`
+      FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${datasetName}.klaviyo_campaigns_detailed\`
       WHERE ${comparisonCampaignFilter}
     )
     SELECT * FROM revenue_data, prev_revenue_data, total_shopify_revenue, prev_total_shopify_revenue, metrics_data, prev_metrics_data
@@ -675,7 +643,8 @@ export async function getEmailDashboardData(preset: string = 'mtd', startDate?: 
 }
 
 // Get email campaigns table data
-export async function getEmailCampaignsTable(preset: string = 'mtd', startDate?: string, endDate?: string): Promise<any[]> {
+export async function getEmailCampaignsTable(clientId: string, preset: string = 'mtd', startDate?: string, endDate?: string): Promise<any[]> {
+  const datasetName = getDatasetName(clientId);
   const { campaignFilter } = getDateFilterSQL(preset, startDate, endDate);
 
   const query = `
@@ -692,7 +661,7 @@ export async function getEmailCampaignsTable(preset: string = 'mtd', startDate?:
       attributed_revenue,
       attributed_purchases,
       ROUND(revenue_per_send, 3) as revenue_per_send
-    FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${getCurrentDatasetName()}.klaviyo_campaigns_detailed\`
+    FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${datasetName}.klaviyo_campaigns_detailed\`
     WHERE ${campaignFilter}
     ORDER BY send_date DESC
     LIMIT 50
@@ -725,7 +694,8 @@ export async function getEmailCampaignsTable(preset: string = 'mtd', startDate?:
 }
 
 // Get email flows table data
-export async function getEmailFlowsTable(preset: string = 'mtd', startDate?: string, endDate?: string): Promise<any[]> {
+export async function getEmailFlowsTable(clientId: string, preset: string = 'mtd', startDate?: string, endDate?: string): Promise<any[]> {
+  const datasetName = getDatasetName(clientId);
   const { revenueFilter } = getDateFilterSQL(preset, startDate, endDate);
 
   const query = `
@@ -735,7 +705,7 @@ export async function getEmailFlowsTable(preset: string = 'mtd', startDate?: str
       SUM(attributed_revenue) as total_revenue,
       SUM(attributed_purchases) as total_purchases,
       COUNT(DISTINCT purchase_date) as days_active
-    FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${getCurrentDatasetName()}.klaviyo_daily_flow_revenue\`
+    FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${datasetName}.klaviyo_daily_flow_revenue\`
     WHERE ${revenueFilter}
     GROUP BY flow_name, flow_category
     ORDER BY total_revenue DESC
@@ -762,7 +732,8 @@ export async function getEmailFlowsTable(preset: string = 'mtd', startDate?: str
 }
 
 // Get product intelligence data
-export async function getProductIntelligence(period: string = '30d'): Promise<any[]> {
+export async function getProductIntelligence(clientId: string, period: string = '30d'): Promise<any[]> {
+  const datasetName = getDatasetName(clientId);
   const query = `
     SELECT
       product_title,
@@ -775,7 +746,7 @@ export async function getProductIntelligence(period: string = '30d'): Promise<an
       smart_performance_category,
       composite_performance_score,
       product_lifecycle_stage
-    FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${getCurrentDatasetName()}.product_performance_score\`
+    FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${datasetName}.product_performance_score\`
     ORDER BY revenue_30d DESC
     LIMIT 20
   `;
@@ -806,14 +777,15 @@ export async function getProductIntelligence(period: string = '30d'): Promise<an
 }
 
 // Get grip repeat purchase analysis
-export async function getGripRepeatPurchaseAnalysis(): Promise<any[]> {
+export async function getGripRepeatPurchaseAnalysis(clientId: string): Promise<any[]> {
+  const datasetName = getDatasetName(clientId);
   const query = `
     SELECT
       first_grip_type,
       repeat_purchase_rate_pct,
       loyalty_rate_pct,
       total_customers
-    FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${getCurrentDatasetName()}.ai_grip_repeat_purchase_analysis\`
+    FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${datasetName}.ai_grip_repeat_purchase_analysis\`
     ORDER BY repeat_purchase_rate_pct DESC
   `;
 
@@ -836,7 +808,8 @@ export async function getGripRepeatPurchaseAnalysis(): Promise<any[]> {
 }
 
 // Get product rankings
-export async function getProductRankings(): Promise<any[]> {
+export async function getProductRankings(clientId: string): Promise<any[]> {
+  const datasetName = getDatasetName(clientId);
   const query = `
     SELECT
       product_title,
@@ -846,7 +819,7 @@ export async function getProductRankings(): Promise<any[]> {
       revenue_rank,
       performance_tier,
       trend_status
-    FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${getCurrentDatasetName()}.product_rankings\`
+    FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${datasetName}.product_rankings\`
     ORDER BY revenue_rank
     LIMIT 20
   `;
@@ -873,7 +846,8 @@ export async function getProductRankings(): Promise<any[]> {
 }
 
 // Get grip switching patterns data
-export async function getGripSwitchingPatterns(): Promise<any[]> {
+export async function getGripSwitchingPatterns(clientId: string): Promise<any[]> {
+  const datasetName = getDatasetName(clientId);
   const query = `
     SELECT
       first_grip_type,
@@ -886,7 +860,7 @@ export async function getGripSwitchingPatterns(): Promise<any[]> {
       avg_days_between_purchases,
       pct_of_first_grip_repeats,
       pct_of_first_grip_repeat_revenue
-    FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${getCurrentDatasetName()}.ai_grip_switching_patterns\`
+    FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${datasetName}.ai_grip_switching_patterns\`
     ORDER BY total_repeat_orders DESC
   `;
 
@@ -915,7 +889,8 @@ export async function getGripSwitchingPatterns(): Promise<any[]> {
 }
 
 // Get putter grip switching patterns data
-export async function getPutterGripSwitchingPatterns(): Promise<any[]> {
+export async function getPutterGripSwitchingPatterns(clientId: string): Promise<any[]> {
+  const datasetName = getDatasetName(clientId);
   const query = `
     SELECT
       first_grip_type,
@@ -928,7 +903,7 @@ export async function getPutterGripSwitchingPatterns(): Promise<any[]> {
       avg_days_between_purchases,
       pct_of_first_grip_repeats,
       pct_of_first_grip_repeat_revenue
-    FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${getCurrentDatasetName()}.ai_putter_grip_switching_patterns\`
+    FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${datasetName}.ai_putter_grip_switching_patterns\`
     ORDER BY pct_of_first_grip_repeats DESC
   `;
 
@@ -957,7 +932,8 @@ export async function getPutterGripSwitchingPatterns(): Promise<any[]> {
 }
 
 // Get customer CLV and churn data
-export async function getCustomerCLVData(): Promise<any> {
+export async function getCustomerCLVData(clientId: string): Promise<any> {
+  const datasetName = getDatasetName(clientId);
   const query = `
     WITH segment_stats AS (
       SELECT
@@ -966,7 +942,7 @@ export async function getCustomerCLVData(): Promise<any> {
         AVG(predicted_clv_12m) as avg_clv,
         SUM(CASE WHEN churn_probability_30d >= 0.7 THEN 1 ELSE 0 END) as high_risk_count,
         SUM(CASE WHEN churn_probability_30d >= 0.7 THEN predicted_clv_12m ELSE 0 END) as at_risk_revenue
-      FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${getCurrentDatasetName()}.clv_prediction_advanced\`
+      FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${datasetName}.clv_prediction_advanced\`
       WHERE value_tier IS NOT NULL
       GROUP BY value_tier
     )
@@ -1020,7 +996,8 @@ export async function getCustomerCLVData(): Promise<any> {
 }
 
 // Get customer overview KPIs
-export async function getCustomerOverviewKPIs(): Promise<any> {
+export async function getCustomerOverviewKPIs(clientId: string): Promise<any> {
+  const datasetName = getDatasetName(clientId);
   const query = `
     WITH current_metrics AS (
       SELECT
@@ -1032,14 +1009,14 @@ export async function getCustomerOverviewKPIs(): Promise<any> {
         ROUND(SUM(lifetime_value), 2) as total_customer_revenue,
         COUNT(DISTINCT CASE WHEN days_since_last_order <= 30 THEN customer_id END) as active_30d,
         COUNT(DISTINCT CASE WHEN days_since_last_order <= 90 THEN customer_id END) as active_90d
-      FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${getCurrentDatasetName()}.shopify_customer_360\`
+      FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${datasetName}.shopify_customer_360\`
       WHERE customer_id IS NOT NULL
     ),
     churn_metrics AS (
       SELECT
         AVG(churn_probability_30d) as avg_churn_probability,
         COUNT(CASE WHEN churn_probability_30d >= 0.7 THEN 1 END) as high_risk_customers
-      FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${getCurrentDatasetName()}.clv_prediction_advanced\`
+      FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${datasetName}.clv_prediction_advanced\`
     )
     SELECT
       cm.*,
@@ -1103,7 +1080,8 @@ export async function getCustomerOverviewKPIs(): Promise<any> {
 }
 
 // Get LTV intelligence data
-export async function getLTVIntelligence(): Promise<any> {
+export async function getLTVIntelligence(clientId: string): Promise<any> {
+  const datasetName = getDatasetName(clientId);
   const query = `
     WITH ltv_distribution AS (
       SELECT
@@ -1113,8 +1091,8 @@ export async function getLTVIntelligence(): Promise<any> {
         ROUND(MIN(sc.lifetime_value), 2) as min_ltv,
         ROUND(MAX(sc.lifetime_value), 2) as max_ltv,
         ROUND(SUM(sc.lifetime_value), 2) as total_ltv
-      FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${getCurrentDatasetName()}.clv_prediction_advanced\` cp
-      LEFT JOIN \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${getCurrentDatasetName()}.shopify_customer_360\` sc
+      FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${datasetName}.clv_prediction_advanced\` cp
+      LEFT JOIN \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${datasetName}.shopify_customer_360\` sc
         ON cp.unified_email = sc.email
       WHERE cp.value_tier IS NOT NULL
       GROUP BY cp.value_tier
@@ -1125,7 +1103,7 @@ export async function getLTVIntelligence(): Promise<any> {
         COUNT(*) as customer_count,
         ROUND(AVG(lifetime_value), 2) as avg_ltv,
         ROUND(SUM(lifetime_value), 2) as total_revenue
-      FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${getCurrentDatasetName()}.shopify_customer_360\`
+      FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${datasetName}.shopify_customer_360\`
       WHERE country IS NOT NULL AND country != ''
       GROUP BY country
       HAVING customer_count >= 10
@@ -1138,8 +1116,8 @@ export async function getLTVIntelligence(): Promise<any> {
         COUNT(*) as customer_count,
         ROUND(AVG(cp.predicted_clv_12m), 2) as avg_predicted_clv,
         ROUND(AVG(sc.lifetime_value), 2) as avg_actual_ltv
-      FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${getCurrentDatasetName()}.clv_prediction_advanced\` cp
-      LEFT JOIN \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${getCurrentDatasetName()}.shopify_customer_360\` sc
+      FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${datasetName}.clv_prediction_advanced\` cp
+      LEFT JOIN \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${datasetName}.shopify_customer_360\` sc
         ON cp.unified_email = sc.email
       WHERE cp.value_tier IS NOT NULL
       GROUP BY cp.value_tier
@@ -1195,7 +1173,8 @@ export async function getLTVIntelligence(): Promise<any> {
 }
 
 // Get customer journey analysis
-export async function getCustomerJourneyAnalysis(): Promise<any> {
+export async function getCustomerJourneyAnalysis(clientId: string): Promise<any> {
+  const datasetName = getDatasetName(clientId);
   const query = `
     SELECT
       journey_pattern,
@@ -1207,7 +1186,7 @@ export async function getCustomerJourneyAnalysis(): Promise<any> {
       avg_order_value,
       first_touch_channel,
       last_touch_channel
-    FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${getCurrentDatasetName()}.customer_journey_path_analysis\`
+    FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${datasetName}.customer_journey_path_analysis\`
     ORDER BY customer_count DESC
     LIMIT 20
   `;
@@ -1236,7 +1215,8 @@ export async function getCustomerJourneyAnalysis(): Promise<any> {
 }
 
 // Get platform performance data
-export async function getPlatformPerformanceData(period: string = '30d'): Promise<any> {
+export async function getPlatformPerformanceData(clientId: string, period: string = '30d'): Promise<any> {
+  const datasetName = getDatasetName(clientId);
   const daysMap: { [key: string]: number } = {
     '7d': 7,
     '30d': 30,
@@ -1253,7 +1233,7 @@ export async function getPlatformPerformanceData(period: string = '30d'): Promis
         SUM(spend) as spend,
         SUM(revenue) as revenue,
         SAFE_DIVIDE(SUM(revenue), SUM(spend)) as roas
-      FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${getCurrentDatasetName()}.paid_media_performance\`
+      FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${datasetName}.paid_media_performance\`
       WHERE date >= DATE_SUB(CURRENT_DATE(), INTERVAL ${days} DAY)
       GROUP BY platform, date
     ),
@@ -1312,7 +1292,7 @@ export async function getPlatformPerformanceData(period: string = '30d'): Promis
         action_recommendation,
         current_spend_share_pct,
         optimal_spend_share_pct
-      FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${getCurrentDatasetName()}.ai_comprehensive_platform_marginal_analysis\`
+      FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${datasetName}.ai_comprehensive_platform_marginal_analysis\`
       WHERE platform IN ('Facebook', 'Google Ads')
     `;
 
@@ -1340,7 +1320,7 @@ export async function getPlatformPerformanceData(period: string = '30d'): Promis
         action_recommendation,
         recommended_spend_change,
         projected_30d_impact
-      FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${getCurrentDatasetName()}.ai_comprehensive_platform_marginal_analysis\`
+      FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${datasetName}.ai_comprehensive_platform_marginal_analysis\`
       ORDER BY avg_marginal_roas DESC
     `;
 
@@ -1433,7 +1413,8 @@ function getPaidMediaDateFilterSQL(preset: string, startDate?: string, endDate?:
 }
 
 // Get Facebook performance data with KPIs and time series
-export async function getFacebookPerformanceData(preset: string = 'mtd', startDate?: string, endDate?: string, comparisonType: string = 'previous-period'): Promise<any> {
+export async function getFacebookPerformanceData(clientId: string, preset: string = 'mtd', startDate?: string, endDate?: string, comparisonType: string = 'previous-period'): Promise<any> {
+  const datasetName = getDatasetName(clientId);
   const filters = getPaidMediaDateFilterSQL(preset, startDate, endDate, comparisonType);
   const comparisonDateFilter = comparisonType === 'previous-year' ? filters.prevYearDateFilter : filters.prevDateFilter;
 
@@ -1464,7 +1445,7 @@ export async function getFacebookPerformanceData(preset: string = 'mtd', startDa
         SUM(clicks) as total_clicks,
         SAFE_DIVIDE(SUM(clicks), SUM(impressions)) * 100 as ctr,
         SUM(purchases) as total_purchases
-      FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${getCurrentDatasetName()}.paid_media_performance\`
+      FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${datasetName}.paid_media_performance\`
       WHERE platform = 'Facebook' AND ${filters.dateFilter}
     ),
     comparison_period AS (
@@ -1475,7 +1456,7 @@ export async function getFacebookPerformanceData(preset: string = 'mtd', startDa
         SUM(impressions) as total_impressions,
         SUM(clicks) as total_clicks,
         SUM(purchases) as total_purchases
-      FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${getCurrentDatasetName()}.paid_media_performance\`
+      FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${datasetName}.paid_media_performance\`
       WHERE platform = 'Facebook' AND ${comparisonDateFilter}
     ),
     current_daily AS (
@@ -1483,7 +1464,7 @@ export async function getFacebookPerformanceData(preset: string = 'mtd', startDa
         date,
         SUM(revenue) as revenue_current,
         SUM(spend) as spend_current
-      FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${getCurrentDatasetName()}.paid_media_performance\`
+      FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${datasetName}.paid_media_performance\`
       WHERE platform = 'Facebook' AND ${filters.dateFilter}
       GROUP BY date
     ),
@@ -1516,7 +1497,7 @@ export async function getFacebookPerformanceData(preset: string = 'mtd', startDa
         SUM(impressions) as total_impressions,
         SUM(clicks) as total_clicks,
         SUM(purchases) as total_purchases
-      FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${getCurrentDatasetName()}.paid_media_performance\`
+      FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${datasetName}.paid_media_performance\`
       WHERE platform = 'Facebook'
         AND date >= DATE_SUB(CURRENT_DATE(), INTERVAL 7 DAY)
         AND date < CURRENT_DATE()
@@ -1529,7 +1510,7 @@ export async function getFacebookPerformanceData(preset: string = 'mtd', startDa
         SUM(impressions) as total_impressions,
         SUM(clicks) as total_clicks,
         SUM(purchases) as total_purchases
-      FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${getCurrentDatasetName()}.paid_media_performance\`
+      FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${datasetName}.paid_media_performance\`
       WHERE platform = 'Facebook'
         AND ${trailing7dComparisonFilter}
     ),
@@ -1541,7 +1522,7 @@ export async function getFacebookPerformanceData(preset: string = 'mtd', startDa
         SUM(impressions) as total_impressions,
         SUM(clicks) as total_clicks,
         SUM(purchases) as total_purchases
-      FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${getCurrentDatasetName()}.paid_media_performance\`
+      FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${datasetName}.paid_media_performance\`
       WHERE platform = 'Facebook'
         AND date >= DATE_SUB(CURRENT_DATE(), INTERVAL 30 DAY)
         AND date < CURRENT_DATE()
@@ -1554,7 +1535,7 @@ export async function getFacebookPerformanceData(preset: string = 'mtd', startDa
         SUM(impressions) as total_impressions,
         SUM(clicks) as total_clicks,
         SUM(purchases) as total_purchases
-      FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${getCurrentDatasetName()}.paid_media_performance\`
+      FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${datasetName}.paid_media_performance\`
       WHERE platform = 'Facebook'
         AND ${trailing30dComparisonFilter}
     )
@@ -1740,8 +1721,8 @@ export async function getFacebookPerformanceData(preset: string = 'mtd', startDa
         spend: Math.round(parseFloat(d.spend_current || 0)),
         roas: parseFloat((d.roas_current || 0).toFixed(2))
       })),
-      campaigns: await getFacebookCampaigns(preset, startDate, endDate),
-      ads: await getFacebookAds(preset, startDate, endDate)
+      campaigns: await getFacebookCampaigns(clientId, preset, startDate, endDate),
+      ads: await getFacebookAds(clientId, preset, startDate, endDate)
     };
   } catch (error) {
     console.error('Error fetching Facebook performance data:', error);
@@ -1750,7 +1731,8 @@ export async function getFacebookPerformanceData(preset: string = 'mtd', startDa
 }
 
 // Get Facebook performance by country
-export async function getFacebookPerformanceByCountry(preset: string = 'mtd', startDate?: string, endDate?: string, comparisonType: string = 'previous-period'): Promise<any[]> {
+export async function getFacebookPerformanceByCountry(clientId: string, preset: string = 'mtd', startDate?: string, endDate?: string, comparisonType: string = 'previous-period'): Promise<any[]> {
+  const datasetName = getDatasetName(clientId);
   const filters = getPaidMediaDateFilterSQL(preset, startDate, endDate, comparisonType);
   const comparisonDateFilter = comparisonType === 'previous-year' ? filters.prevYearDateFilter : filters.prevDateFilter;
 
@@ -1765,7 +1747,7 @@ export async function getFacebookPerformanceByCountry(preset: string = 'mtd', st
         SUM(clicks) as clicks,
         SUM(purchases) as purchases,
         SAFE_DIVIDE(SUM(clicks), SUM(impressions)) * 100 as ctr
-      FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${getCurrentDatasetName()}.geographic_paid_media_performance\`
+      FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${datasetName}.geographic_paid_media_performance\`
       WHERE platform = 'Facebook' AND ${filters.dateFilter}
       GROUP BY country
     ),
@@ -1776,7 +1758,7 @@ export async function getFacebookPerformanceByCountry(preset: string = 'mtd', st
         SUM(revenue) as revenue,
         SAFE_DIVIDE(SUM(revenue), SUM(spend)) as roas,
         SUM(purchases) as purchases
-      FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${getCurrentDatasetName()}.geographic_paid_media_performance\`
+      FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${datasetName}.geographic_paid_media_performance\`
       WHERE platform = 'Facebook' AND ${comparisonDateFilter}
       GROUP BY country
     ),
@@ -1786,7 +1768,7 @@ export async function getFacebookPerformanceByCountry(preset: string = 'mtd', st
         SUM(spend) as spend,
         SUM(revenue) as revenue,
         SAFE_DIVIDE(SUM(revenue), SUM(spend)) as roas
-      FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${getCurrentDatasetName()}.geographic_paid_media_performance\`
+      FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${datasetName}.geographic_paid_media_performance\`
       WHERE platform = 'Facebook' AND date >= DATE_SUB(CURRENT_DATE(), INTERVAL 7 DAY)
       GROUP BY country
     ),
@@ -1796,7 +1778,7 @@ export async function getFacebookPerformanceByCountry(preset: string = 'mtd', st
         SUM(spend) as spend,
         SUM(revenue) as revenue,
         SAFE_DIVIDE(SUM(revenue), SUM(spend)) as roas
-      FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${getCurrentDatasetName()}.geographic_paid_media_performance\`
+      FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${datasetName}.geographic_paid_media_performance\`
       WHERE platform = 'Facebook' AND date >= DATE_SUB(CURRENT_DATE(), INTERVAL 30 DAY)
       GROUP BY country
     )
@@ -1866,7 +1848,8 @@ export async function getFacebookPerformanceByCountry(preset: string = 'mtd', st
 }
 
 // Get Facebook campaigns data
-async function getFacebookCampaigns(preset: string = 'mtd', startDate?: string, endDate?: string): Promise<any[]> {
+async function getFacebookCampaigns(clientId: string, preset: string = 'mtd', startDate?: string, endDate?: string): Promise<any[]> {
+  const datasetName = getDatasetName(clientId);
   const filters = getPaidMediaDateFilterSQL(preset, startDate, endDate, 'previous-period');
 
   const query = `
@@ -1887,7 +1870,7 @@ async function getFacebookCampaigns(preset: string = 'mtd', startDate?: string, 
       ROUND(SAFE_DIVIDE(SUM(spend), SUM(purchases)), 2) as cpa,
       ROUND(SAFE_DIVIDE(SUM(purchases), SUM(clicks)) * 100, 2) as conversion_rate,
       ROUND(SAFE_DIVIDE(SUM(revenue), SUM(purchases)), 2) as avg_order_value
-    FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${getCurrentDatasetName()}.paid_media_performance\`
+    FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${datasetName}.paid_media_performance\`
     WHERE platform = 'Facebook'
       AND ${filters.dateFilter}
     GROUP BY campaign_name
@@ -1919,7 +1902,8 @@ async function getFacebookCampaigns(preset: string = 'mtd', startDate?: string, 
 }
 
 // Get Facebook ads data (ad-level)
-async function getFacebookAds(preset: string = 'mtd', startDate?: string, endDate?: string): Promise<any[]> {
+async function getFacebookAds(clientId: string, preset: string = 'mtd', startDate?: string, endDate?: string): Promise<any[]> {
+  const datasetName = getDatasetName(clientId);
   const filters = getPaidMediaDateFilterSQL(preset, startDate, endDate, 'previous-period');
 
   const query = `
@@ -1940,7 +1924,7 @@ async function getFacebookAds(preset: string = 'mtd', startDate?: string, endDat
       ROUND(SAFE_DIVIDE(SUM(purchases), SUM(clicks)) * 100, 2) as conversion_rate,
       ROUND(SAFE_DIVIDE(SUM(revenue), SUM(purchases)), 2) as avg_order_value,
       MAX(date) as last_active_date
-    FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${getCurrentDatasetName()}.paid_media_performance\`
+    FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${datasetName}.paid_media_performance\`
     WHERE platform = 'Facebook'
       AND ${filters.dateFilter}
     GROUP BY campaign_name, adset_name, ad_name
@@ -1980,7 +1964,8 @@ async function getFacebookAds(preset: string = 'mtd', startDate?: string, endDat
 }
 
 // Get Google Ads performance data
-export async function getGoogleAdsPerformanceData(preset: string = 'mtd', startDate?: string, endDate?: string, comparisonType: string = 'previous-period'): Promise<any> {
+export async function getGoogleAdsPerformanceData(clientId: string, preset: string = 'mtd', startDate?: string, endDate?: string, comparisonType: string = 'previous-period'): Promise<any> {
+  const datasetName = getDatasetName(clientId);
   const filters = getPaidMediaDateFilterSQL(preset, startDate, endDate, comparisonType);
   const comparisonDateFilter = comparisonType === 'previous-year' ? filters.prevYearDateFilter : filters.prevDateFilter;
 
@@ -1994,7 +1979,7 @@ export async function getGoogleAdsPerformanceData(preset: string = 'mtd', startD
         SUM(clicks) as total_clicks,
         SAFE_DIVIDE(SUM(clicks), SUM(impressions)) * 100 as ctr,
         SUM(purchases) as total_purchases
-      FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${getCurrentDatasetName()}.paid_media_performance\`
+      FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${datasetName}.paid_media_performance\`
       WHERE platform = 'Google Ads' AND ${filters.dateFilter}
     ),
     comparison_period AS (
@@ -2005,7 +1990,7 @@ export async function getGoogleAdsPerformanceData(preset: string = 'mtd', startD
         SUM(impressions) as total_impressions,
         SUM(clicks) as total_clicks,
         SUM(purchases) as total_purchases
-      FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${getCurrentDatasetName()}.paid_media_performance\`
+      FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${datasetName}.paid_media_performance\`
       WHERE platform = 'Google Ads' AND ${comparisonDateFilter}
     ),
     current_daily AS (
@@ -2013,7 +1998,7 @@ export async function getGoogleAdsPerformanceData(preset: string = 'mtd', startD
         date,
         SUM(revenue) as revenue_current,
         SUM(spend) as spend_current
-      FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${getCurrentDatasetName()}.paid_media_performance\`
+      FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${datasetName}.paid_media_performance\`
       WHERE platform = 'Google Ads' AND ${filters.dateFilter}
       GROUP BY date
     ),
@@ -2046,7 +2031,7 @@ export async function getGoogleAdsPerformanceData(preset: string = 'mtd', startD
         SUM(impressions) as total_impressions,
         SUM(clicks) as total_clicks,
         SUM(purchases) as total_purchases
-      FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${getCurrentDatasetName()}.paid_media_performance\`
+      FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${datasetName}.paid_media_performance\`
       WHERE platform = 'Google Ads'
         AND date >= DATE_SUB(CURRENT_DATE(), INTERVAL 7 DAY)
         AND date < CURRENT_DATE()
@@ -2059,7 +2044,7 @@ export async function getGoogleAdsPerformanceData(preset: string = 'mtd', startD
         SUM(impressions) as total_impressions,
         SUM(clicks) as total_clicks,
         SUM(purchases) as total_purchases
-      FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${getCurrentDatasetName()}.paid_media_performance\`
+      FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${datasetName}.paid_media_performance\`
       WHERE platform = 'Google Ads'
         AND date >= DATE_SUB(DATE_SUB(CURRENT_DATE(), INTERVAL 1 YEAR), INTERVAL 7 DAY)
         AND date < DATE_SUB(CURRENT_DATE(), INTERVAL 1 YEAR)
@@ -2072,7 +2057,7 @@ export async function getGoogleAdsPerformanceData(preset: string = 'mtd', startD
         SUM(impressions) as total_impressions,
         SUM(clicks) as total_clicks,
         SUM(purchases) as total_purchases
-      FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${getCurrentDatasetName()}.paid_media_performance\`
+      FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${datasetName}.paid_media_performance\`
       WHERE platform = 'Google Ads'
         AND date >= DATE_SUB(CURRENT_DATE(), INTERVAL 30 DAY)
         AND date < CURRENT_DATE()
@@ -2085,7 +2070,7 @@ export async function getGoogleAdsPerformanceData(preset: string = 'mtd', startD
         SUM(impressions) as total_impressions,
         SUM(clicks) as total_clicks,
         SUM(purchases) as total_purchases
-      FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${getCurrentDatasetName()}.paid_media_performance\`
+      FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${datasetName}.paid_media_performance\`
       WHERE platform = 'Google Ads'
         AND date >= DATE_SUB(DATE_SUB(CURRENT_DATE(), INTERVAL 1 YEAR), INTERVAL 30 DAY)
         AND date < DATE_SUB(CURRENT_DATE(), INTERVAL 1 YEAR)
@@ -2261,8 +2246,8 @@ export async function getGoogleAdsPerformanceData(preset: string = 'mtd', startD
         spend: Math.round(parseFloat(d.spend_current || 0)),
         roas: parseFloat((d.roas_current || 0).toFixed(2))
       })),
-      campaigns: await getGoogleAdsCampaigns(preset, startDate, endDate),
-      ads: await getGoogleAdsAds(preset, startDate, endDate)
+      campaigns: await getGoogleAdsCampaigns(clientId, preset, startDate, endDate),
+      ads: await getGoogleAdsAds(clientId, preset, startDate, endDate)
     };
   } catch (error) {
     console.error('Error fetching Google Ads performance data:', error);
@@ -2271,7 +2256,8 @@ export async function getGoogleAdsPerformanceData(preset: string = 'mtd', startD
 }
 
 // Get Google Ads campaigns data
-async function getGoogleAdsCampaigns(preset: string = 'mtd', startDate?: string, endDate?: string): Promise<any[]> {
+async function getGoogleAdsCampaigns(clientId: string, preset: string = 'mtd', startDate?: string, endDate?: string): Promise<any[]> {
+  const datasetName = getDatasetName(clientId);
   const filters = getPaidMediaDateFilterSQL(preset, startDate, endDate, 'previous-period');
 
   const query = `
@@ -2292,7 +2278,7 @@ async function getGoogleAdsCampaigns(preset: string = 'mtd', startDate?: string,
       ROUND(SAFE_DIVIDE(SUM(spend), SUM(purchases)), 2) as cpa,
       ROUND(SAFE_DIVIDE(SUM(purchases), SUM(clicks)) * 100, 2) as conversion_rate,
       ROUND(SAFE_DIVIDE(SUM(revenue), SUM(purchases)), 2) as avg_order_value
-    FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${getCurrentDatasetName()}.paid_media_performance\`
+    FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${datasetName}.paid_media_performance\`
     WHERE platform = 'Google Ads'
       AND ${filters.dateFilter}
     GROUP BY campaign_name
@@ -2324,7 +2310,8 @@ async function getGoogleAdsCampaigns(preset: string = 'mtd', startDate?: string,
 }
 
 // Get Google Ads ads data (ad-level)
-async function getGoogleAdsAds(preset: string = 'mtd', startDate?: string, endDate?: string): Promise<any[]> {
+async function getGoogleAdsAds(clientId: string, preset: string = 'mtd', startDate?: string, endDate?: string): Promise<any[]> {
+  const datasetName = getDatasetName(clientId);
   const filters = getPaidMediaDateFilterSQL(preset, startDate, endDate, 'previous-period');
 
   const query = `
@@ -2345,7 +2332,7 @@ async function getGoogleAdsAds(preset: string = 'mtd', startDate?: string, endDa
       ROUND(SAFE_DIVIDE(SUM(purchases), SUM(clicks)) * 100, 2) as conversion_rate,
       ROUND(SAFE_DIVIDE(SUM(revenue), SUM(purchases)), 2) as avg_order_value,
       MAX(date) as last_active_date
-    FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${getCurrentDatasetName()}.paid_media_performance\`
+    FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${datasetName}.paid_media_performance\`
     WHERE platform = 'Google Ads'
       AND ${filters.dateFilter}
     GROUP BY campaign_name, adset_name, ad_name
@@ -2384,10 +2371,11 @@ async function getGoogleAdsAds(preset: string = 'mtd', startDate?: string, endDa
 }
 
 // Get campaign intelligent analysis
-export async function getCampaignIntelligentAnalysis(campaignName: string): Promise<any> {
+export async function getCampaignIntelligentAnalysis(clientId: string, campaignName: string): Promise<any> {
+  const datasetName = getDatasetName(clientId);
   const query = `
     SELECT *
-    FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${getCurrentDatasetName()}.ai_intelligent_campaign_analysis\`
+    FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${datasetName}.ai_intelligent_campaign_analysis\`
     WHERE campaign_name = @campaignName
     LIMIT 1
   `;
@@ -2448,10 +2436,11 @@ export async function getCampaignIntelligentAnalysis(campaignName: string): Prom
 }
 
 // Get campaign performance timeseries
-export async function getCampaignPerformanceTimeseries(campaignName: string, days: number = 30): Promise<any[]> {
+export async function getCampaignPerformanceTimeseries(clientId: string, campaignName: string, days: number = 30): Promise<any[]> {
+  const datasetName = getDatasetName(clientId);
   const query = `
     SELECT *
-    FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${getCurrentDatasetName()}.ai_campaign_performance_timeseries\`
+    FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${datasetName}.ai_campaign_performance_timeseries\`
     WHERE campaign_name = @campaignName
       AND date >= DATE_SUB(CURRENT_DATE(), INTERVAL @days DAY)
     ORDER BY date ASC
@@ -2498,7 +2487,8 @@ export async function getCampaignPerformanceTimeseries(campaignName: string, day
 }
 
 // Get contextualized campaign performance
-export async function getContextualizedCampaignPerformance(campaignName: string): Promise<any> {
+export async function getContextualizedCampaignPerformance(clientId: string, campaignName: string): Promise<any> {
+  const datasetName = getDatasetName(clientId);
   const query = `
     SELECT
       business_health_index,
@@ -2510,7 +2500,7 @@ export async function getContextualizedCampaignPerformance(campaignName: string)
       relative_performance,
       contextualized_recommendation,
       context_flags
-    FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${getCurrentDatasetName()}.ai_contextualized_campaign_performance\`
+    FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${datasetName}.ai_contextualized_campaign_performance\`
     WHERE campaign_name = @campaignName
     ORDER BY date DESC
     LIMIT 1
@@ -2544,27 +2534,28 @@ export async function getContextualizedCampaignPerformance(campaignName: string)
 }
 
 // Get ad intelligent analysis
-export async function getAdIntelligentAnalysis(adName: string, adsetName: string): Promise<any> {
+export async function getAdIntelligentAnalysis(clientId: string, adName: string, adsetName: string): Promise<any> {
+  const datasetName = getDatasetName(clientId);
   const query = `
     SELECT
       ai.*,
       -- Add funnel intelligence fields from paid_media_performance (optimized subquery)
-      (SELECT current_funnel_stage FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${getCurrentDatasetName()}.paid_media_performance\`
+      (SELECT current_funnel_stage FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${datasetName}.paid_media_performance\`
        WHERE ad_name = @ad_name AND current_funnel_stage IS NOT NULL
        ORDER BY date DESC LIMIT 1) as current_funnel_stage,
-      (SELECT inferred_funnel_stage FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${getCurrentDatasetName()}.paid_media_performance\`
+      (SELECT inferred_funnel_stage FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${datasetName}.paid_media_performance\`
        WHERE ad_name = @ad_name AND inferred_funnel_stage IS NOT NULL
        ORDER BY date DESC LIMIT 1) as inferred_funnel_stage,
-      (SELECT is_misclassified FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${getCurrentDatasetName()}.paid_media_performance\`
+      (SELECT is_misclassified FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${datasetName}.paid_media_performance\`
        WHERE ad_name = @ad_name AND is_misclassified IS NOT NULL
        ORDER BY date DESC LIMIT 1) as is_misclassified,
-      (SELECT AVG(tofu_score) FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${getCurrentDatasetName()}.paid_media_performance\`
+      (SELECT AVG(tofu_score) FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${datasetName}.paid_media_performance\`
        WHERE ad_name = @ad_name AND date >= DATE_SUB(CURRENT_DATE(), INTERVAL 30 DAY)) as tofu_score,
-      (SELECT AVG(mofu_score) FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${getCurrentDatasetName()}.paid_media_performance\`
+      (SELECT AVG(mofu_score) FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${datasetName}.paid_media_performance\`
        WHERE ad_name = @ad_name AND date >= DATE_SUB(CURRENT_DATE(), INTERVAL 30 DAY)) as mofu_score,
-      (SELECT AVG(bofu_score) FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${getCurrentDatasetName()}.paid_media_performance\`
+      (SELECT AVG(bofu_score) FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${datasetName}.paid_media_performance\`
        WHERE ad_name = @ad_name AND date >= DATE_SUB(CURRENT_DATE(), INTERVAL 30 DAY)) as bofu_score
-    FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${getCurrentDatasetName()}.ai_intelligent_ad_analysis\` ai
+    FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${datasetName}.ai_intelligent_ad_analysis\` ai
     WHERE ai.ad_name = @ad_name
     LIMIT 1
   `;
@@ -2637,14 +2628,15 @@ export async function getAdIntelligentAnalysis(adName: string, adsetName: string
 }
 
 // Get ad performance timeseries
-export async function getAdPerformanceTimeseries(adName: string, adsetName: string, days: number = 30): Promise<any[]> {
+export async function getAdPerformanceTimeseries(clientId: string, adName: string, adsetName: string, days: number = 30): Promise<any[]> {
+  const datasetName = getDatasetName(clientId);
   const query = `
     SELECT
       date,
       spend,
       revenue,
       SAFE_DIVIDE(revenue, spend) as roas
-    FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${getCurrentDatasetName()}.paid_media_performance\`
+    FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${datasetName}.paid_media_performance\`
     WHERE ad_name = @ad_name
       AND adset_name = @adset_name
       AND platform = 'Facebook'
@@ -2691,7 +2683,8 @@ export async function getAdPerformanceTimeseries(adName: string, adsetName: stri
 }
 
 // Get ad performance distribution within campaign
-export async function getAdDistributionForCampaign(campaignName: string): Promise<any> {
+export async function getAdDistributionForCampaign(clientId: string, campaignName: string): Promise<any> {
+  const datasetName = getDatasetName(clientId);
   const query = `
     SELECT
       campaign_name,
@@ -2726,8 +2719,8 @@ export async function getAdDistributionForCampaign(campaignName: string): Promis
         a.health_score as ad_health,
         a.recommended_action as ad_recommended_action,
         ROW_NUMBER() OVER (PARTITION BY c.campaign_name ORDER BY a.spend_30d DESC) as rn
-      FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${getCurrentDatasetName()}.ai_intelligent_campaign_analysis\` c
-      LEFT JOIN \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${getCurrentDatasetName()}.ai_intelligent_ad_analysis\` a
+      FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${datasetName}.ai_intelligent_campaign_analysis\` c
+      LEFT JOIN \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${datasetName}.ai_intelligent_ad_analysis\` a
         ON c.campaign_name = a.campaign_name
       WHERE c.campaign_name = @campaign_name
     )
@@ -2768,7 +2761,8 @@ export async function getAdDistributionForCampaign(campaignName: string): Promis
 }
 
 // Get list of ads in campaign
-export async function getCampaignAdsList(campaignName: string): Promise<any[]> {
+export async function getCampaignAdsList(clientId: string, campaignName: string): Promise<any[]> {
+  const datasetName = getDatasetName(clientId);
   const query = `
     SELECT
       ad_name,
@@ -2777,7 +2771,7 @@ export async function getCampaignAdsList(campaignName: string): Promise<any[]> {
       spend_30d,
       recommended_action,
       performance_trend
-    FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${getCurrentDatasetName()}.ai_intelligent_ad_analysis\`
+    FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${datasetName}.ai_intelligent_ad_analysis\`
     WHERE campaign_name = @campaign_name
     ORDER BY health_score DESC, spend_30d DESC
   `;
@@ -2804,7 +2798,8 @@ export async function getCampaignAdsList(campaignName: string): Promise<any[]> {
 }
 
 // Funnel Optimization: Get all-star bundles by optimization goal and country
-export async function getAllStarBundlesByGoal(goal: string = 'composite', country: string = 'United States'): Promise<any[]> {
+export async function getAllStarBundlesByGoal(clientId: string, goal: string = 'composite', country: string = 'United States'): Promise<any[]> {
+  const datasetName = getDatasetName(clientId);
   let query = '';
 
   switch(goal) {
@@ -2827,7 +2822,7 @@ export async function getAllStarBundlesByGoal(goal: string = 'composite', countr
           ROUND(tofu_score, 2) as tofu_score,
           ROUND(mofu_score, 2) as mofu_score,
           ROUND(bofu_score, 2) as bofu_score
-        FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${getCurrentDatasetName()}.ai_allstar_ad_bundles_by_country\`
+        FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${datasetName}.ai_allstar_ad_bundles_by_country\`
         WHERE country = @country
           AND recommended_stage = 'TOFU'
           AND clicks_rank <= 3
@@ -2854,7 +2849,7 @@ export async function getAllStarBundlesByGoal(goal: string = 'composite', countr
           ROUND(tofu_score, 2) as tofu_score,
           ROUND(mofu_score, 2) as mofu_score,
           ROUND(bofu_score, 2) as bofu_score
-        FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${getCurrentDatasetName()}.ai_allstar_ad_bundles_by_country\`
+        FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${datasetName}.ai_allstar_ad_bundles_by_country\`
         WHERE country = @country
           AND recommended_stage = 'TOFU'
           AND efficiency_rank <= 3
@@ -2881,7 +2876,7 @@ export async function getAllStarBundlesByGoal(goal: string = 'composite', countr
           ROUND(tofu_score, 2) as tofu_score,
           ROUND(mofu_score, 2) as mofu_score,
           ROUND(bofu_score, 2) as bofu_score
-        FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${getCurrentDatasetName()}.ai_allstar_ad_bundles_by_country\`
+        FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${datasetName}.ai_allstar_ad_bundles_by_country\`
         WHERE country = @country
           AND ctr_rank <= 3
         ORDER BY ctr_rank
@@ -2906,7 +2901,7 @@ export async function getAllStarBundlesByGoal(goal: string = 'composite', countr
           ROUND(tofu_score, 2) as tofu_score,
           ROUND(mofu_score, 2) as mofu_score,
           ROUND(bofu_score, 2) as bofu_score
-        FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${getCurrentDatasetName()}.ai_allstar_ad_bundles_by_country\`
+        FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${datasetName}.ai_allstar_ad_bundles_by_country\`
         WHERE country = @country
           AND recommended_stage = 'BOFU'
           AND roas_rank <= 3
@@ -2932,7 +2927,7 @@ export async function getAllStarBundlesByGoal(goal: string = 'composite', countr
           ROUND(tofu_score, 2) as tofu_score,
           ROUND(mofu_score, 2) as mofu_score,
           ROUND(bofu_score, 2) as bofu_score
-        FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${getCurrentDatasetName()}.ai_allstar_ad_bundles_by_country\`
+        FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${datasetName}.ai_allstar_ad_bundles_by_country\`
         WHERE country = @country
           AND recommended_stage = 'BOFU'
           AND conversion_rank <= 3
@@ -2959,7 +2954,7 @@ export async function getAllStarBundlesByGoal(goal: string = 'composite', countr
           ROUND(tofu_score, 2) as tofu_score,
           ROUND(mofu_score, 2) as mofu_score,
           ROUND(bofu_score, 2) as bofu_score
-        FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${getCurrentDatasetName()}.ai_allstar_ad_bundles_by_country\`
+        FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${datasetName}.ai_allstar_ad_bundles_by_country\`
         WHERE country = @country
           AND is_all_star = TRUE
           AND all_star_rank <= 3
@@ -2987,7 +2982,7 @@ export async function getAllStarBundlesByGoal(goal: string = 'composite', countr
           ROUND(tofu_score, 2) as tofu_score,
           ROUND(mofu_score, 2) as mofu_score,
           ROUND(bofu_score, 2) as bofu_score
-        FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${getCurrentDatasetName()}.ai_allstar_ad_bundles_by_country\`
+        FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${datasetName}.ai_allstar_ad_bundles_by_country\`
         WHERE country = @country
           AND all_star_rank <= 3
         ORDER BY recommended_stage, all_star_rank
@@ -3033,7 +3028,8 @@ export async function getAllStarBundlesByGoal(goal: string = 'composite', countr
 }
 
 // Get audience overlap analysis
-export async function getAudienceOverlapAnalysis(): Promise<any[]> {
+export async function getAudienceOverlapAnalysis(clientId: string): Promise<any[]> {
+  const datasetName = getDatasetName(clientId);
   const query = `
     SELECT
       analysis_type,
@@ -3056,7 +3052,7 @@ export async function getAudienceOverlapAnalysis(): Promise<any[]> {
       overlap_efficiency,
       strategic_recommendation,
       market_opportunity_score
-    FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${getCurrentDatasetName()}.ai_audience_overlap_analysis\`
+    FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${datasetName}.ai_audience_overlap_analysis\`
     ORDER BY analysis_type, segment
   `;
 
@@ -3095,7 +3091,8 @@ export async function getAudienceOverlapAnalysis(): Promise<any[]> {
 }
 
 // Get putter grip pricing model
-export async function getPutterGripPricingModel(): Promise<any[]> {
+export async function getPutterGripPricingModel(clientId: string): Promise<any[]> {
+  const datasetName = getDatasetName(clientId);
   const query = `
     SELECT
       title,
@@ -3112,7 +3109,7 @@ export async function getPutterGripPricingModel(): Promise<any[]> {
       unit_change_pct,
       risk_category,
       recommendation
-    FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${getCurrentDatasetName()}.ai_putter_grip_pricing_model\`
+    FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${datasetName}.ai_putter_grip_pricing_model\`
     ORDER BY ABS(revenue_change_with_elasticity) DESC
   `;
 
@@ -3145,7 +3142,8 @@ export async function getPutterGripPricingModel(): Promise<any[]> {
 }
 
 // Get swing grip pricing model
-export async function getSwingGripPricingModel(): Promise<any[]> {
+export async function getSwingGripPricingModel(clientId: string): Promise<any[]> {
+  const datasetName = getDatasetName(clientId);
   const query = `
     SELECT
       product_line,
@@ -3163,7 +3161,7 @@ export async function getSwingGripPricingModel(): Promise<any[]> {
       price_direction,
       revenue_impact_category,
       recommendation
-    FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${getCurrentDatasetName()}.ai_swing_grip_pricing_model\`
+    FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${datasetName}.ai_swing_grip_pricing_model\`
     ORDER BY ABS(revenue_change_with_elasticity) DESC
   `;
 
@@ -3197,7 +3195,8 @@ export async function getSwingGripPricingModel(): Promise<any[]> {
 }
 
 // Get product affinity data
-export async function getProductAffinity(): Promise<any[]> {
+export async function getProductAffinity(clientId: string): Promise<any[]> {
+  const datasetName = getDatasetName(clientId);
   const query = `
     SELECT
       product_a_title,
@@ -3206,7 +3205,7 @@ export async function getProductAffinity(): Promise<any[]> {
       bundle_price,
       affinity_rank_for_product_a,
       overall_affinity_rank
-    FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${getCurrentDatasetName()}.product_affinity\`
+    FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${datasetName}.product_affinity\`
     ORDER BY co_purchase_count DESC
     LIMIT 50
   `;
@@ -3232,14 +3231,15 @@ export async function getProductAffinity(): Promise<any[]> {
 }
 
 // Get geographic product performance
-export async function getGeographicProductPerformance(): Promise<any[]> {
+export async function getGeographicProductPerformance(clientId: string): Promise<any[]> {
+  const datasetName = getDatasetName(clientId);
   const query = `
     WITH state_totals AS (
       SELECT
         state_province,
         SUM(revenue_30d) as total_revenue,
         SUM(units_sold_30d) as total_units
-      FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${getCurrentDatasetName()}.geographic_product_performance\`
+      FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${datasetName}.geographic_product_performance\`
       WHERE state_province IS NOT NULL AND country_code = 'US'
       GROUP BY state_province
     ),
@@ -3249,7 +3249,7 @@ export async function getGeographicProductPerformance(): Promise<any[]> {
         product_title,
         SUM(revenue_30d) as product_revenue,
         ROW_NUMBER() OVER (PARTITION BY state_province ORDER BY SUM(revenue_30d) DESC) as rn
-      FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${getCurrentDatasetName()}.geographic_product_performance\`
+      FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${datasetName}.geographic_product_performance\`
       WHERE state_province IS NOT NULL AND country_code = 'US'
       GROUP BY state_province, product_title
     )
@@ -3284,14 +3284,15 @@ export async function getGeographicProductPerformance(): Promise<any[]> {
 }
 
 // Get Shopify revenue YoY comparison for dashboard
-export async function getShopifyRevenueYoY(days: number = 30): Promise<any[]> {
+export async function getShopifyRevenueYoY(clientId: string, days: number = 30): Promise<any[]> {
+  const datasetName = getDatasetName(clientId);
   const query = `
     WITH current_period AS (
       SELECT
         date,
         revenue,
         orders
-      FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${getCurrentDatasetName()}.daily_business_metrics\`
+      FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${datasetName}.daily_business_metrics\`
       WHERE date >= DATE_SUB(CURRENT_DATE(), INTERVAL ${days} DAY)
         AND date < CURRENT_DATE()
     ),
@@ -3300,7 +3301,7 @@ export async function getShopifyRevenueYoY(days: number = 30): Promise<any[]> {
         DATE_ADD(date, INTERVAL 1 YEAR) as date,
         revenue as revenue_ly,
         orders as orders_ly
-      FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${getCurrentDatasetName()}.daily_business_metrics\`
+      FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${datasetName}.daily_business_metrics\`
       WHERE date >= DATE_SUB(DATE_SUB(CURRENT_DATE(), INTERVAL 1 YEAR), INTERVAL ${days} DAY)
         AND date < DATE_SUB(CURRENT_DATE(), INTERVAL 1 YEAR)
     )
@@ -3334,10 +3335,24 @@ export async function getShopifyRevenueYoY(days: number = 30): Promise<any[]> {
   }
 }
 
-// Cache for current client ID
+// =============================================================================
+// DEPRECATED: Legacy module-level caching
+// These variables and functions are DEPRECATED and should NOT be used.
+// They exist only for backwards compatibility during migration.
+// All new code should pass clientId explicitly through function parameters.
+// The x-client-id header should be the source of truth for request isolation.
+// =============================================================================
+
+/** @deprecated Use explicit clientId parameter instead */
 let cachedCurrentClientIdForBQ: string | null = null;
 
-// Server-side helper to get current client ID from BigQuery
+/** @deprecated Use explicit clientId parameter instead */
+let hasInitialized: boolean = false;
+
+/**
+ * @deprecated Use explicit clientId parameter instead.
+ * This function relies on module-level cache which is not safe for multi-user environments.
+ */
 export async function getCurrentClientId(): Promise<string> {
   // Check cache first
   if (cachedCurrentClientIdForBQ) {
@@ -3377,9 +3392,10 @@ export async function getCurrentClientId(): Promise<string> {
   throw new Error('No client selected. Please select a client from the admin panel.');
 }
 
-// Export function to initialize current client (must be called before any BigQuery operations)
-// This only runs ONCE per function instance, not on every request
-// IMPORTANT: With requestedClientId parameter, will ALWAYS reinitialize to ensure correct client
+/**
+ * @deprecated Use explicit clientId parameter instead.
+ * This function relies on module-level cache which is not safe for multi-user environments.
+ */
 export async function initializeCurrentClient(requestedClientId?: string): Promise<void> {
   // If a specific client is requested, always reinitialize to that client
   if (requestedClientId) {
@@ -3401,14 +3417,20 @@ export async function initializeCurrentClient(requestedClientId?: string): Promi
   }
 }
 
-// Export function to clear BQ cache (called when client switches)
+/**
+ * @deprecated Use explicit clientId parameter instead.
+ * This function relies on module-level cache which is not safe for multi-user environments.
+ */
 export function clearBigQueryClientCache() {
   cachedCurrentClientIdForBQ = null;
   hasInitialized = false; // Reset so next request re-initializes
   console.log('[BigQuery] Cache cleared');
 }
 
-// Export function to directly set BQ cache (bypasses DB read to avoid race conditions)
+/**
+ * @deprecated Use explicit clientId parameter instead.
+ * This function relies on module-level cache which is not safe for multi-user environments.
+ */
 export function setBigQueryClientCache(clientId: string) {
   cachedCurrentClientIdForBQ = clientId;
   console.log('[BigQuery] Cache set directly to:', clientId);
@@ -3446,13 +3468,10 @@ export async function getClientDashboardConfig(): Promise<any> {
 }
 
 // Get executive summary data for dashboard
-export async function getExecutiveSummary(): Promise<ExecutiveSummary | null> {
+export async function getExecutiveSummary(clientId: string): Promise<ExecutiveSummary | null> {
+  const datasetName = getDatasetName(clientId);
   // Determine which clients have Klaviyo
-  const currentClientId = cachedCurrentClientIdForBQ;
-  if (!currentClientId) {
-    throw new Error('[getExecutiveSummary] No client ID available. Client must be selected first.');
-  }
-  const hasKlaviyo = currentClientId !== 'hb' && currentClientId !== 'benhogan';
+  const hasKlaviyo = clientId !== 'hb' && clientId !== 'benhogan';
 
   // Build Klaviyo fields conditionally
   const klaviyoFields = hasKlaviyo ? `
@@ -3581,12 +3600,11 @@ export async function getExecutiveSummary(): Promise<ExecutiveSummary | null> {
       SAFE_DIVIDE((facebook_revenue_7d - facebook_revenue_7d_yoy), facebook_revenue_7d_yoy) * 100 as facebook_revenue_7d_yoy_growth_pct,
       SAFE_DIVIDE((facebook_revenue_30d - facebook_revenue_30d_yoy), facebook_revenue_30d_yoy) * 100 as facebook_revenue_30d_yoy_growth_pct,
       SAFE_DIVIDE((facebook_revenue_ytd - facebook_revenue_ytd_yoy), facebook_revenue_ytd_yoy) * 100 as facebook_revenue_ytd_yoy_growth_pct
-    FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${getCurrentDatasetName()}.ai_executive_summary\`
+    FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${datasetName}.ai_executive_summary\`
     ORDER BY report_date DESC
     LIMIT 1
   `;
 
-  const datasetName = getCurrentDatasetName();
   console.log('[getExecutiveSummary] Querying dataset:', datasetName);
   console.log('[getExecutiveSummary] Full table reference:', `${process.env.GOOGLE_CLOUD_PROJECT_ID}.${datasetName}.ai_executive_summary`);
 
@@ -3605,7 +3623,8 @@ export async function getExecutiveSummary(): Promise<ExecutiveSummary | null> {
 }
 
 // Get business context index for health metrics
-export async function getBusinessContextIndex(): Promise<any> {
+export async function getBusinessContextIndex(clientId: string): Promise<any> {
+  const datasetName = getDatasetName(clientId);
   const query = `
     SELECT
       business_health_index,
@@ -3621,7 +3640,7 @@ export async function getBusinessContextIndex(): Promise<any> {
       brand_impressions_30d_avg,
       revenue_7d_avg,
       revenue_30d_avg
-    FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${getCurrentDatasetName()}.ai_business_context_index\`
+    FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${datasetName}.ai_business_context_index\`
     ORDER BY date DESC
     LIMIT 1
   `;
@@ -3657,7 +3676,8 @@ export async function getBusinessContextIndex(): Promise<any> {
 }
 
 // Get Bayesian probability forecast for budget pacing
-export async function getBayesianForecast(): Promise<any> {
+export async function getBayesianForecast(clientId: string): Promise<any> {
+  const datasetName = getDatasetName(clientId);
   const query = `
     SELECT
       month_start,
@@ -3689,7 +3709,7 @@ export async function getBayesianForecast(): Promise<any> {
       historical_roas_success_rate,
       num_simulations,
       calculated_at
-    FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${getCurrentDatasetName()}.bayesian_probability_forecast\`
+    FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${datasetName}.bayesian_probability_forecast\`
     WHERE report_date = CURRENT_DATE()
     LIMIT 1
   `;
@@ -3741,7 +3761,8 @@ export async function getBayesianForecast(): Promise<any> {
 }
 
 // Get forecast scenarios from prophet summary
-export async function getForecastScenarios(): Promise<any[]> {
+export async function getForecastScenarios(clientId: string): Promise<any[]> {
+  const datasetName = getDatasetName(clientId);
   const query = `
     SELECT
       period,
@@ -3756,7 +3777,7 @@ export async function getForecastScenarios(): Promise<any[]> {
       forecast_avg,
       optimistic_avg,
       stretch_goal_avg
-    FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${getCurrentDatasetName()}.ai_forecast_prophet_summary\`
+    FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${datasetName}.ai_forecast_prophet_summary\`
     ORDER BY start_date
   `;
 
@@ -3797,7 +3818,8 @@ export async function getForecastScenarios(): Promise<any[]> {
 }
 
 // Get forecast daily data for chart
-export async function getForecastDaily(): Promise<any[]> {
+export async function getForecastDaily(clientId: string): Promise<any[]> {
+  const datasetName = getDatasetName(clientId);
   const query = `
     SELECT
       forecast_date,
@@ -3805,7 +3827,7 @@ export async function getForecastDaily(): Promise<any[]> {
       conservative,
       optimistic,
       stretch_goal
-    FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${getCurrentDatasetName()}.ai_forecast_prophet_daily\`
+    FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${datasetName}.ai_forecast_prophet_daily\`
     ORDER BY forecast_date
   `;
 
@@ -3829,12 +3851,13 @@ export async function getForecastDaily(): Promise<any[]> {
 }
 
 // Get actual revenue data for Q4 2025 to overlay with forecast
-export async function getForecastActuals(): Promise<any[]> {
+export async function getForecastActuals(clientId: string): Promise<any[]> {
+  const datasetName = getDatasetName(clientId);
   const query = `
     SELECT
       date,
       revenue as actual
-    FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${getCurrentDatasetName()}.daily_business_metrics\`
+    FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${datasetName}.daily_business_metrics\`
     WHERE date >= '2025-10-01' AND date <= '2025-12-31'
     ORDER BY date
   `;
@@ -3855,7 +3878,8 @@ export async function getForecastActuals(): Promise<any[]> {
   }
 }
 // Ad Performance Details
-export async function getAdPerformance(adName: string, adsetName: string, preset: string = 'last-30-days') {
+export async function getAdPerformance(clientId: string, adName: string, adsetName: string, preset: string = 'last-30-days') {
+  const datasetName = getDatasetName(clientId);
   console.log(`[getAdPerformance] Fetching performance for ad: ${adName}, adset: ${adsetName}, preset: ${preset}`);
 
   const filters = getPaidMediaDateFilterSQL(preset, undefined, undefined, 'previous-period');
@@ -3888,7 +3912,7 @@ export async function getAdPerformance(adName: string, adsetName: string, preset
         AVG(tofu_score) as tofu_score,
         AVG(mofu_score) as mofu_score,
         AVG(bofu_score) as bofu_score
-      FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${getCurrentDatasetName()}.paid_media_performance\`
+      FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${datasetName}.paid_media_performance\`
       WHERE ${whereClause}
       GROUP BY ad_name, campaign_name, adset_name
     ),
@@ -3906,7 +3930,7 @@ export async function getAdPerformance(adName: string, adsetName: string, preset
         SAFE_DIVIDE(SUM(spend), SUM(impressions)) * 1000 as cpm,
         SAFE_DIVIDE(SUM(purchases), SUM(clicks)) * 100 as conversion_rate,
         SAFE_DIVIDE(SUM(revenue), SUM(purchases)) as avg_order_value
-      FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${getCurrentDatasetName()}.paid_media_performance\`
+      FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${datasetName}.paid_media_performance\`
       WHERE ${prevWhereClause}
     )
     SELECT
@@ -3934,7 +3958,7 @@ export async function getAdPerformance(adName: string, adsetName: string, preset
       SUM(revenue) as revenue,
       SAFE_DIVIDE(SUM(revenue), SUM(spend)) as roas,
       SUM(purchases) as purchases
-    FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${getCurrentDatasetName()}.paid_media_performance\`
+    FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${datasetName}.paid_media_performance\`
     WHERE ${whereClause}
     GROUP BY date
     ORDER BY date ASC
@@ -3947,7 +3971,7 @@ export async function getAdPerformance(adName: string, adsetName: string, preset
     };
 
     console.log(`[getAdPerformance] Query params:`, params);
-    console.log(`[getAdPerformance] Dataset: ${getCurrentDatasetName()}`);
+    console.log(`[getAdPerformance] Dataset: ${datasetName}`);
     console.log(`[getAdPerformance] Date filter: ${filters.dateFilter}`);
 
     const [summaryRows] = await bigquery.query({
@@ -4037,9 +4061,9 @@ export async function getAdPerformance(adName: string, adsetName: string, preset
 }
 
 // Organic Social Data
-export async function getOrganicSocialData(platform: string = 'all', period: string = '30d', comparison: string = 'previous-period'): Promise<any> {
+export async function getOrganicSocialData(clientId: string, platform: string = 'all', period: string = '30d', comparison: string = 'previous-period'): Promise<any> {
   try {
-    const dataset = getCurrentDatasetName();
+    const dataset = getDatasetName(clientId);
 
     // Build platform filter
     let platformFilter = '';

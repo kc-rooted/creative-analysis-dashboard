@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { Play, Pause, Activity, Clock, CheckCircle, AlertCircle, RefreshCw } from 'lucide-react';
 import { formatNumber } from '@/lib/utils';
+import { useClient } from '@/components/client-provider';
 
 interface QueueStats {
   pending_count: number;
@@ -18,6 +19,7 @@ interface QueueStats {
 }
 
 export function AnalysisQueue() {
+  const { currentClient } = useClient();
   const [stats, setStats] = useState<QueueStats | null>(null);
   const [loading, setLoading] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
@@ -25,13 +27,15 @@ export function AnalysisQueue() {
   const fetchQueueStats = async () => {
     try {
       setLoading(true);
-      const response = await fetch('/api/stats');
+      const response = await fetch('/api/stats', {
+        headers: { 'x-client-id': currentClient || '' },
+      });
       if (response.ok) {
         const data = await response.json();
         // Transform stats data to match expected format
         const pendingStats = data.find((stat: any) => stat.analysis_status === 'pending');
         const completedStats = data.find((stat: any) => stat.analysis_status === 'completed');
-        
+
         setStats({
           pending_count: pendingStats?.unique_images || 0,
           analyzing_count: 0, // Not tracked in main stats
@@ -52,7 +56,10 @@ export function AnalysisQueue() {
       setAnalyzing(true);
       const response = await fetch('/api/analyze-batch', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'x-client-id': currentClient || '',
+        },
         body: JSON.stringify({ limit }),
       });
 

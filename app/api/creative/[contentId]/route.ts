@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { BigQuery } from '@google-cloud/bigquery';
-import { initializeCurrentClient } from '@/lib/bigquery';
-import { getCurrentClientConfigSync } from '@/lib/client-config';
+import { getClientConfig, CLIENT_CONFIGS } from '@/lib/client-config';
 
 const bigquery = new BigQuery({
   projectId: process.env.GOOGLE_CLOUD_PROJECT_ID,
@@ -11,27 +10,31 @@ const bigquery = new BigQuery({
   ),
 });
 
-// Helper to get current dataset name safely
-function getCurrentDatasetName(): string {
-  try {
-    const clientConfig = getCurrentClientConfigSync();
-    return clientConfig.bigquery.dataset;
-  } catch (error) {
-    console.error('Error getting client config, falling back to environment variable:', error);
-    return process.env.BIGQUERY_DATASET || 'jumbomax_analytics';
-  }
-}
-
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ contentId: string }> }
 ) {
   try {
-    // Get requested client from header (sent from frontend)
-    const requestedClient = request.headers.get('x-client-id');
+    // Get client ID from header - REQUIRED for request isolation
+    const clientId = request.headers.get('x-client-id');
 
-    // Initialize with requested client to ensure correct dataset
-    await initializeCurrentClient(requestedClient || undefined);
+    if (!clientId) {
+      return NextResponse.json(
+        { error: 'x-client-id header is required' },
+        { status: 400 }
+      );
+    }
+
+    // Validate client exists
+    if (!CLIENT_CONFIGS[clientId]) {
+      return NextResponse.json(
+        { error: `Invalid client ID: ${clientId}` },
+        { status: 400 }
+      );
+    }
+
+    const clientConfig = getClientConfig(clientId);
+    const datasetName = clientConfig.bigquery.dataset;
 
     const { contentId: rawContentId } = await params;
     const contentId = decodeURIComponent(rawContentId);
@@ -113,8 +116,8 @@ export async function GET(
         ca.analysis_text,
         ca.confidence_score
 
-      FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${getCurrentDatasetName()}.creative_performance_dashboard\` cpd
-      LEFT JOIN \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${getCurrentDatasetName()}.creative_analysis\` ca
+      FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${datasetName}.creative_performance_dashboard\` cpd
+      LEFT JOIN \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${datasetName}.creative_analysis\` ca
         ON cpd.content_id = ca.content_id
       WHERE cpd.content_id = @contentId
       LIMIT 1

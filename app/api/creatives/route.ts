@@ -1,14 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getDeduplicatedCreatives, initializeCurrentClient } from '@/lib/bigquery';
+import { getDeduplicatedCreatives } from '@/lib/bigquery';
 import { mockCreatives } from '@/lib/mock-data';
 
 export async function GET(request: NextRequest) {
   try {
     // Get requested client from header (sent from frontend)
-    const requestedClient = request.headers.get('x-client-id');
+    const clientId = request.headers.get('x-client-id');
 
-    // Initialize with requested client to ensure correct dataset
-    await initializeCurrentClient(requestedClient || undefined);
+    if (!clientId) {
+      return NextResponse.json({ error: 'x-client-id header is required' }, { status: 400 });
+    }
 
     const searchParams = request.nextUrl.searchParams;
     const status = searchParams.get('status') || undefined;
@@ -20,12 +21,12 @@ export async function GET(request: NextRequest) {
     // Check if we should use mock data
     if (process.env.USE_MOCK_DATA === 'true') {
       console.log('Using mock data - USE_MOCK_DATA is set to true');
-      
+
       // Filter mock data based on status
-      let filteredData = status 
+      let filteredData = status
         ? mockCreatives.filter(c => c.analysis_status === status)
         : mockCreatives;
-      
+
       // Sort mock data
       filteredData = [...filteredData].sort((a, b) => {
         switch (sortBy) {
@@ -39,13 +40,13 @@ export async function GET(request: NextRequest) {
             return 0;
         }
       });
-      
+
       // Apply pagination
       const paginatedData = filteredData.slice(offset, offset + limit);
       return NextResponse.json(paginatedData);
     }
 
-    const creatives = await getDeduplicatedCreatives(status, limit, offset, sortBy);
+    const creatives = await getDeduplicatedCreatives(clientId, status, limit, offset, sortBy);
     
     return NextResponse.json(creatives);
   } catch (error) {

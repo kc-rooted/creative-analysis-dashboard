@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { ArrowLeft, ExternalLink, Tag, TrendingUp, TrendingDown, Activity, Calendar, Play } from 'lucide-react';
 import { formatNumber } from '@/lib/utils';
+import { useClient } from '@/components/client-provider';
 
 interface CreativeDetails {
   // CREATIVE IDENTIFICATION & METADATA
@@ -75,6 +76,7 @@ interface CreativeDetails {
 export default function CreativeDetailsPage() {
   const params = useParams();
   const router = useRouter();
+  const { currentClient } = useClient();
   const [creative, setCreative] = useState<CreativeDetails | null>(null);
   const [loading, setLoading] = useState(true);
   const [imageError, setImageError] = useState(false);
@@ -107,7 +109,9 @@ export default function CreativeDetailsPage() {
   const fetchCreativeDetails = async () => {
     try {
       setLoading(true);
-      const response = await fetch(`/api/creative/${encodeURIComponent(contentId)}`);
+      const response = await fetch(`/api/creative/${encodeURIComponent(contentId)}`, {
+        headers: { 'x-client-id': currentClient || '' },
+      });
       if (response.ok) {
         const data = await response.json();
         setCreative(data);
@@ -132,7 +136,10 @@ export default function CreativeDetailsPage() {
       
       const response = await fetch('/api/analyze', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'x-client-id': currentClient || '',
+        },
         body: JSON.stringify({ contentIds: [creative.content_id] }),
       });
       

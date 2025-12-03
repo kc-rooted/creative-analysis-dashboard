@@ -1,13 +1,14 @@
 import { NextResponse } from 'next/server';
-import { getOrganicSocialData, initializeCurrentClient } from '@/lib/bigquery';
+import { getOrganicSocialData } from '@/lib/bigquery';
 
 export async function GET(request: Request) {
   try {
     // Get requested client from header (sent from frontend)
-    const requestedClient = request.headers.get('x-client-id');
+    const clientId = request.headers.get('x-client-id');
 
-    // Initialize with requested client to ensure correct dataset
-    await initializeCurrentClient(requestedClient || undefined);
+    if (!clientId) {
+      return NextResponse.json({ error: 'x-client-id header is required' }, { status: 400 });
+    }
 
     // Get query parameters
     const { searchParams } = new URL(request.url);
@@ -16,7 +17,7 @@ export async function GET(request: Request) {
     const comparison = searchParams.get('comparison') || 'previous-period'; // 'previous-period', 'previous-year'
 
     // Fetch organic social data with comparison
-    const data = await getOrganicSocialData(platform, period, comparison);
+    const data = await getOrganicSocialData(clientId, platform, period, comparison);
 
     return NextResponse.json(data);
   } catch (error) {

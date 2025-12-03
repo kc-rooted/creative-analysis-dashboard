@@ -1,13 +1,14 @@
 import { NextResponse } from 'next/server';
-import { getGoogleAdsPerformanceData, initializeCurrentClient } from '@/lib/bigquery';
+import { getGoogleAdsPerformanceData } from '@/lib/bigquery';
 
 export async function GET(request: Request) {
   try {
     // Get requested client from header (sent from frontend)
-    const requestedClient = request.headers.get('x-client-id');
+    const clientId = request.headers.get('x-client-id');
 
-    // Initialize with requested client to ensure correct dataset
-    await initializeCurrentClient(requestedClient || undefined);
+    if (!clientId) {
+      return NextResponse.json({ error: 'x-client-id header is required' }, { status: 400 });
+    }
 
     const { searchParams } = new URL(request.url);
     const preset = searchParams.get('preset') || 'mtd';
@@ -15,7 +16,7 @@ export async function GET(request: Request) {
     const endDate = searchParams.get('endDate') || undefined;
     const comparisonType = searchParams.get('comparisonType') || 'previous-period';
 
-    const googleData = await getGoogleAdsPerformanceData(preset, startDate, endDate, comparisonType);
+    const googleData = await getGoogleAdsPerformanceData(clientId, preset, startDate, endDate, comparisonType);
 
     return NextResponse.json(googleData);
   } catch (error) {

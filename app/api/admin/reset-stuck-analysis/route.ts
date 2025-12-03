@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { BigQuery } from '@google-cloud/bigquery';
-import { getCurrentClientConfigSync } from '@/lib/client-config';
+import { getClientConfig, CLIENT_CONFIGS } from '@/lib/client-config';
 
 const bigquery = new BigQuery({
   projectId: process.env.GOOGLE_CLOUD_PROJECT_ID,
@@ -10,24 +10,34 @@ const bigquery = new BigQuery({
   ),
 });
 
-// Helper to get current dataset name safely
-function getCurrentDatasetName(): string {
-  try {
-    const clientConfig = getCurrentClientConfigSync();
-    return clientConfig.bigquery.dataset;
-  } catch (error) {
-    console.error('Error getting client config, falling back to environment variable:', error);
-    return process.env.BIGQUERY_DATASET || 'jumbomax_analytics';
-  }
-}
-
 export async function POST(request: NextRequest) {
   try {
+    // Get client ID from header - REQUIRED for request isolation
+    const clientId = request.headers.get('x-client-id');
+
+    if (!clientId) {
+      return NextResponse.json(
+        { error: 'x-client-id header is required' },
+        { status: 400 }
+      );
+    }
+
+    // Validate client exists
+    if (!CLIENT_CONFIGS[clientId]) {
+      return NextResponse.json(
+        { error: `Invalid client ID: ${clientId}` },
+        { status: 400 }
+      );
+    }
+
+    const clientConfig = getClientConfig(clientId);
+    const datasetName = clientConfig.bigquery.dataset;
+
     const { timeoutMinutes = 10 } = await request.json();
 
     // Reset creatives stuck in 'analyzing' status for more than specified time
     const query = `
-      UPDATE \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${getCurrentDatasetName()}.creative_analysis\`
+      UPDATE \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${datasetName}.creative_analysis\`
       SET
         analysis_status = 'pending',
         error_message = 'Reset due to timeout',
@@ -61,15 +71,36 @@ export async function POST(request: NextRequest) {
   }
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
+    // Get client ID from header - REQUIRED for request isolation
+    const clientId = request.headers.get('x-client-id');
+
+    if (!clientId) {
+      return NextResponse.json(
+        { error: 'x-client-id header is required' },
+        { status: 400 }
+      );
+    }
+
+    // Validate client exists
+    if (!CLIENT_CONFIGS[clientId]) {
+      return NextResponse.json(
+        { error: `Invalid client ID: ${clientId}` },
+        { status: 400 }
+      );
+    }
+
+    const clientConfig = getClientConfig(clientId);
+    const datasetName = clientConfig.bigquery.dataset;
+
     // Get count of stuck analyses
     const query = `
       SELECT
         analysis_status,
         COUNT(*) as count,
         MIN(updated_at) as oldest_update
-      FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${getCurrentDatasetName()}.creative_analysis\`
+      FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${datasetName}.creative_analysis\`
       WHERE analysis_status = 'analyzing'
         AND updated_at < TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 5 MINUTE)
       GROUP BY analysis_status

@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getCampaignIntelligentAnalysis, getCampaignPerformanceTimeseries, getContextualizedCampaignPerformance, getAdDistributionForCampaign, getCampaignAdsList, initializeCurrentClient } from '@/lib/bigquery';
+import { getCampaignIntelligentAnalysis, getCampaignPerformanceTimeseries, getContextualizedCampaignPerformance, getAdDistributionForCampaign, getCampaignAdsList } from '@/lib/bigquery';
 
 export async function GET(
   request: Request,
@@ -7,10 +7,11 @@ export async function GET(
 ) {
   try {
     // Get requested client from header (sent from frontend)
-    const requestedClient = request.headers.get('x-client-id');
+    const clientId = request.headers.get('x-client-id');
 
-    // Initialize with requested client to ensure correct dataset
-    await initializeCurrentClient(requestedClient || undefined);
+    if (!clientId) {
+      return NextResponse.json({ error: 'x-client-id header is required' }, { status: 400 });
+    }
 
     const { campaignName: rawCampaignName } = await params;
     const campaignName = decodeURIComponent(rawCampaignName);
@@ -18,11 +19,11 @@ export async function GET(
     const days = parseInt(searchParams.get('days') || '30');
 
     const [analysis, timeseries, contextualData, adDistribution, adsList] = await Promise.all([
-      getCampaignIntelligentAnalysis(campaignName),
-      getCampaignPerformanceTimeseries(campaignName, days),
-      getContextualizedCampaignPerformance(campaignName),
-      getAdDistributionForCampaign(campaignName),
-      getCampaignAdsList(campaignName)
+      getCampaignIntelligentAnalysis(clientId, campaignName),
+      getCampaignPerformanceTimeseries(clientId, campaignName, days),
+      getContextualizedCampaignPerformance(clientId, campaignName),
+      getAdDistributionForCampaign(clientId, campaignName),
+      getCampaignAdsList(clientId, campaignName)
     ]);
 
     if (!analysis) {

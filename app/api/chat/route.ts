@@ -3,36 +3,50 @@ import { google } from '@ai-sdk/google';
 import { streamText, convertToModelMessages, stepCountIs } from 'ai';
 import { weatherTool, runSQL, composeReport } from "@/app/api/chat/tools";
 import { getTableSchema, listDatasets, listTables, describeTable, queryBigQueryDirect } from "@/lib/conversation/bigquery-tools";
+import { getClientConfig, CLIENT_CONFIGS } from '@/lib/client-config';
 
 export const maxDuration = 300;
 
 export async function POST(req: Request) {
   try {
+    // Get client ID from header - REQUIRED for request isolation
+    const clientId = req.headers.get('x-client-id');
+
+    if (!clientId) {
+      return new Response(JSON.stringify({
+        error: 'x-client-id header is required'
+      }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+
+    // Validate client exists
+    if (!CLIENT_CONFIGS[clientId]) {
+      return new Response(JSON.stringify({
+        error: `Invalid client ID: ${clientId}`
+      }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+
+    const clientConfig = getClientConfig(clientId);
+    const primaryDataset = clientConfig.bigquery.dataset;
+
     const body = await req.json();
     const { messages } = body;
 
-    // Extract selectedClient from request body
-    const selectedClient = body.selectedClient || 'jumbomax';
     const systemContext = body.systemContext;
     const expectsReport = body.expectsReport;
     const hasPrefetchedData = body.hasPrefetchedData || false;
     const disableTools = body.disableTools || false;
-    console.log('Body selectedClient:', body.selectedClient);
+    console.log('Using client:', clientId, 'dataset:', primaryDataset);
     console.log('Custom system context:', systemContext ? 'Yes' : 'No');
     console.log('Has pre-fetched data:', hasPrefetchedData);
     console.log('Disable tools:', disableTools);
-    
+
     console.log('API received messages:', messages);
-    console.log('Selected client:', selectedClient);
-    
-    // Map client to dataset
-    const clientDatasetMap = {
-      'jumbomax': 'jumbomax_analytics',
-      'lab': 'lab_analytics', 
-      'hb': 'hb_analytics'
-    };
-    
-    const primaryDataset = clientDatasetMap[selectedClient as keyof typeof clientDatasetMap] || 'jumbomax_analytics';
 
     // Convert UI messages to model messages format for AI SDK 5.0
     const modelMessages = convertToModelMessages(messages);

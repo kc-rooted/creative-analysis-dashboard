@@ -1,38 +1,36 @@
 import { NextResponse } from 'next/server';
-import { getProductIntelligence, getGripRepeatPurchaseAnalysis, getGeographicProductPerformance, getProductAffinity, getProductRankings, getGripSwitchingPatterns, getPutterGripSwitchingPatterns, initializeCurrentClient, getCurrentClientId } from '@/lib/bigquery';
+import { getProductIntelligence, getGripRepeatPurchaseAnalysis, getGeographicProductPerformance, getProductAffinity, getProductRankings, getGripSwitchingPatterns, getPutterGripSwitchingPatterns } from '@/lib/bigquery';
 
 export async function GET(request: Request) {
   try {
     // Get requested client from header (sent from frontend)
-    const requestedClient = request.headers.get('x-client-id');
+    const clientId = request.headers.get('x-client-id');
 
-    // Initialize with requested client to ensure correct dataset
-    await initializeCurrentClient(requestedClient || undefined);
+    if (!clientId) {
+      return NextResponse.json({ error: 'x-client-id header is required' }, { status: 400 });
+    }
 
     const { searchParams } = new URL(request.url);
     const period = searchParams.get('period') || '30d';
 
-    // Get current client to determine which analyses to fetch
-    const currentClientId = await getCurrentClientId();
-
     // Only JumboMax has grip/putter analysis
-    const isJumboMax = currentClientId === 'jumbomax';
+    const isJumboMax = clientId === 'jumbomax';
 
     // Fetch base data that all clients need
     const basePromises = [
-      getProductIntelligence(period),
-      getGeographicProductPerformance(),
-      getProductAffinity(),
-      getProductRankings()
+      getProductIntelligence(clientId, period),
+      getGeographicProductPerformance(clientId),
+      getProductAffinity(clientId),
+      getProductRankings(clientId)
     ];
 
     // Add grip/putter analyses only for JumboMax
     if (isJumboMax) {
       const [products, geoPerformance, affinity, rankings, gripAnalysis, gripSwitching, putterGripSwitching] = await Promise.all([
         ...basePromises,
-        getGripRepeatPurchaseAnalysis(),
-        getGripSwitchingPatterns(),
-        getPutterGripSwitchingPatterns()
+        getGripRepeatPurchaseAnalysis(clientId),
+        getGripSwitchingPatterns(clientId),
+        getPutterGripSwitchingPatterns(clientId)
       ]);
 
       return NextResponse.json({

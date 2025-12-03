@@ -1,16 +1,14 @@
 import { NextResponse } from 'next/server';
-import { getExecutiveSummary, getPaidMediaTrend, getShopifyRevenueYoY, getRevenueForecast7Day, getClientDashboardConfig, getBusinessContextIndex, getBayesianForecast, initializeCurrentClient, getCurrentClientId } from '@/lib/bigquery';
+import { getExecutiveSummary, getPaidMediaTrend, getShopifyRevenueYoY, getRevenueForecast7Day, getClientDashboardConfig, getBusinessContextIndex, getBayesianForecast } from '@/lib/bigquery';
 
 export async function GET(request: Request) {
   try {
     // Get requested client from header (sent from frontend)
-    const requestedClient = request.headers.get('x-client-id');
+    const clientId = request.headers.get('x-client-id');
 
-    // Initialize with requested client to ensure correct dataset
-    await initializeCurrentClient(requestedClient || undefined);
-
-    // Get current client ID to determine which features to include
-    const currentClientId = await getCurrentClientId();
+    if (!clientId) {
+      return NextResponse.json({ error: 'x-client-id header is required' }, { status: 400 });
+    }
 
     // Get period from query params (7d, mtd, last-month, 30d, or ytd)
     const { searchParams } = new URL(request.url);
@@ -32,13 +30,13 @@ export async function GET(request: Request) {
     }
 
     const [data, paidMediaTrend, shopifyRevenueYoY, revenueForecast, dashboardConfig, businessContext, bayesianForecast] = await Promise.all([
-      getExecutiveSummary(),
-      getPaidMediaTrend(days),
-      getShopifyRevenueYoY(days),
-      getRevenueForecast7Day(),
+      getExecutiveSummary(clientId),
+      getPaidMediaTrend(clientId, days),
+      getShopifyRevenueYoY(clientId, days),
+      getRevenueForecast7Day(clientId),
       getClientDashboardConfig(),
-      getBusinessContextIndex(),
-      getBayesianForecast()
+      getBusinessContextIndex(clientId),
+      getBayesianForecast(clientId)
     ]);
 
     if (!data) {
@@ -81,8 +79,8 @@ export async function GET(request: Request) {
     });
 
     // Determine which clients have Klaviyo integration
-    const hasKlaviyo = currentClientId !== 'hb'; // HB doesn't have Klaviyo
-    console.log('[Dashboard API] Client has Klaviyo:', hasKlaviyo, 'for client:', currentClientId);
+    const hasKlaviyo = clientId !== 'hb' && clientId !== 'benhogan'; // HB and Ben Hogan don't have Klaviyo
+    console.log('[Dashboard API] Client has Klaviyo:', hasKlaviyo, 'for client:', clientId);
 
     return NextResponse.json({
       kpis: {

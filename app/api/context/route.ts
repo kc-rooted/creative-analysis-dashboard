@@ -25,12 +25,12 @@ const extractTimestamp = (tsValue: any) => {
  */
 export async function GET(request: NextRequest) {
   try {
-    const { searchParams } = new URL(request.url);
-    const clientId = searchParams.get('clientId');
+    // Get client ID from header - REQUIRED for request isolation
+    const clientId = request.headers.get('x-client-id');
 
     if (!clientId) {
       return NextResponse.json(
-        { error: 'Client ID is required' },
+        { error: 'x-client-id header is required' },
         { status: 400 }
       );
     }
@@ -111,18 +111,28 @@ export async function GET(request: NextRequest) {
  */
 export async function POST(request: NextRequest) {
   try {
+    // Get client ID from header - REQUIRED for request isolation
+    const clientId = request.headers.get('x-client-id');
+
+    if (!clientId) {
+      return NextResponse.json(
+        { error: 'x-client-id header is required' },
+        { status: 400 }
+      );
+    }
+
     const body = await request.json();
     const {
-      clientId, category, title, description,
+      category, title, description,
       event_date, start_date, end_date,
       magnitude, comparison_significant, superseded_by,
       source, source_document, confidence
     } = body;
 
     // Either event_date OR start_date is required
-    if (!clientId || !category || !title || (!event_date && !start_date)) {
+    if (!category || !title || (!event_date && !start_date)) {
       return NextResponse.json(
-        { error: 'clientId, category, title, and either event_date or start_date are required' },
+        { error: 'category, title, and either event_date or start_date are required' },
         { status: 400 }
       );
     }
@@ -183,6 +193,16 @@ export async function POST(request: NextRequest) {
  */
 export async function PUT(request: NextRequest) {
   try {
+    // Get client ID from header - REQUIRED for request isolation
+    const clientId = request.headers.get('x-client-id');
+
+    if (!clientId) {
+      return NextResponse.json(
+        { error: 'x-client-id header is required' },
+        { status: 400 }
+      );
+    }
+
     const body = await request.json();
     const {
       id, category, title, description,
@@ -197,7 +217,7 @@ export async function PUT(request: NextRequest) {
       );
     }
 
-    console.log('[Context API] Updating context entry with ID:', id);
+    console.log('[Context API] Updating context entry with ID:', id, 'for client:', clientId);
 
     const projectId = process.env.GOOGLE_CLOUD_PROJECT_ID || 'intelligence-451803';
     const escapedTitle = title ? title.replace(/'/g, "\\'") : '';
@@ -246,6 +266,16 @@ export async function PUT(request: NextRequest) {
  */
 export async function DELETE(request: NextRequest) {
   try {
+    // Get client ID from header - REQUIRED for request isolation
+    const clientId = request.headers.get('x-client-id');
+
+    if (!clientId) {
+      return NextResponse.json(
+        { error: 'x-client-id header is required' },
+        { status: 400 }
+      );
+    }
+
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
 
@@ -256,7 +286,7 @@ export async function DELETE(request: NextRequest) {
       );
     }
 
-    console.log('[Context API] Deleting context entry with ID:', id);
+    console.log('[Context API] Deleting context entry with ID:', id, 'for client:', clientId);
 
     const projectId = process.env.GOOGLE_CLOUD_PROJECT_ID || 'intelligence-451803';
     const query = `DELETE FROM \`${projectId}.business_context.context_entries\` WHERE id = '${id}'`;

@@ -4,24 +4,24 @@ import {
   getAudienceOverlapAnalysis,
   getCustomerOverviewKPIs,
   getLTVIntelligence,
-  getCustomerJourneyAnalysis,
-  initializeCurrentClient
+  getCustomerJourneyAnalysis
 } from '@/lib/bigquery';
 
 export async function GET(request: Request) {
   try {
     // Get requested client from header (sent from frontend)
-    const requestedClient = request.headers.get('x-client-id');
+    const clientId = request.headers.get('x-client-id');
 
-    // Initialize with requested client to ensure correct dataset
-    await initializeCurrentClient(requestedClient || undefined);
+    if (!clientId) {
+      return NextResponse.json({ error: 'x-client-id header is required' }, { status: 400 });
+    }
 
     const [clvData, audienceOverlap, overviewKPIs, ltvIntelligence, journeyAnalysis] = await Promise.all([
-      getCustomerCLVData(),
-      getAudienceOverlapAnalysis(),
-      getCustomerOverviewKPIs(),
-      getLTVIntelligence(),
-      getCustomerJourneyAnalysis()
+      getCustomerCLVData(clientId),
+      getAudienceOverlapAnalysis(clientId),
+      getCustomerOverviewKPIs(clientId),
+      getLTVIntelligence(clientId),
+      getCustomerJourneyAnalysis(clientId)
     ]);
 
     return NextResponse.json({

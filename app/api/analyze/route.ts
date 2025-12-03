@@ -1,10 +1,32 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { analyzeCreativeWithClaude, updateCreativeAnalysis } from '@/lib/claude-analysis';
 import { BigQuery } from '@google-cloud/bigquery';
-import { getCurrentClientConfigSync } from '@/lib/client-config';
+import { getClientConfig, CLIENT_CONFIGS } from '@/lib/client-config';
 
 export async function POST(request: NextRequest) {
   try {
+    // Get client ID from header - REQUIRED for request isolation
+    const clientId = request.headers.get('x-client-id');
+
+    if (!clientId) {
+      return NextResponse.json(
+        { error: 'x-client-id header is required' },
+        { status: 400 }
+      );
+    }
+
+    // Validate client exists
+    if (!CLIENT_CONFIGS[clientId]) {
+      return NextResponse.json(
+        { error: `Invalid client ID: ${clientId}` },
+        { status: 400 }
+      );
+    }
+
+    const clientConfig = getClientConfig(clientId);
+    const datasetName = clientConfig.bigquery.dataset;
+    console.log(`🔧 [ANALYZE] Using client: ${clientId}, dataset: ${datasetName}`);
+
     const { contentIds } = await request.json();
     console.log(`🚀 [ANALYZE] Starting analysis for ${contentIds?.length || 0} creatives:`, contentIds);
 
@@ -28,17 +50,6 @@ export async function POST(request: NextRequest) {
         ),
       });
 
-      // Helper to get current dataset name safely
-      function getCurrentDatasetName(): string {
-        try {
-          const clientConfig = getCurrentClientConfigSync();
-          return clientConfig.bigquery.dataset;
-        } catch (error) {
-          console.error('Error getting client config, falling back to environment variable:', error);
-          return process.env.BIGQUERY_DATASET || 'jumbomax_analytics';
-        }
-      }
-
       try {
         // Get creative details
         const query = `
@@ -51,8 +62,8 @@ export async function POST(request: NextRequest) {
             cpd.total_usage_count,
             ca.analysis_status,
             ca.retry_count
-          FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${getCurrentDatasetName()}.creative_performance_dashboard\` cpd
-          LEFT JOIN \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${getCurrentDatasetName()}.creative_analysis\` ca
+          FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${datasetName}.creative_performance_dashboard\` cpd
+          LEFT JOIN \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${datasetName}.creative_analysis\` ca
             ON cpd.content_id = ca.content_id
           WHERE cpd.content_id = @content_id
             AND cpd.creative_type != 'NO_VISUAL'
@@ -88,7 +99,7 @@ export async function POST(request: NextRequest) {
         console.log(`🔄 [${contentId}] Marking as analyzing...`);
         await bigquery.query({
           query: `
-            UPDATE \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${getCurrentDatasetName()}.creative_analysis\`
+            UPDATE \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${datasetName}.creative_analysis\`
             SET analysis_status = 'analyzing', updated_at = CURRENT_TIMESTAMP()
             WHERE content_id = @content_id
           `,
@@ -130,7 +141,7 @@ export async function POST(request: NextRequest) {
           console.log(`🔄 [${contentId}] Updating status to failed due to error...`);
           await bigquery.query({
             query: `
-              UPDATE \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${getCurrentDatasetName()}.creative_analysis\`
+              UPDATE \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${datasetName}.creative_analysis\`
               SET
                 analysis_status = 'failed',
                 error_message = @error_message,
@@ -163,7 +174,10 @@ export async function POST(request: NextRequest) {
       const baseUrl = process.env.NEXTAUTH_URL || request.nextUrl.origin;
       const response = await fetch(`${baseUrl}/api/analyze-batch`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'x-client-id': clientId,  // Pass client ID to batch route
+        },
         body: JSON.stringify({ limit: Math.min(contentIds.length, 50) }),
       });
 

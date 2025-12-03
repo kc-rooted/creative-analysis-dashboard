@@ -110,7 +110,10 @@ export default function Dashboard() {
 
       const response = await fetch('/api/analyze', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'x-client-id': currentClient || '',
+        },
         body: JSON.stringify({ contentIds: [contentId] }),
       });
 
@@ -173,7 +176,10 @@ export default function Dashboard() {
     try {
       const response = await fetch('/api/analyze', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'x-client-id': currentClient || '',
+        },
         body: JSON.stringify({ contentIds: Array.from(selectedCreatives) }),
       });
 
@@ -218,7 +224,10 @@ export default function Dashboard() {
       setBatchAnalyzing(true);
       const response = await fetch('/api/analyze-batch', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'x-client-id': currentClient || '',
+        },
         body: JSON.stringify({ limit }),
       });
 

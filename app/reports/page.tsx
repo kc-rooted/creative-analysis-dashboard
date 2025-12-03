@@ -557,6 +557,9 @@ export default function ReportsPage() {
 
   const { messages, sendMessage, status, error, setMessages } = useChat({
     id: `reports-${currentClient}`,
+    headers: {
+      'x-client-id': currentClient || '',
+    },
     onError: (error) => {
       console.error('Chat error:', error);
     },

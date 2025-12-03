@@ -1,5 +1,5 @@
 import { Anthropic } from '@anthropic-ai/sdk';
-import { getCurrentClientConfigSync, generateClientContext } from './client-config';
+import { getCurrentClientConfigSync, generateClientContext, getClientConfig } from './client-config';
 
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY!,
@@ -300,14 +300,14 @@ export async function updateCreativeAnalysis(
   }
 }
 
-export async function processCreativesForAnalysis(limit: number = 10): Promise<{
+export async function processCreativesForAnalysis(limit: number = 10, clientId?: string): Promise<{
   processed: number;
   successful: number;
   failed: number;
   errors: Array<{ content_id: string; error: string }>;
 }> {
   const { BigQuery } = require('@google-cloud/bigquery');
-  
+
   const bigquery = new BigQuery({
     projectId: process.env.GOOGLE_CLOUD_PROJECT_ID,
     ...(process.env.GOOGLE_SERVICE_ACCOUNT_KEY
@@ -316,8 +316,8 @@ export async function processCreativesForAnalysis(limit: number = 10): Promise<{
     ),
   });
 
-  // Get client-specific dataset
-  const clientConfig = getCurrentClientConfigSync();
+  // Get client-specific dataset - prefer explicit clientId, fall back to cached config
+  const clientConfig = clientId ? getClientConfig(clientId) : getCurrentClientConfigSync();
 
   const results = {
     processed: 0,

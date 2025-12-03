@@ -1,9 +1,31 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { processCreativesForAnalysis } from '@/lib/claude-analysis';
-import { getCurrentClientConfigSync } from '@/lib/client-config';
+import { getClientConfig, CLIENT_CONFIGS } from '@/lib/client-config';
 
 export async function POST(request: NextRequest) {
   try {
+    // Get client ID from header - REQUIRED for request isolation
+    const clientId = request.headers.get('x-client-id');
+
+    if (!clientId) {
+      return NextResponse.json(
+        { error: 'x-client-id header is required' },
+        { status: 400 }
+      );
+    }
+
+    // Validate client exists
+    if (!CLIENT_CONFIGS[clientId]) {
+      return NextResponse.json(
+        { error: `Invalid client ID: ${clientId}` },
+        { status: 400 }
+      );
+    }
+
+    const clientConfig = getClientConfig(clientId);
+    const datasetName = clientConfig.bigquery.dataset;
+    console.log(`🔧 [ANALYZE-BATCH] Using client: ${clientId}, dataset: ${datasetName}`);
+
     const { limit = 10 } = await request.json();
 
     if (limit > 50) {
@@ -13,9 +35,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    console.log(`Starting batch analysis of up to ${limit} creatives`);
+    console.log(`Starting batch analysis of up to ${limit} creatives for ${clientId}`);
 
-    const results = await processCreativesForAnalysis(limit);
+    // Pass clientId to batch processing function
+    const results = await processCreativesForAnalysis(limit, clientId);
 
     return NextResponse.json({
       success: true,
@@ -41,11 +64,32 @@ export async function POST(request: NextRequest) {
   }
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   // Get current analysis queue status
   try {
+    // Get client ID from header - REQUIRED for request isolation
+    const clientId = request.headers.get('x-client-id');
+
+    if (!clientId) {
+      return NextResponse.json(
+        { error: 'x-client-id header is required' },
+        { status: 400 }
+      );
+    }
+
+    // Validate client exists
+    if (!CLIENT_CONFIGS[clientId]) {
+      return NextResponse.json(
+        { error: `Invalid client ID: ${clientId}` },
+        { status: 400 }
+      );
+    }
+
+    const clientConfig = getClientConfig(clientId);
+    const datasetName = clientConfig.bigquery.dataset;
+
     const { BigQuery } = require('@google-cloud/bigquery');
-    
+
     const bigquery = new BigQuery({
       projectId: process.env.GOOGLE_CLOUD_PROJECT_ID,
       ...(process.env.GOOGLE_SERVICE_ACCOUNT_KEY
@@ -54,17 +98,13 @@ export async function GET() {
       ),
     });
 
-    // Get client-specific dataset
-    const clientConfig = getCurrentClientConfigSync();
-    const dataset = clientConfig.bigquery.dataset;
-
     const query = `
-      SELECT 
+      SELECT
         IFNULL(ca.analysis_status, 'pending') as analysis_status,
         COUNT(*) as count,
         SUM(d.total_usage_count) as total_campaign_impact
-      FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${dataset}.deduplicated_creative_analysis\` d
-      LEFT JOIN \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${dataset}.creative_analysis\` ca
+      FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${datasetName}.deduplicated_creative_analysis\` d
+      LEFT JOIN \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${datasetName}.creative_analysis\` ca
         ON d.content_id = ca.content_id
       WHERE d.primary_image_url IS NOT NULL AND d.primary_image_url != ''
       GROUP BY IFNULL(ca.analysis_status, 'pending')
@@ -90,9 +130,9 @@ export async function GET() {
 
   } catch (error) {
     console.error('Error getting queue status:', error);
-    
+
     return NextResponse.json(
-      { 
+      {
         error: 'Failed to get queue status',
         message: error instanceof Error ? error.message : 'Unknown error'
       },

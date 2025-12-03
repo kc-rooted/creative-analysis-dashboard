@@ -464,9 +464,24 @@ export function getClientConfig(clientId: string): ClientConfig {
   return config;
 }
 
+// =============================================================================
+// DEPRECATED: Legacy module-level caching
+// These variables and functions are DEPRECATED and should NOT be used.
+// They exist only for backwards compatibility during migration.
+// All new code should pass clientId explicitly through function parameters.
+// The x-client-id header should be the source of truth for request isolation.
+// =============================================================================
+
+/** @deprecated Use explicit clientId parameter instead */
 let cachedCurrentClientId: string | null = null;
+
+/** @deprecated Use explicit clientId parameter instead */
 let cachedClientConfigs: Record<string, ClientConfig> = {};
 
+/**
+ * @deprecated Use explicit clientId from x-client-id header instead.
+ * This function relies on module-level cache which is not safe for multi-user environments.
+ */
 export async function getCurrentClientId(): Promise<string> {
   if (cachedCurrentClientId) {
     return cachedCurrentClientId;
@@ -529,7 +544,10 @@ export async function getClientConfigFromDatabase(clientId: string): Promise<Cli
   return fallbackConfig;
 }
 
-// Synchronous version for server-side usage (backwards compatibility)
+/**
+ * @deprecated Use explicit clientId from x-client-id header instead.
+ * This function relies on module-level cache which is not safe for multi-user environments.
+ */
 export function getCurrentClientConfigSync(): ClientConfig {
   // Use cached client ID if available (populated by async getCurrentClientId)
   const clientId = cachedCurrentClientId || process.env.CURRENT_CLIENT_ID || "jumbomax";
@@ -544,12 +562,18 @@ export function getCurrentClientConfigSync(): ClientConfig {
   return getClientConfig(clientId);
 }
 
-// Helper to set cached client ID (used by BigQuery module)
+/**
+ * @deprecated Use explicit clientId parameter instead.
+ * This function relies on module-level cache which is not safe for multi-user environments.
+ */
 export function setCachedClientId(clientId: string) {
   cachedCurrentClientId = clientId;
 }
 
-// Helper to set cached client ID AND config (for client switching)
+/**
+ * @deprecated Use explicit clientId parameter instead.
+ * This function relies on module-level cache which is not safe for multi-user environments.
+ */
 export function setCachedClientConfig(clientId: string) {
   cachedCurrentClientId = clientId;
   // Force load the config for this client into cache
@@ -558,7 +582,10 @@ export function setCachedClientConfig(clientId: string) {
   console.log(`[client-config] Set cached config for ${clientId}, dataset:`, config.bigquery.dataset);
 }
 
-// Clear cache when client changes
+/**
+ * @deprecated Use explicit clientId parameter instead.
+ * This function relies on module-level cache which is not safe for multi-user environments.
+ */
 export function clearClientCache() {
   cachedCurrentClientId = null;
   cachedClientConfigs = {};

@@ -172,7 +172,9 @@ export default function ContextPage() {
   const fetchItems = async () => {
     setIsLoading(true);
     try {
-      const response = await fetch(`/api/context?clientId=${currentClient}`);
+      const response = await fetch('/api/context', {
+        headers: { 'x-client-id': currentClient || '' },
+      });
       const data = await response.json();
       setItems(data.items || []);
     } catch (error) {
@@ -226,7 +228,10 @@ export default function ContextPage() {
 
       const response = await fetch('/api/context', {
         method,
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'x-client-id': currentClient || '',
+        },
         body: JSON.stringify(payload),
       });
 
@@ -257,6 +262,7 @@ export default function ContextPage() {
     try {
       const response = await fetch(`/api/context?id=${selectedItem.id}`, {
         method: 'DELETE',
+        headers: { 'x-client-id': currentClient || '' },
       });
 
       if (!response.ok) {
@@ -285,6 +291,7 @@ export default function ContextPage() {
 
       const response = await fetch('/api/context/extract', {
         method: 'POST',
+        headers: { 'x-client-id': currentClient || '' },
         body: formData,
       });
 
@@ -343,7 +350,10 @@ export default function ContextPage() {
 
         const response = await fetch('/api/context', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            'x-client-id': currentClient || '',
+          },
           body: JSON.stringify(payload),
         });
 

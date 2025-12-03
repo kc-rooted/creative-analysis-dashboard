@@ -1,13 +1,14 @@
 import { NextResponse } from 'next/server';
-import { getEmailDashboardData, getEmailCampaignsTable, getEmailFlowsTable, initializeCurrentClient } from '@/lib/bigquery';
+import { getEmailDashboardData, getEmailCampaignsTable, getEmailFlowsTable } from '@/lib/bigquery';
 
 export async function GET(request: Request) {
   try {
     // Get requested client from header (sent from frontend)
-    const requestedClient = request.headers.get('x-client-id');
+    const clientId = request.headers.get('x-client-id');
 
-    // Initialize with requested client to ensure correct dataset
-    await initializeCurrentClient(requestedClient || undefined);
+    if (!clientId) {
+      return NextResponse.json({ error: 'x-client-id header is required' }, { status: 400 });
+    }
 
     // Extract date parameters from URL
     const { searchParams } = new URL(request.url);
@@ -17,9 +18,9 @@ export async function GET(request: Request) {
     const comparisonType = searchParams.get('comparisonType') || 'previous-period';
 
     const [emailData, campaignsTable, flowsTable] = await Promise.all([
-      getEmailDashboardData(preset, startDate, endDate, comparisonType),
-      getEmailCampaignsTable(preset, startDate, endDate),
-      getEmailFlowsTable(preset, startDate, endDate)
+      getEmailDashboardData(clientId, preset, startDate, endDate, comparisonType),
+      getEmailCampaignsTable(clientId, preset, startDate, endDate),
+      getEmailFlowsTable(clientId, preset, startDate, endDate)
     ]);
 
     if (!emailData) {

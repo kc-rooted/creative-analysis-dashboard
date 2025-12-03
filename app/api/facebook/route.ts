@@ -1,13 +1,14 @@
 import { NextResponse } from 'next/server';
-import { getFacebookPerformanceData, getFacebookPerformanceByCountry, initializeCurrentClient } from '@/lib/bigquery';
+import { getFacebookPerformanceData, getFacebookPerformanceByCountry } from '@/lib/bigquery';
 
 export async function GET(request: Request) {
   try {
     // Get requested client from header (sent from frontend)
-    const requestedClient = request.headers.get('x-client-id');
+    const clientId = request.headers.get('x-client-id');
 
-    // Initialize with requested client to ensure correct dataset
-    await initializeCurrentClient(requestedClient || undefined);
+    if (!clientId) {
+      return NextResponse.json({ error: 'x-client-id header is required' }, { status: 400 });
+    }
 
     const { searchParams } = new URL(request.url);
     const preset = searchParams.get('preset') || 'mtd';
@@ -16,8 +17,8 @@ export async function GET(request: Request) {
     const comparisonType = searchParams.get('comparisonType') || 'previous-period';
 
     const [facebookData, countryData] = await Promise.all([
-      getFacebookPerformanceData(preset, startDate, endDate, comparisonType),
-      getFacebookPerformanceByCountry(preset, startDate, endDate, comparisonType)
+      getFacebookPerformanceData(clientId, preset, startDate, endDate, comparisonType),
+      getFacebookPerformanceByCountry(clientId, preset, startDate, endDate, comparisonType)
     ]);
 
     return NextResponse.json({

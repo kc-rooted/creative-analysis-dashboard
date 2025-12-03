@@ -1,17 +1,18 @@
 import { NextResponse } from 'next/server';
-import { getPutterGripPricingModel, getSwingGripPricingModel, initializeCurrentClient } from '@/lib/bigquery';
+import { getPutterGripPricingModel, getSwingGripPricingModel } from '@/lib/bigquery';
 
 export async function GET(request: Request) {
   try {
     // Get requested client from header (sent from frontend)
-    const requestedClient = request.headers.get('x-client-id');
+    const clientId = request.headers.get('x-client-id');
 
-    // Initialize with requested client to ensure correct dataset
-    await initializeCurrentClient(requestedClient || undefined);
+    if (!clientId) {
+      return NextResponse.json({ error: 'x-client-id header is required' }, { status: 400 });
+    }
 
     const [putterGripPricing, swingGripPricing] = await Promise.all([
-      getPutterGripPricingModel(),
-      getSwingGripPricingModel()
+      getPutterGripPricingModel(clientId),
+      getSwingGripPricingModel(clientId)
     ]);
 
     return NextResponse.json({
