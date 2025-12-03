@@ -4,11 +4,16 @@ import { usePathname, useRouter } from 'next/navigation';
 import { MessageSquare, LayoutGrid, Settings, Users, BarChart3, FileText, BookOpen } from 'lucide-react';
 import { UserMenu } from './auth/user-menu';
 import { useClient } from './client-provider';
+import { useSession } from 'next-auth/react';
 
 export function Navigation() {
   const pathname = usePathname();
   const router = useRouter();
   const { currentClient } = useClient();
+  const { data: session } = useSession();
+
+  // Temporary: Only show Context button for specific user
+  const showContext = session?.user?.email === 'kane@rootedsolutions.co';
 
   const isCreative = pathname === '/' || pathname.startsWith('/creative');
   const isConversation = pathname.startsWith('/conversation');
@@ -131,22 +136,24 @@ export function Navigation() {
               REPORTS
             </button>
 
-            <button
-              onClick={() => router.push('/context')}
-              className={`px-4 py-2 rounded-lg font-medium transition-all duration-200 flex items-center gap-2 ${
-                isContext ? 'btn-primary' : ''
-              }`}
-              style={!isContext ? {
-                background: 'var(--bg-elevated)',
-                border: '1px solid var(--border-muted)',
-                color: 'var(--text-secondary)'
-              } : {}}
-              onMouseEnter={(e) => !isContext && (e.currentTarget.style.background = 'var(--bg-card)')}
-              onMouseLeave={(e) => !isContext && (e.currentTarget.style.background = 'var(--bg-elevated)')}
-            >
-              <BookOpen className="w-4 h-4" />
-              CONTEXT
-            </button>
+            {showContext && (
+              <button
+                onClick={() => router.push('/context')}
+                className={`px-4 py-2 rounded-lg font-medium transition-all duration-200 flex items-center gap-2 ${
+                  isContext ? 'btn-primary' : ''
+                }`}
+                style={!isContext ? {
+                  background: 'var(--bg-elevated)',
+                  border: '1px solid var(--border-muted)',
+                  color: 'var(--text-secondary)'
+                } : {}}
+                onMouseEnter={(e) => !isContext && (e.currentTarget.style.background = 'var(--bg-card)')}
+                onMouseLeave={(e) => !isContext && (e.currentTarget.style.background = 'var(--bg-elevated)')}
+              >
+                <BookOpen className="w-4 h-4" />
+                CONTEXT
+              </button>
+            )}
 
             <div className="w-px h-8 mx-2" style={{background: 'var(--border-muted)'}}></div>
 

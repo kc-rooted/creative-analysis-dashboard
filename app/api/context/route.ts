@@ -3,9 +3,25 @@ import { runSQLQuery } from '@/lib/bigquery';
 
 export const maxDuration = 60;
 
+// Helper to extract date value from BigQuery date object
+const extractDate = (dateValue: any) => {
+  if (!dateValue) return null;
+  if (typeof dateValue === 'string') return dateValue;
+  if (dateValue.value) return dateValue.value;
+  return null;
+};
+
+// Helper to extract timestamp value from BigQuery timestamp object
+const extractTimestamp = (tsValue: any) => {
+  if (!tsValue) return null;
+  if (typeof tsValue === 'string') return tsValue;
+  if (tsValue.value) return tsValue.value;
+  return null;
+};
+
 /**
  * GET /api/context
- * Fetch all strategic context and business events for a client
+ * Fetch all context entries for a client
  */
 export async function GET(request: NextRequest) {
   try {
@@ -23,83 +39,52 @@ export async function GET(request: NextRequest) {
 
     const projectId = process.env.GOOGLE_CLOUD_PROJECT_ID || 'intelligence-451803';
 
-    // Query base tables directly with UNION (context_summary view may be outdated)
     const query = `
       SELECT
-        'strategic' as context_type,
-        context_id as id,
+        id,
         client_id,
-        context_category as category,
-        context_title as title,
-        context_description as description,
+        category,
+        title,
+        description,
+        event_date,
         start_date,
         end_date,
-        created_at
-      FROM \`${projectId}.business_context.strategic_context\`
+        magnitude,
+        comparison_significant,
+        superseded_by,
+        source,
+        source_document,
+        confidence,
+        created_at,
+        updated_at
+      FROM \`${projectId}.business_context.context_entries\`
       WHERE client_id = '${clientId}'
-
-      UNION ALL
-
-      SELECT
-        'event' as context_type,
-        event_id as id,
-        client_id,
-        event_category as category,
-        event_title as title,
-        event_description as description,
-        event_date as start_date,
-        impact_end_date as end_date,
-        created_at
-      FROM \`${projectId}.business_context.business_events\`
-      WHERE client_id = '${clientId}'
-
-      ORDER BY start_date DESC
+      ORDER BY COALESCE(event_date, start_date) DESC
     `;
 
     const rows = await runSQLQuery(query);
 
     console.log('[Context API] Fetched', rows.length, 'items');
 
-    // Helper to extract date value from BigQuery date object
-    const extractDate = (dateValue: any) => {
-      if (!dateValue) return null;
-      if (typeof dateValue === 'string') return dateValue;
-      if (dateValue.value) return dateValue.value;
-      return null;
-    };
-
     // Transform the data to match the frontend types
-    const items = rows.map((row: any) => {
-      if (row.context_type === 'strategic') {
-        return {
-          type: 'strategic',
-          context_id: row.id,
-          client_id: row.client_id,
-          context_category: row.category,
-          start_date: extractDate(row.start_date),
-          end_date: extractDate(row.end_date),
-          context_title: row.title,
-          context_description: row.description,
-          created_by: 'system',
-          created_at: row.created_at,
-          updated_at: row.created_at,
-        };
-      } else {
-        return {
-          type: 'event',
-          event_id: row.id,
-          client_id: row.client_id,
-          event_category: row.category,
-          event_date: extractDate(row.start_date),
-          impact_end_date: extractDate(row.end_date),
-          event_title: row.title,
-          event_description: row.description,
-          created_by: 'system',
-          created_at: row.created_at,
-          updated_at: row.created_at,
-        };
-      }
-    });
+    const items = rows.map((row: any) => ({
+      id: row.id,
+      client_id: row.client_id,
+      category: row.category,
+      title: row.title,
+      description: row.description,
+      event_date: extractDate(row.event_date),
+      start_date: extractDate(row.start_date),
+      end_date: extractDate(row.end_date),
+      magnitude: row.magnitude,
+      comparison_significant: row.comparison_significant,
+      superseded_by: row.superseded_by,
+      source: row.source,
+      source_document: row.source_document,
+      confidence: row.confidence,
+      created_at: extractTimestamp(row.created_at),
+      updated_at: extractTimestamp(row.updated_at),
+    }));
 
     return NextResponse.json({
       success: true,
@@ -122,68 +107,62 @@ export async function GET(request: NextRequest) {
 
 /**
  * POST /api/context
- * Create a new strategic context or business event
+ * Create a new context entry
  */
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { type, clientId, ...data } = body;
+    const {
+      clientId, category, title, description,
+      event_date, start_date, end_date,
+      magnitude, comparison_significant, superseded_by,
+      source, source_document, confidence
+    } = body;
 
-    if (!type || !clientId) {
+    // Either event_date OR start_date is required
+    if (!clientId || !category || !title || (!event_date && !start_date)) {
       return NextResponse.json(
-        { error: 'Type and clientId are required' },
+        { error: 'clientId, category, title, and either event_date or start_date are required' },
         { status: 400 }
       );
     }
 
-    console.log('[Context API] Creating new', type, 'for client:', clientId);
+    console.log('[Context API] Creating new context entry for client:', clientId);
 
-    let query = '';
+    const projectId = process.env.GOOGLE_CLOUD_PROJECT_ID || 'intelligence-451803';
+    const escapedTitle = title.replace(/'/g, "\\'");
+    const escapedDescription = description ? description.replace(/'/g, "\\'") : '';
 
-    if (type === 'strategic') {
-      query = `
-        INSERT INTO \`business_context.strategic_context\` VALUES (
-          GENERATE_UUID(),
-          '${clientId}',
-          '${data.context_category}',
-          DATE('${data.start_date}'),
-          ${data.end_date ? `DATE('${data.end_date}')` : 'NULL'},
-          '${data.context_title.replace(/'/g, "\\'")}',
-          '${data.context_description.replace(/'/g, "\\'")}',
-          '${data.created_by || 'system'}',
-          CURRENT_TIMESTAMP(),
-          CURRENT_TIMESTAMP()
-        )
-      `;
-    } else if (type === 'event') {
-      query = `
-        INSERT INTO \`business_context.business_events\` VALUES (
-          GENERATE_UUID(),
-          '${clientId}',
-          '${data.event_category}',
-          DATE('${data.event_date}'),
-          ${data.impact_end_date ? `DATE('${data.impact_end_date}')` : 'NULL'},
-          '${data.event_title.replace(/'/g, "\\'")}',
-          '${data.event_description.replace(/'/g, "\\'")}',
-          '${data.created_by || 'system'}',
-          CURRENT_TIMESTAMP(),
-          CURRENT_TIMESTAMP()
-        )
-      `;
-    } else {
-      return NextResponse.json(
-        { error: 'Invalid type. Must be "strategic" or "event"' },
-        { status: 400 }
-      );
-    }
+    const query = `
+      INSERT INTO \`${projectId}.business_context.context_entries\`
+      (id, client_id, category, title, description, event_date, start_date, end_date, magnitude, comparison_significant, superseded_by, source, source_document, confidence, created_at, updated_at)
+      VALUES (
+        GENERATE_UUID(),
+        '${clientId}',
+        '${category}',
+        '${escapedTitle}',
+        '${escapedDescription}',
+        ${event_date ? `DATE('${event_date}')` : 'NULL'},
+        ${start_date ? `DATE('${start_date}')` : 'NULL'},
+        ${end_date ? `DATE('${end_date}')` : 'NULL'},
+        ${magnitude ? `'${magnitude}'` : 'NULL'},
+        ${comparison_significant !== undefined && comparison_significant !== null ? comparison_significant : 'NULL'},
+        ${superseded_by ? `'${superseded_by}'` : 'NULL'},
+        '${source || 'manual'}',
+        ${source_document ? `'${source_document}'` : 'NULL'},
+        ${confidence !== undefined && confidence !== null ? confidence : 'NULL'},
+        CURRENT_TIMESTAMP(),
+        CURRENT_TIMESTAMP()
+      )
+    `;
 
     await runSQLQuery(query);
 
-    console.log('[Context API] Successfully created', type);
+    console.log('[Context API] Successfully created context entry');
 
     return NextResponse.json({
       success: true,
-      message: `${type} created successfully`,
+      message: 'Context entry created successfully',
     });
 
   } catch (error) {
@@ -200,63 +179,53 @@ export async function POST(request: NextRequest) {
 
 /**
  * PUT /api/context
- * Update an existing strategic context or business event
+ * Update an existing context entry
  */
 export async function PUT(request: NextRequest) {
   try {
     const body = await request.json();
-    const { type, id, ...data } = body;
+    const {
+      id, category, title, description,
+      event_date, start_date, end_date,
+      magnitude, comparison_significant, superseded_by
+    } = body;
 
-    if (!type || !id) {
+    if (!id) {
       return NextResponse.json(
-        { error: 'Type and ID are required' },
+        { error: 'ID is required' },
         { status: 400 }
       );
     }
 
-    console.log('[Context API] Updating', type, 'with ID:', id);
+    console.log('[Context API] Updating context entry with ID:', id);
 
     const projectId = process.env.GOOGLE_CLOUD_PROJECT_ID || 'intelligence-451803';
-    let query = '';
+    const escapedTitle = title ? title.replace(/'/g, "\\'") : '';
+    const escapedDescription = description ? description.replace(/'/g, "\\'") : '';
 
-    if (type === 'strategic') {
-      query = `
-        UPDATE \`${projectId}.business_context.strategic_context\`
-        SET
-          context_category = '${data.context_category}',
-          start_date = DATE('${data.start_date}'),
-          end_date = ${data.end_date ? `DATE('${data.end_date}')` : 'NULL'},
-          context_title = '${data.context_title.replace(/'/g, "\\'")}',
-          context_description = '${data.context_description.replace(/'/g, "\\'")}',
-          updated_at = CURRENT_TIMESTAMP()
-        WHERE context_id = '${id}'
-      `;
-    } else if (type === 'event') {
-      query = `
-        UPDATE \`${projectId}.business_context.business_events\`
-        SET
-          event_category = '${data.event_category}',
-          event_date = DATE('${data.event_date}'),
-          impact_end_date = ${data.impact_end_date ? `DATE('${data.impact_end_date}')` : 'NULL'},
-          event_title = '${data.event_title.replace(/'/g, "\\'")}',
-          event_description = '${data.event_description.replace(/'/g, "\\'")}',
-          updated_at = CURRENT_TIMESTAMP()
-        WHERE event_id = '${id}'
-      `;
-    } else {
-      return NextResponse.json(
-        { error: 'Invalid type. Must be "strategic" or "event"' },
-        { status: 400 }
-      );
-    }
+    const query = `
+      UPDATE \`${projectId}.business_context.context_entries\`
+      SET
+        category = '${category}',
+        title = '${escapedTitle}',
+        description = '${escapedDescription}',
+        event_date = ${event_date ? `DATE('${event_date}')` : 'NULL'},
+        start_date = ${start_date ? `DATE('${start_date}')` : 'NULL'},
+        end_date = ${end_date ? `DATE('${end_date}')` : 'NULL'},
+        magnitude = ${magnitude ? `'${magnitude}'` : 'NULL'},
+        comparison_significant = ${comparison_significant !== undefined && comparison_significant !== null ? comparison_significant : 'NULL'},
+        superseded_by = ${superseded_by ? `'${superseded_by}'` : 'NULL'},
+        updated_at = CURRENT_TIMESTAMP()
+      WHERE id = '${id}'
+    `;
 
     await runSQLQuery(query);
 
-    console.log('[Context API] Successfully updated', type);
+    console.log('[Context API] Successfully updated context entry');
 
     return NextResponse.json({
       success: true,
-      message: `${type} updated successfully`,
+      message: 'Context entry updated successfully',
     });
 
   } catch (error) {
@@ -273,43 +242,32 @@ export async function PUT(request: NextRequest) {
 
 /**
  * DELETE /api/context
- * Delete a strategic context or business event
+ * Delete a context entry
  */
 export async function DELETE(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
-    const type = searchParams.get('type');
     const id = searchParams.get('id');
 
-    if (!type || !id) {
+    if (!id) {
       return NextResponse.json(
-        { error: 'Type and ID are required' },
+        { error: 'ID is required' },
         { status: 400 }
       );
     }
 
-    console.log('[Context API] Deleting', type, 'with ID:', id);
+    console.log('[Context API] Deleting context entry with ID:', id);
 
-    let query = '';
-
-    if (type === 'strategic') {
-      query = `DELETE FROM \`business_context.strategic_context\` WHERE context_id = '${id}'`;
-    } else if (type === 'event') {
-      query = `DELETE FROM \`business_context.business_events\` WHERE event_id = '${id}'`;
-    } else {
-      return NextResponse.json(
-        { error: 'Invalid type. Must be "strategic" or "event"' },
-        { status: 400 }
-      );
-    }
+    const projectId = process.env.GOOGLE_CLOUD_PROJECT_ID || 'intelligence-451803';
+    const query = `DELETE FROM \`${projectId}.business_context.context_entries\` WHERE id = '${id}'`;
 
     await runSQLQuery(query);
 
-    console.log('[Context API] Successfully deleted', type);
+    console.log('[Context API] Successfully deleted context entry');
 
     return NextResponse.json({
       success: true,
-      message: `${type} deleted successfully`,
+      message: 'Context entry deleted successfully',
     });
 
   } catch (error) {
