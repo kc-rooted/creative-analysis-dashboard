@@ -11,8 +11,10 @@ export async function POST(req: Request) {
   try {
     // Get client ID from header - REQUIRED for request isolation
     const clientId = req.headers.get('x-client-id');
+    console.log('[Chat API] Received request, x-client-id:', clientId);
 
     if (!clientId) {
+      console.log('[Chat API] ERROR: Missing x-client-id header');
       return new Response(JSON.stringify({
         error: 'x-client-id header is required'
       }), {

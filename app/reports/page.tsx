@@ -543,7 +543,32 @@ function FunnelAdsSection({ funnelAds }: { funnelAds: any }) {
 }
 
 export default function ReportsPage() {
-  const { currentClient } = useClient();
+  const { currentClient, isLoading } = useClient();
+
+  // Show loading state while client is being determined
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-screen bg-[#111111]">
+        <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
+      </div>
+    );
+  }
+
+  // Show message if no client selected
+  if (!currentClient) {
+    return (
+      <div className="flex items-center justify-center h-screen bg-[#111111]">
+        <p className="text-gray-400">Please select a client from the dropdown above.</p>
+      </div>
+    );
+  }
+
+  // Render the actual reports page with a key to force re-mount on client change
+  return <ReportsPageInner key={currentClient} currentClient={currentClient} />;
+}
+
+// Inner component that uses the chat hook - only rendered when currentClient is available
+function ReportsPageInner({ currentClient }: { currentClient: string }) {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [selectedTemplate, setSelectedTemplate] = useState<ReportTemplate | null>(null);
   const [input, setInput] = useState<string>('');
@@ -558,7 +583,7 @@ export default function ReportsPage() {
   const { messages, sendMessage, status, error, setMessages } = useChat({
     id: `reports-${currentClient}`,
     headers: {
-      'x-client-id': currentClient || '',
+      'x-client-id': currentClient,
     },
     onError: (error) => {
       console.error('Chat error:', error);
@@ -962,8 +987,9 @@ Performance leaders across the marketing funnel:`;
             })
           });
 
-          const { data, formattedData, dateRange } = await dataResponse.json();
+          const { data, formattedData, dateRange, formattedContext } = await dataResponse.json();
           console.log('[Reports] Pre-fetched data:', Object.keys(data));
+          console.log('[Reports] Business context included:', formattedContext ? 'Yes' : 'No');
 
           // Store funnel ads data for client-side injection
           if (data.funnelAds) {
@@ -973,8 +999,10 @@ Performance leaders across the marketing funnel:`;
 
           setIsPrefetching(false);
 
-          // Construct enhanced prompt with formatted markdown data (more token-efficient)
-          const enhancedPrompt = `${input}\n\n${formattedData}\n\n**IMPORTANT INSTRUCTIONS:**\n- Use ONLY the data provided above\n- The data is synced nightly, so today's date is excluded (data is through yesterday)\n- Generate the report directly from this pre-fetched data`;
+          // Construct enhanced prompt with formatted markdown data and business context
+          const contextSection = formattedContext ? `\n\n## BUSINESS CONTEXT\n${formattedContext}\n\n**IMPORTANT:** Use the business context above to:\n- Explain anomalies or significant YoY/MoM changes\n- Reference relevant promotions, product launches, or events when discussing performance\n- Provide context-aware insights that connect the data to known business activities\n` : '';
+
+          const enhancedPrompt = `${input}\n\n${formattedData}${contextSection}\n\n**IMPORTANT INSTRUCTIONS:**\n- Use ONLY the data provided above\n- The data is synced nightly, so today's date is excluded (data is through yesterday)\n- Generate the report directly from this pre-fetched data\n- When explaining performance changes, reference relevant business context if available`;
 
           console.log('========== FULL PROMPT SENT TO CLAUDE ==========');
           console.log(enhancedPrompt);
@@ -983,6 +1011,9 @@ Performance leaders across the marketing funnel:`;
           sendMessage(
             { text: enhancedPrompt },
             {
+              headers: {
+                'x-client-id': currentClient,
+              },
               body: {
                 selectedClient: currentClient,
                 expectsReport: true,
@@ -997,6 +1028,9 @@ Performance leaders across the marketing funnel:`;
           sendMessage(
             { text: input },
             {
+              headers: {
+                'x-client-id': currentClient,
+              },
               body: {
                 selectedClient: currentClient,
                 expectsReport: true,
@@ -1014,6 +1048,9 @@ Performance leaders across the marketing funnel:`;
         sendMessage(
           { text: input },
           {
+            headers: {
+              'x-client-id': currentClient,
+            },
             body: {
               selectedClient: currentClient,
               expectsReport: true,
@@ -1026,6 +1063,9 @@ Performance leaders across the marketing funnel:`;
         sendMessage(
           { text: input },
           {
+            headers: {
+              'x-client-id': currentClient,
+            },
             body: {
               selectedClient: currentClient,
               expectsReport: true,

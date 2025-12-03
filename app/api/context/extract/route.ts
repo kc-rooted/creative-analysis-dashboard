@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
+import { getDefaultComparisonSignificant } from '@/lib/context-config';
 
 export const maxDuration = 120; // 2 minutes for PDF processing
 
@@ -18,6 +19,9 @@ const VALID_CATEGORIES = [
   'competitor',
   'market_trend',
   'paid_media_strategy',
+  'organic_social_strategy',
+  'business_strategy',
+  'brand_details',
   'budget_change',
   'site_issue',
   'inventory_issue',
@@ -37,6 +41,9 @@ Your task is to analyze the provided document and extract relevant business cont
 - competitor: Competitor activities, market movements
 - market_trend: Industry trends, market shifts (not routine seasonality)
 - paid_media_strategy: Strategy changes like "shifted to ABO testing", "launched new audience segments", "changed bidding strategy" (persistent, may be superseded)
+- organic_social_strategy: Organic social media strategy changes like "increased posting frequency", "shifted to Reels-first", "new content pillars" (persistent)
+- business_strategy: Business-level decisions like "expanded to new market", "changed pricing model", "new distribution channel" (persistent)
+- brand_details: Brand positioning, messaging, target audience, unique selling propositions, brand voice/tone guidelines (persistent context)
 - budget_change: Spend adjustments - "increased Meta spend 20%", "cut Google budget" (point-in-time)
 - site_issue: Website problems, checkout issues, page errors
 - inventory_issue: Stock constraints, out-of-stock events, supply chain problems
@@ -229,18 +236,29 @@ export async function POST(request: NextRequest) {
         // Must have required fields - either event_date OR start_date
         return entry.category && entry.title && (entry.event_date || entry.start_date);
       })
-      .map((entry: any) => ({
-        category: VALID_CATEGORIES.includes(entry.category) ? entry.category : 'other',
-        title: String(entry.title).slice(0, 200),
-        description: entry.description ? String(entry.description).slice(0, 2000) : '',
-        event_date: entry.event_date || null,
-        start_date: entry.start_date || null,
-        end_date: entry.end_date || null,
-        magnitude: VALID_MAGNITUDES.includes(entry.magnitude) ? entry.magnitude : 'moderate',
-        comparison_significant: typeof entry.comparison_significant === 'boolean' ? entry.comparison_significant : false,
-        source: 'document' as const,
-        source_document: file.name,
-      }));
+      .map((entry: any) => {
+        const category = VALID_CATEGORIES.includes(entry.category) ? entry.category : 'other';
+        const magnitude = VALID_MAGNITUDES.includes(entry.magnitude) ? entry.magnitude : 'moderate';
+
+        // Use smart default for comparison_significant based on category and magnitude
+        // If Claude explicitly set it, respect that; otherwise use smart default
+        const comparisonSignificant = typeof entry.comparison_significant === 'boolean'
+          ? entry.comparison_significant
+          : getDefaultComparisonSignificant(category, magnitude);
+
+        return {
+          category,
+          title: String(entry.title).slice(0, 200),
+          description: entry.description ? String(entry.description).slice(0, 2000) : '',
+          event_date: entry.event_date || null,
+          start_date: entry.start_date || null,
+          end_date: entry.end_date || null,
+          magnitude,
+          comparison_significant: comparisonSignificant,
+          source: 'document' as const,
+          source_document: file.name,
+        };
+      });
 
     console.log('[Context Extract] Extracted', validatedEntries.length, 'entries');
 

@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { runSQLQuery } from '@/lib/bigquery';
+import { runSQLQuery, getRelevantContextForReport, formatContextForPrompt, ReportPeriod } from '@/lib/bigquery';
 
 export const maxDuration = 60;
 
@@ -81,6 +81,25 @@ export async function POST(request: Request) {
     // Format data as compact markdown for token efficiency
     const formattedData = formatDataAsMarkdown(reportData, reportType);
 
+    // Fetch relevant business context for this report period
+    const contextPeriod: ReportPeriod = {
+      reportStart: dateRange.start,
+      reportEnd: dateRange.end,
+      includeComparison: true,
+      // Calculate YoY comparison period
+      comparisonStart: getYoYDate(dateRange.start),
+      comparisonEnd: getYoYDate(dateRange.end),
+    };
+
+    const businessContext = await getRelevantContextForReport(clientId, contextPeriod);
+    const formattedContext = formatContextForPrompt(businessContext);
+
+    console.log('[Report Data Fetch] Context retrieved:', {
+      direct: businessContext.direct.length,
+      comparison: businessContext.comparison.length,
+      alwaysOn: businessContext.alwaysOn.length,
+    });
+
     return NextResponse.json({
       success: true,
       reportType,
@@ -89,6 +108,8 @@ export async function POST(request: Request) {
       dateRange,
       data: reportData,
       formattedData, // Add formatted markdown version
+      businessContext, // Raw context objects
+      formattedContext, // Formatted for prompt inclusion
       timestamp: new Date().toISOString()
     });
 
@@ -146,6 +167,15 @@ function getPeriodDateRange(period: string): { start: string; end: string; sql: 
     end: formatDate(endDate),
     sql: `DATE >= '${formatDate(startDate)}' AND DATE <= '${formatDate(endDate)}'`
   };
+}
+
+/**
+ * Get the year-over-year date (same date, previous year)
+ */
+function getYoYDate(dateStr: string): string {
+  const date = new Date(dateStr);
+  date.setFullYear(date.getFullYear() - 1);
+  return date.toISOString().split('T')[0];
 }
 
 /**
@@ -374,20 +404,35 @@ async function fetchMonthlyPerformanceData(projectId: string, dataset: string, d
       LIMIT 1
     `,
 
-    // 7. Daily Performance Progression - Revenue and ROAS by day for the month
-    dailyPerformance: `
+    // 7. Daily Business Performance - Revenue and orders by day from Shopify
+    dailyBusinessPerformance: `
       SELECT
         date,
-        spend,
         revenue,
-        ROUND(revenue / NULLIF(spend, 0), 2) as roas,
-        orders
-      FROM \`${projectId}.${dataset}.paid_media_performance\`
+        orders,
+        aov,
+        gross_sales,
+        net_sales_after_refunds
+      FROM \`${projectId}.${dataset}.daily_business_metrics\`
       WHERE date >= '${dateRange.start}' AND date < DATE_ADD(DATE '${dateRange.start}', INTERVAL 1 MONTH)
       ORDER BY date ASC
     `,
 
-    // 8. Country Performance - Revenue and units by key markets (US, Canada, UK)
+    // 8. Daily Paid Media Performance - Spend and attributed revenue by day
+    dailyPaidMediaPerformance: `
+      SELECT
+        date,
+        SUM(spend) as spend,
+        SUM(revenue) as attributed_revenue,
+        SUM(purchases) as purchases,
+        ROUND(SUM(revenue) / NULLIF(SUM(spend), 0), 2) as roas
+      FROM \`${projectId}.${dataset}.paid_media_performance\`
+      WHERE date >= '${dateRange.start}' AND date < DATE_ADD(DATE '${dateRange.start}', INTERVAL 1 MONTH)
+      GROUP BY date
+      ORDER BY date ASC
+    `,
+
+    // 9. Country Performance - Revenue and units by key markets (US, Canada, UK)
     countryPerformance: `
       SELECT
         country,
@@ -1150,28 +1195,54 @@ function formatMonthlyReportAsMarkdown(data: any): string {
     });
   }
 
-  // Daily Performance Progression - Show ROAS and Revenue trends throughout the month
-  if (data.dailyPerformance?.length > 0) {
-    markdown += `\n## DAILY PERFORMANCE PROGRESSION\n`;
-    markdown += `**Use this data to analyze how performance trended throughout the month:**\n\n`;
-    markdown += `| Date | Spend | Revenue | ROAS | Orders |\n`;
-    markdown += `|------|-------|---------|------|--------|\n`;
-    data.dailyPerformance.forEach((day: any) => {
+  // Daily Business Performance - Revenue and orders by day from Shopify
+  if (data.dailyBusinessPerformance?.length > 0) {
+    markdown += `\n## DAILY BUSINESS PERFORMANCE (Shopify Revenue & Orders)\n`;
+    markdown += `**Daily revenue and order counts for the month:**\n\n`;
+    markdown += `| Date | Revenue | Orders | AOV | Gross Sales | Net Sales |\n`;
+    markdown += `|------|---------|--------|-----|-------------|----------|\n`;
+    data.dailyBusinessPerformance.forEach((day: any) => {
       const dateStr = day.date?.value || day.date;
-      markdown += `| ${dateStr} | $${day.spend?.toLocaleString() || 0} | $${day.revenue?.toLocaleString() || 0} | ${day.roas?.toFixed(2) || '0.00'}x | ${day.orders || 0} |\n`;
+      markdown += `| ${dateStr} | $${parseFloat(day.revenue || 0).toLocaleString('en-US', {maximumFractionDigits: 0})} | ${day.orders || 0} | $${parseFloat(day.aov || 0).toFixed(2)} | $${parseFloat(day.gross_sales || 0).toLocaleString('en-US', {maximumFractionDigits: 0})} | $${parseFloat(day.net_sales_after_refunds || 0).toLocaleString('en-US', {maximumFractionDigits: 0})} |\n`;
     });
 
-    // Add weekly averages for easier pattern recognition
-    if (data.dailyPerformance.length >= 7) {
-      markdown += `\n**Weekly Averages:**\n`;
-      const weeks = Math.floor(data.dailyPerformance.length / 7);
+    // Add weekly summaries
+    if (data.dailyBusinessPerformance.length >= 7) {
+      markdown += `\n**Weekly Summaries:**\n`;
+      const weeks = Math.ceil(data.dailyBusinessPerformance.length / 7);
       for (let i = 0; i < weeks; i++) {
-        const weekData = data.dailyPerformance.slice(i * 7, (i + 1) * 7);
-        const avgSpend = weekData.reduce((sum: number, d: any) => sum + (d.spend || 0), 0) / weekData.length;
-        const avgRevenue = weekData.reduce((sum: number, d: any) => sum + (d.revenue || 0), 0) / weekData.length;
-        const avgRoas = weekData.reduce((sum: number, d: any) => sum + (d.roas || 0), 0) / weekData.length;
-        const avgOrders = weekData.reduce((sum: number, d: any) => sum + (d.orders || 0), 0) / weekData.length;
-        markdown += `- Week ${i + 1}: Avg Spend $${avgSpend.toLocaleString('en-US', { maximumFractionDigits: 0 })}, Avg Revenue $${avgRevenue.toLocaleString('en-US', { maximumFractionDigits: 0 })}, Avg ROAS ${avgRoas.toFixed(2)}x, Avg Orders ${avgOrders.toFixed(0)}\n`;
+        const weekData = data.dailyBusinessPerformance.slice(i * 7, Math.min((i + 1) * 7, data.dailyBusinessPerformance.length));
+        const totalRevenue = weekData.reduce((sum: number, d: any) => sum + parseFloat(d.revenue || 0), 0);
+        const totalOrders = weekData.reduce((sum: number, d: any) => sum + (d.orders || 0), 0);
+        const avgAOV = totalOrders > 0 ? totalRevenue / totalOrders : 0;
+        markdown += `- Week ${i + 1}: Revenue $${totalRevenue.toLocaleString('en-US', { maximumFractionDigits: 0 })}, Orders ${totalOrders}, AOV $${avgAOV.toFixed(2)}\n`;
+      }
+      markdown += `\n`;
+    }
+  }
+
+  // Daily Paid Media Performance - Spend and attributed revenue by day
+  if (data.dailyPaidMediaPerformance?.length > 0) {
+    markdown += `\n## DAILY PAID MEDIA PERFORMANCE (Ad Spend & Attribution)\n`;
+    markdown += `**Daily ad spend and attributed revenue for the month:**\n\n`;
+    markdown += `| Date | Spend | Attributed Revenue | Purchases | ROAS |\n`;
+    markdown += `|------|-------|-------------------|-----------|------|\n`;
+    data.dailyPaidMediaPerformance.forEach((day: any) => {
+      const dateStr = day.date?.value || day.date;
+      markdown += `| ${dateStr} | $${parseFloat(day.spend || 0).toLocaleString('en-US', {maximumFractionDigits: 0})} | $${parseFloat(day.attributed_revenue || 0).toLocaleString('en-US', {maximumFractionDigits: 0})} | ${day.purchases || 0} | ${day.roas?.toFixed(2) || '0.00'}x |\n`;
+    });
+
+    // Add weekly summaries
+    if (data.dailyPaidMediaPerformance.length >= 7) {
+      markdown += `\n**Weekly Summaries:**\n`;
+      const weeks = Math.ceil(data.dailyPaidMediaPerformance.length / 7);
+      for (let i = 0; i < weeks; i++) {
+        const weekData = data.dailyPaidMediaPerformance.slice(i * 7, Math.min((i + 1) * 7, data.dailyPaidMediaPerformance.length));
+        const totalSpend = weekData.reduce((sum: number, d: any) => sum + parseFloat(d.spend || 0), 0);
+        const totalRevenue = weekData.reduce((sum: number, d: any) => sum + parseFloat(d.attributed_revenue || 0), 0);
+        const totalPurchases = weekData.reduce((sum: number, d: any) => sum + (d.purchases || 0), 0);
+        const weekRoas = totalSpend > 0 ? totalRevenue / totalSpend : 0;
+        markdown += `- Week ${i + 1}: Spend $${totalSpend.toLocaleString('en-US', { maximumFractionDigits: 0 })}, Revenue $${totalRevenue.toLocaleString('en-US', { maximumFractionDigits: 0 })}, ROAS ${weekRoas.toFixed(2)}x, Purchases ${totalPurchases}\n`;
       }
       markdown += `\n`;
     }
@@ -1240,9 +1311,16 @@ function formatHBMonthlyReportAsMarkdown(data: any): string {
   let markdown = formatMonthlyReportAsMarkdown(data);
 
   // Add report month information at the top
-  if (data.monthlyExecutiveReport?.[0]?.report_month) {
-    const reportMonthValue = data.monthlyExecutiveReport[0].report_month;
-    console.log('[HB Report] Raw report_month from DB:', reportMonthValue);
+  // Try monthlyExecutiveReport first, then fall back to monthlyBusinessSummary
+  let reportMonthValue = data.monthlyExecutiveReport?.[0]?.report_month;
+  const sourceTable = reportMonthValue ? 'monthlyExecutiveReport' : 'monthlyBusinessSummary';
+
+  if (!reportMonthValue && data.monthlyBusinessSummary?.[0]?.month) {
+    reportMonthValue = data.monthlyBusinessSummary[0].month;
+  }
+
+  if (reportMonthValue) {
+    console.log('[HB Report] Raw report_month from', sourceTable, ':', reportMonthValue);
 
     // Handle BigQuery date object or string
     let reportMonth: Date;
@@ -1268,6 +1346,8 @@ function formatHBMonthlyReportAsMarkdown(data: any): string {
     } else {
       console.error('[HB Report] Invalid date from report_month:', reportMonthValue);
     }
+  } else {
+    console.error('[HB Report] No report_month found in either monthlyExecutiveReport or monthlyBusinessSummary');
   }
 
   // Add platform-level performance with MoM/YoY from monthly_executive_report
@@ -1451,8 +1531,16 @@ function formatPuttOutMonthlyReportAsMarkdown(data: any): string {
   let markdown = formatMonthlyReportAsMarkdown(data);
 
   // Add report month information at the top
-  if (data.monthlyExecutiveReport?.[0]?.report_month) {
-    const reportMonthValue = data.monthlyExecutiveReport[0].report_month;
+  // Try monthlyExecutiveReport first, then fall back to monthlyBusinessSummary
+  let reportMonthValue = data.monthlyExecutiveReport?.[0]?.report_month;
+  const sourceTable = reportMonthValue ? 'monthlyExecutiveReport' : 'monthlyBusinessSummary';
+
+  if (!reportMonthValue && data.monthlyBusinessSummary?.[0]?.month) {
+    reportMonthValue = data.monthlyBusinessSummary[0].month;
+  }
+
+  if (reportMonthValue) {
+    console.log('[PuttOUT Report] Raw report_month from', sourceTable, ':', reportMonthValue);
 
     // Handle BigQuery date object or string
     let reportMonth: Date;
@@ -1473,6 +1561,8 @@ function formatPuttOutMonthlyReportAsMarkdown(data: any): string {
     } else {
       console.error('[PuttOUT Report] Invalid date from report_month:', reportMonthValue);
     }
+  } else {
+    console.error('[PuttOUT Report] No report_month found in either monthlyExecutiveReport or monthlyBusinessSummary');
   }
 
   // Add Meta Ads performance with MoM/YoY from monthly_executive_report

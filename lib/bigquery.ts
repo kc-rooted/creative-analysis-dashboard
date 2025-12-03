@@ -4212,3 +4212,273 @@ export async function getOrganicSocialData(clientId: string, platform: string = 
     throw error;
   }
 }
+
+// ============================================================================
+// Business Context Retrieval for Reports
+// ============================================================================
+
+import {
+  CATEGORY_CONFIG,
+  getTailDays,
+  getBufferDays,
+  isAlwaysIncluded,
+  isPersistent,
+} from './context-config';
+
+export interface ReportPeriod {
+  reportStart: string; // YYYY-MM-DD
+  reportEnd: string;   // YYYY-MM-DD
+  includeComparison?: boolean;
+  comparisonStart?: string; // YYYY-MM-DD (typically YoY)
+  comparisonEnd?: string;   // YYYY-MM-DD
+}
+
+export interface ContextEntry {
+  id: string;
+  client_id: string;
+  category: string;
+  title: string;
+  description: string;
+  event_date: string | null;
+  start_date: string | null;
+  end_date: string | null;
+  magnitude: string | null;
+  comparison_significant: boolean;
+  superseded_by: string | null;
+  source: string;
+  source_document: string | null;
+}
+
+export interface RelevantContext {
+  direct: ContextEntry[];      // Context affecting the report period
+  comparison: ContextEntry[];  // Context affecting the comparison period (for YoY explanations)
+  alwaysOn: ContextEntry[];    // Brand details, active standing conditions
+}
+
+/**
+ * Get relevant business context for a report period.
+ *
+ * This function retrieves context entries that are relevant to:
+ * 1. Direct period: Events/conditions that affect the report period
+ * 2. Comparison period: Events (with comparison_significant=true) that explain YoY differences
+ * 3. Always-on: Brand details and active standing conditions
+ *
+ * The retrieval logic respects:
+ * - Tail days for point-in-time events (e.g., PR win + 30 days)
+ * - Buffer days for bounded events (e.g., site issue end + 7 days)
+ * - Superseded_by for persistent strategies
+ * - comparison_significant flag for comparison period inclusion
+ */
+export async function getRelevantContextForReport(
+  clientId: string,
+  period: ReportPeriod
+): Promise<RelevantContext> {
+  const projectId = process.env.GOOGLE_CLOUD_PROJECT_ID;
+
+  console.log('[Context Retrieval] Fetching context for report period:', period);
+
+  try {
+    // Fetch all context entries for this client
+    const query = `
+      SELECT
+        id,
+        client_id,
+        category,
+        title,
+        description,
+        event_date,
+        start_date,
+        end_date,
+        magnitude,
+        comparison_significant,
+        superseded_by,
+        source,
+        source_document
+      FROM \`${projectId}.business_context.context_entries\`
+      WHERE client_id = '${clientId}'
+      ORDER BY COALESCE(event_date, start_date) DESC
+    `;
+
+    const [rows] = await bigquery.query({ query, timeoutMs: 30000 });
+
+    const allEntries: ContextEntry[] = rows.map((row: any) => ({
+      id: row.id,
+      client_id: row.client_id,
+      category: row.category,
+      title: row.title,
+      description: row.description || '',
+      event_date: row.event_date?.value || null,
+      start_date: row.start_date?.value || null,
+      end_date: row.end_date?.value || null,
+      magnitude: row.magnitude,
+      comparison_significant: row.comparison_significant || false,
+      superseded_by: row.superseded_by,
+      source: row.source,
+      source_document: row.source_document,
+    }));
+
+    console.log('[Context Retrieval] Total entries for client:', allEntries.length);
+
+    const direct: ContextEntry[] = [];
+    const comparison: ContextEntry[] = [];
+    const alwaysOn: ContextEntry[] = [];
+
+    const reportStart = new Date(period.reportStart);
+    const reportEnd = new Date(period.reportEnd);
+    const comparisonStart = period.comparisonStart ? new Date(period.comparisonStart) : null;
+    const comparisonEnd = period.comparisonEnd ? new Date(period.comparisonEnd) : null;
+
+    for (const entry of allEntries) {
+      const category = entry.category;
+      const config = CATEGORY_CONFIG[category];
+
+      // Always-on categories (brand_details)
+      if (isAlwaysIncluded(category)) {
+        alwaysOn.push(entry);
+        continue;
+      }
+
+      // Standing conditions - include if not superseded
+      if (category === 'standing_condition') {
+        if (!entry.superseded_by) {
+          alwaysOn.push(entry);
+        }
+        continue;
+      }
+
+      // Persistent strategies - check if active during report period and not superseded
+      if (isPersistent(category)) {
+        if (!entry.superseded_by) {
+          // Strategy is still active - include in direct context
+          const startDate = entry.start_date ? new Date(entry.start_date) : null;
+          if (!startDate || startDate <= reportEnd) {
+            direct.push(entry);
+          }
+        }
+        continue;
+      }
+
+      // Point-in-time events with tail
+      if (config?.type === 'point' && entry.event_date) {
+        const eventDate = new Date(entry.event_date);
+        const tailDays = getTailDays(category);
+        const tailEnd = new Date(eventDate);
+        tailEnd.setDate(tailEnd.getDate() + tailDays);
+
+        // Check direct relevance: event + tail overlaps with report period
+        if (eventDate <= reportEnd && tailEnd >= reportStart) {
+          direct.push(entry);
+        }
+        // Check comparison relevance
+        else if (
+          period.includeComparison &&
+          entry.comparison_significant &&
+          comparisonStart &&
+          comparisonEnd
+        ) {
+          if (eventDate <= comparisonEnd && tailEnd >= comparisonStart) {
+            comparison.push(entry);
+          }
+        }
+        continue;
+      }
+
+      // Bounded events with buffer
+      if (config?.type === 'bounded' && (entry.start_date || entry.event_date)) {
+        const startDate = new Date(entry.start_date || entry.event_date!);
+        const endDate = entry.end_date ? new Date(entry.end_date) : startDate;
+        const bufferDays = getBufferDays(category);
+        const effectiveEnd = new Date(endDate);
+        effectiveEnd.setDate(effectiveEnd.getDate() + bufferDays);
+
+        // Check direct relevance: bounded period + buffer overlaps with report period
+        if (startDate <= reportEnd && effectiveEnd >= reportStart) {
+          direct.push(entry);
+        }
+        // Check comparison relevance
+        else if (
+          period.includeComparison &&
+          entry.comparison_significant &&
+          comparisonStart &&
+          comparisonEnd
+        ) {
+          if (startDate <= comparisonEnd && effectiveEnd >= comparisonStart) {
+            comparison.push(entry);
+          }
+        }
+        continue;
+      }
+
+      // Fallback: treat as point-in-time with default tail
+      const fallbackDate = entry.event_date || entry.start_date;
+      if (fallbackDate) {
+        const eventDate = new Date(fallbackDate);
+        const tailEnd = new Date(eventDate);
+        tailEnd.setDate(tailEnd.getDate() + 14); // Default 14 day tail
+
+        if (eventDate <= reportEnd && tailEnd >= reportStart) {
+          direct.push(entry);
+        }
+      }
+    }
+
+    console.log('[Context Retrieval] Results:', {
+      direct: direct.length,
+      comparison: comparison.length,
+      alwaysOn: alwaysOn.length,
+    });
+
+    return { direct, comparison, alwaysOn };
+  } catch (error) {
+    console.error('[Context Retrieval] Error:', error);
+    return { direct: [], comparison: [], alwaysOn: [] };
+  }
+}
+
+/**
+ * Format context for inclusion in report prompts
+ */
+export function formatContextForPrompt(context: RelevantContext): string {
+  const sections: string[] = [];
+
+  if (context.alwaysOn.length > 0) {
+    sections.push('### Brand & Standing Context');
+    for (const entry of context.alwaysOn) {
+      sections.push(`- [${entry.category}] ${entry.title}`);
+      if (entry.description) {
+        sections.push(`  ${entry.description}`);
+      }
+    }
+  }
+
+  if (context.direct.length > 0) {
+    sections.push('\n### Direct Context (affects this report period)');
+    for (const entry of context.direct) {
+      const dateStr = entry.event_date || entry.start_date || '';
+      const magnitude = entry.magnitude ? ` [${entry.magnitude}]` : '';
+      sections.push(`- [${entry.category}]${magnitude} ${entry.title} (${dateStr})`);
+      if (entry.description) {
+        sections.push(`  ${entry.description}`);
+      }
+    }
+  }
+
+  if (context.comparison.length > 0) {
+    sections.push('\n### Comparison Context (explains YoY/MoM differences)');
+    sections.push('*These events occurred in the comparison period and explain why year-over-year metrics may look different:*');
+    for (const entry of context.comparison) {
+      const dateStr = entry.event_date || entry.start_date || '';
+      const magnitude = entry.magnitude ? ` [${entry.magnitude}]` : '';
+      sections.push(`- [${entry.category}]${magnitude} ${entry.title} (${dateStr})`);
+      if (entry.description) {
+        sections.push(`  ${entry.description}`);
+      }
+    }
+  }
+
+  if (sections.length === 0) {
+    return '### Business Context\nNo relevant context entries found for this report period.';
+  }
+
+  return '## Business Context\n\n' + sections.join('\n');
+}

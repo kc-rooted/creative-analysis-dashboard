@@ -140,8 +140,12 @@ export async function POST(request: NextRequest) {
     console.log('[Context API] Creating new context entry for client:', clientId);
 
     const projectId = process.env.GOOGLE_CLOUD_PROJECT_ID || 'intelligence-451803';
-    const escapedTitle = title.replace(/'/g, "\\'");
-    const escapedDescription = description ? description.replace(/'/g, "\\'") : '';
+    // BigQuery uses doubled single quotes for escaping, not backslash
+    const escapedTitle = title.replace(/'/g, "''");
+    const escapedDescription = description ? description.replace(/'/g, "''") : '';
+
+    // BigQuery schema requires start_date. For point-in-time events, use event_date as start_date
+    const effectiveStartDate = start_date || event_date;
 
     const query = `
       INSERT INTO \`${projectId}.business_context.context_entries\`
@@ -153,7 +157,7 @@ export async function POST(request: NextRequest) {
         '${escapedTitle}',
         '${escapedDescription}',
         ${event_date ? `DATE('${event_date}')` : 'NULL'},
-        ${start_date ? `DATE('${start_date}')` : 'NULL'},
+        DATE('${effectiveStartDate}'),
         ${end_date ? `DATE('${end_date}')` : 'NULL'},
         ${magnitude ? `'${magnitude}'` : 'NULL'},
         ${comparison_significant !== undefined && comparison_significant !== null ? comparison_significant : 'NULL'},
@@ -220,8 +224,12 @@ export async function PUT(request: NextRequest) {
     console.log('[Context API] Updating context entry with ID:', id, 'for client:', clientId);
 
     const projectId = process.env.GOOGLE_CLOUD_PROJECT_ID || 'intelligence-451803';
-    const escapedTitle = title ? title.replace(/'/g, "\\'") : '';
-    const escapedDescription = description ? description.replace(/'/g, "\\'") : '';
+    // BigQuery uses doubled single quotes for escaping, not backslash
+    const escapedTitle = title ? title.replace(/'/g, "''") : '';
+    const escapedDescription = description ? description.replace(/'/g, "''") : '';
+
+    // BigQuery schema requires start_date. For point-in-time events, use event_date as start_date
+    const effectiveStartDate = start_date || event_date;
 
     const query = `
       UPDATE \`${projectId}.business_context.context_entries\`
@@ -230,7 +238,7 @@ export async function PUT(request: NextRequest) {
         title = '${escapedTitle}',
         description = '${escapedDescription}',
         event_date = ${event_date ? `DATE('${event_date}')` : 'NULL'},
-        start_date = ${start_date ? `DATE('${start_date}')` : 'NULL'},
+        start_date = ${effectiveStartDate ? `DATE('${effectiveStartDate}')` : 'NULL'},
         end_date = ${end_date ? `DATE('${end_date}')` : 'NULL'},
         magnitude = ${magnitude ? `'${magnitude}'` : 'NULL'},
         comparison_significant = ${comparison_significant !== undefined && comparison_significant !== null ? comparison_significant : 'NULL'},
