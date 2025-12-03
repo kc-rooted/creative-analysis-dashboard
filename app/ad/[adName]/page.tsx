@@ -5,11 +5,13 @@ import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { ArrowLeft, Loader2 } from 'lucide-react';
 import { formatCurrency as baseFormatCurrency } from '@/lib/format';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import { useClient } from '@/components/client-provider';
 
 export default function AdDetailPage() {
   const params = useParams();
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { currentClient } = useClient();
   const adName = params.adName ? decodeURIComponent(params.adName as string) : '';
   const adsetName = searchParams.get('adset');
 
@@ -24,20 +26,18 @@ export default function AdDetailPage() {
     return baseFormatCurrency(value, decimals, currencySymbol);
   };
 
-  // Fetch currency symbol on mount
+  // Fetch currency symbol based on current client from ClientProvider
   useEffect(() => {
     const fetchCurrency = async () => {
+      if (!currentClient) return;
+
       try {
-        const clientResponse = await fetch('/api/admin/current-client');
-        if (clientResponse.ok) {
-          const data = await clientResponse.json();
-          const configResponse = await fetch('/api/admin/clients');
-          if (configResponse.ok) {
-            const clients = await configResponse.json();
-            const client = clients.find((c: any) => c.id === data.clientId);
-            if (client?.dashboard?.currencySymbol) {
-              setCurrencySymbol(client.dashboard.currencySymbol);
-            }
+        const configResponse = await fetch('/api/admin/clients');
+        if (configResponse.ok) {
+          const clients = await configResponse.json();
+          const client = clients.find((c: any) => c.id === currentClient);
+          if (client?.dashboard?.currencySymbol) {
+            setCurrencySymbol(client.dashboard.currencySymbol);
           }
         }
       } catch (error) {
@@ -45,12 +45,14 @@ export default function AdDetailPage() {
       }
     };
     fetchCurrency();
-  }, []);
+  }, [currentClient]);
 
   useEffect(() => {
     const fetchData = async () => {
-      if (!adsetName) {
-        setError('Missing adset parameter');
+      if (!adsetName || !currentClient) {
+        if (!adsetName) {
+          setError('Missing adset parameter');
+        }
         setLoading(false);
         return;
       }
@@ -58,7 +60,11 @@ export default function AdDetailPage() {
       try {
         setLoading(true);
         setError(null);
-        const response = await fetch(`/api/ad/${encodeURIComponent(adName)}?adset=${encodeURIComponent(adsetName)}&days=${timeWindow}`);
+        const response = await fetch(`/api/ad/${encodeURIComponent(adName)}?adset=${encodeURIComponent(adsetName)}&days=${timeWindow}`, {
+          headers: {
+            'x-client-id': currentClient,
+          },
+        });
 
         if (!response.ok) {
           throw new Error('Failed to fetch ad data');
@@ -73,10 +79,10 @@ export default function AdDetailPage() {
       }
     };
 
-    if (adName && adsetName) {
+    if (adName && adsetName && currentClient) {
       fetchData();
     }
-  }, [adName, adsetName, timeWindow]);
+  }, [adName, adsetName, timeWindow, currentClient]);
 
   if (loading) {
     return (

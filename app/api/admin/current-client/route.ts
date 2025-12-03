@@ -1,7 +1,5 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { BigQuery } from '@google-cloud/bigquery';
-import { clearClientCache } from '@/lib/client-config';
-import { clearBigQueryClientCache } from '@/lib/bigquery';
 
 const bigquery = new BigQuery({
   projectId: process.env.GOOGLE_CLOUD_PROJECT_ID,
@@ -14,7 +12,17 @@ const bigquery = new BigQuery({
 const ADMIN_DATASET = 'admin_configs';
 const CURRENT_CLIENT_TABLE = 'current_client_setting';
 
-// GET - Get current active client
+/**
+ * GET - Get default client (for first-time users only)
+ *
+ * IMPORTANT: This endpoint is ONLY used as a fallback for first-time users
+ * who don't have a client stored in their browser's localStorage.
+ *
+ * After a client is selected, it's stored in localStorage per-browser for
+ * proper multi-user isolation. The client-provider.tsx component handles
+ * this logic - it checks localStorage first, and only falls back to this
+ * endpoint if no client is stored.
+ */
 export async function GET() {
   try {
     const query = `
@@ -45,90 +53,20 @@ export async function GET() {
   }
 }
 
-// POST - Set current active client
-export async function POST(request: NextRequest) {
-  try {
-    const { clientId } = await request.json();
-
-    if (!clientId) {
-      return NextResponse.json(
-        { error: 'Client ID is required' },
-        { status: 400 }
-      );
-    }
-
-    // Ensure admin infrastructure exists
-    await ensureCurrentClientTable();
-
-    // Clear existing current client settings and insert new one
-    await bigquery.query(`
-      DELETE FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${ADMIN_DATASET}.${CURRENT_CLIENT_TABLE}\`
-      WHERE TRUE
-    `);
-
-    await bigquery.query({
-      query: `
-        INSERT INTO \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${ADMIN_DATASET}.${CURRENT_CLIENT_TABLE}\`
-        (client_id, updated_at)
-        VALUES (@client_id, CURRENT_TIMESTAMP())
-      `,
-      params: { client_id: clientId },
-    });
-
-    // CRITICAL: Clear caches first, then set new client
-    const { clearClientCache } = await import('@/lib/client-config');
-    const { clearBigQueryClientCache } = await import('@/lib/bigquery');
-    clearClientCache();
-    clearBigQueryClientCache();
-
-    // Set environment variable so sync functions use correct client immediately
-    process.env.CURRENT_CLIENT_ID = clientId;
-
-    // Set BigQuery cache directly (will be used by getCurrentDatasetName)
-    const { setBigQueryClientCache } = await import('@/lib/bigquery');
-    setBigQueryClientCache(clientId);
-
-    console.log(`Switched to client: ${clientId}, caches cleared and BigQuery cache set`);
-
-    return NextResponse.json({ success: true, clientId });
-  } catch (error) {
-    console.error('Error setting current client:', error);
-    return NextResponse.json(
-      { error: 'Failed to set current client' },
-      { status: 500 }
-    );
-  }
-}
-
-// Helper function to ensure current client table exists
-async function ensureCurrentClientTable() {
-  try {
-    // Create dataset if it doesn't exist
-    const dataset = bigquery.dataset(ADMIN_DATASET);
-    const [datasetExists] = await dataset.exists();
-    
-    if (!datasetExists) {
-      await dataset.create({
-        location: 'US',
-      });
-      console.log(`Created dataset: ${ADMIN_DATASET}`);
-    }
-
-    // Create table if it doesn't exist
-    const table = dataset.table(CURRENT_CLIENT_TABLE);
-    const [tableExists] = await table.exists();
-
-    if (!tableExists) {
-      const schema = [
-        { name: 'client_id', type: 'STRING', mode: 'REQUIRED' },
-        { name: 'updated_at', type: 'TIMESTAMP', mode: 'REQUIRED' },
-      ];
-
-      await table.create({ schema });
-      console.log(`Created table: ${CURRENT_CLIENT_TABLE}`);
-    }
-  } catch (error) {
-    console.error('Error ensuring current client table:', error);
-    throw error;
-  }
+/**
+ * POST - DEPRECATED
+ *
+ * This endpoint has been deprecated because writing to a shared database table
+ * causes cross-browser/cross-user contamination. Client selection is now handled
+ * entirely via localStorage in the browser (see client-provider.tsx).
+ *
+ * If you're seeing this endpoint being called, it means old code is still using
+ * the deprecated approach and needs to be updated.
+ */
+export async function POST() {
+  console.warn('[DEPRECATED] POST /api/admin/current-client called - this endpoint is deprecated. Client selection should be handled via localStorage in client-provider.tsx');
+  return NextResponse.json(
+    { error: 'This endpoint is deprecated. Client selection is now handled via localStorage for multi-user isolation.' },
+    { status: 410 } // 410 Gone
+  );
 }

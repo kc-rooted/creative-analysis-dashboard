@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { Plus, Search, Filter, Users, Instagram, TrendingUp, Mail, Edit, Trash2, ExternalLink } from 'lucide-react';
 import { InfluencerCard } from '@/components/InfluencerCard';
 import { InfluencerForm } from '@/components/InfluencerForm';
+import { useClient } from '@/components/client-provider';
 
 export interface Influencer {
   id: string;
@@ -28,6 +29,7 @@ export interface Influencer {
 }
 
 export default function InfluencerPage() {
+  const { currentClient } = useClient();
   const [influencers, setInfluencers] = useState<Influencer[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
@@ -37,9 +39,13 @@ export default function InfluencerPage() {
   const [editingInfluencer, setEditingInfluencer] = useState<Influencer | null>(null);
 
   const fetchInfluencers = async () => {
+    if (!currentClient) return;
+
     try {
       setLoading(true);
-      const response = await fetch('/api/influencers');
+      const response = await fetch('/api/influencers', {
+        headers: { 'x-client-id': currentClient },
+      });
       if (response.ok) {
         const data = await response.json();
         setInfluencers(data);
@@ -53,14 +59,15 @@ export default function InfluencerPage() {
 
   useEffect(() => {
     fetchInfluencers();
-  }, []);
+  }, [currentClient]);
 
   const handleDelete = async (id: string) => {
-    if (!confirm('Are you sure you want to delete this influencer?')) return;
+    if (!confirm('Are you sure you want to delete this influencer?') || !currentClient) return;
 
     try {
       const response = await fetch(`/api/influencers?id=${id}`, {
         method: 'DELETE',
+        headers: { 'x-client-id': currentClient },
       });
       if (response.ok) {
         await fetchInfluencers();
@@ -71,14 +78,19 @@ export default function InfluencerPage() {
   };
 
   const handleSave = async (influencer: Partial<Influencer>) => {
+    if (!currentClient) return;
+
     try {
       const method = influencer.id ? 'PUT' : 'POST';
       const response = await fetch('/api/influencers', {
         method,
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'x-client-id': currentClient,
+        },
         body: JSON.stringify(influencer),
       });
-      
+
       if (response.ok) {
         await fetchInfluencers();
         setShowForm(false);

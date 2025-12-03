@@ -5,10 +5,12 @@ import { useParams, useRouter } from 'next/navigation';
 import { ArrowLeft, Loader2 } from 'lucide-react';
 import { formatCurrency } from '@/lib/format';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import { useClient } from '@/components/client-provider';
 
 export default function CampaignDetailPage() {
   const params = useParams();
   const router = useRouter();
+  const { currentClient } = useClient();
   const campaignName = decodeURIComponent(params.campaignName as string);
 
   const [loading, setLoading] = useState(true);
@@ -18,10 +20,16 @@ export default function CampaignDetailPage() {
 
   useEffect(() => {
     const fetchData = async () => {
+      if (!currentClient) return;
+
       try {
         setLoading(true);
         setError(null);
-        const response = await fetch(`/api/campaign/${encodeURIComponent(campaignName)}?days=${timeWindow}`);
+        const response = await fetch(`/api/campaign/${encodeURIComponent(campaignName)}?days=${timeWindow}`, {
+          headers: {
+            'x-client-id': currentClient,
+          },
+        });
 
         if (!response.ok) {
           throw new Error('Failed to fetch campaign data');
@@ -37,7 +45,7 @@ export default function CampaignDetailPage() {
     };
 
     fetchData();
-  }, [campaignName, timeWindow]);
+  }, [campaignName, timeWindow, currentClient]);
 
   if (loading) {
     return (

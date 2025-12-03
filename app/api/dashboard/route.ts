@@ -34,7 +34,7 @@ export async function GET(request: Request) {
       getPaidMediaTrend(clientId, days),
       getShopifyRevenueYoY(clientId, days),
       getRevenueForecast7Day(clientId),
-      getClientDashboardConfig(),
+      getClientDashboardConfig(clientId),
       getBusinessContextIndex(clientId),
       getBayesianForecast(clientId)
     ]);

@@ -539,7 +539,10 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
       try {
         const response = await fetch('/api/reports/export', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            'x-client-id': currentClient || '',
+          },
           body: JSON.stringify({
             clientId: currentClient,
             reportType: 'monthly',
@@ -569,7 +572,10 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
       try {
         const response = await fetch('/api/reports/export-google-doc', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            'x-client-id': currentClient || '',
+          },
           body: JSON.stringify({
             clientId: currentClient,
             period: overviewPeriod,

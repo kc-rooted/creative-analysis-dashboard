@@ -2,6 +2,8 @@
 
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 
+const LOCAL_STORAGE_KEY = 'selectedClientId';
+
 interface ClientContextType {
   currentClient: string | null;
   setCurrentClient: (client: string) => void;
@@ -14,47 +16,51 @@ export function ClientProvider({ children }: { children: ReactNode }) {
   const [currentClient, setCurrentClientState] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Fetch current client on mount
+  // Fetch current client on mount - prioritize localStorage, then server default
   useEffect(() => {
-    const fetchCurrentClient = async () => {
+    const initializeClient = async () => {
       try {
+        // First, check localStorage for this browser's selected client
+        const storedClient = localStorage.getItem(LOCAL_STORAGE_KEY);
+
+        if (storedClient) {
+          // Use the browser's stored preference
+          console.log(`[ClientProvider] Using stored client from localStorage: ${storedClient}`);
+          setCurrentClientState(storedClient);
+          setIsLoading(false);
+          return;
+        }
+
+        // No localStorage preference - fetch server default (for first-time users)
         const response = await fetch('/api/admin/current-client');
         if (response.ok) {
           const data = await response.json();
           setCurrentClientState(data.clientId);
+          // Store it in localStorage for future visits
+          if (data.clientId) {
+            localStorage.setItem(LOCAL_STORAGE_KEY, data.clientId);
+          }
         } else {
-          // No client selected - leave as null
+          // No client selected anywhere - leave as null
           setCurrentClientState(null);
         }
       } catch (error) {
-        console.error('Error fetching current client:', error);
+        console.error('Error initializing client:', error);
         // On error, leave as null (no fallback)
         setCurrentClientState(null);
       } finally {
         setIsLoading(false);
       }
     };
-    fetchCurrentClient();
+    initializeClient();
   }, []);
 
-  // Update current client and notify server
-  const setCurrentClient = async (clientId: string) => {
-    try {
-      const response = await fetch('/api/admin/current-client', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ clientId }),
-      });
-
-      if (response.ok) {
-        setCurrentClientState(clientId);
-        console.log(`[ClientProvider] Client switched to: ${clientId}`);
-      } else {
-        console.error('[ClientProvider] Failed to update client on server');
-      }
-    } catch (error) {
-      console.error('[ClientProvider] Error updating client:', error);
-    }
+  // Update current client - store in localStorage only (per-browser isolation)
+  const setCurrentClient = (clientId: string) => {
+    // Store in localStorage for this browser only
+    localStorage.setItem(LOCAL_STORAGE_KEY, clientId);
+    setCurrentClientState(clientId);
+    console.log(`[ClientProvider] Client switched to: ${clientId} (stored in localStorage)`);
   };
 
   return (

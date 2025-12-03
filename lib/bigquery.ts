@@ -3437,8 +3437,7 @@ export function setBigQueryClientCache(clientId: string) {
 }
 
 // Get client dashboard configuration
-export async function getClientDashboardConfig(): Promise<any> {
-  const clientId = await getCurrentClientId();
+export async function getClientDashboardConfig(clientId: string): Promise<any> {
   console.log('[BigQuery] Fetching dashboard config for client:', clientId);
 
   const query = `

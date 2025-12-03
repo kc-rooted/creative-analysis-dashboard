@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { Settings, Plus, Edit, Trash2, Save, X, Palette } from 'lucide-react';
 import { useRouter } from 'next/navigation';
+import { useClient } from '@/components/client-provider';
 
 interface BrandColor {
   name: string;
@@ -39,15 +40,14 @@ interface ClientConfig {
 
 export default function AdminPage() {
   const router = useRouter();
+  const { currentClient, setCurrentClient } = useClient();
   const [clients, setClients] = useState<ClientConfig[]>([]);
-  const [currentClientId, setCurrentClientId] = useState<string>('');
   const [editingClient, setEditingClient] = useState<ClientConfig | null>(null);
   const [isCreating, setIsCreating] = useState(false);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     fetchClients();
-    fetchCurrentClient();
   }, []);
 
   const fetchClients = async () => {
@@ -64,17 +64,7 @@ export default function AdminPage() {
     }
   };
 
-  const fetchCurrentClient = async () => {
-    try {
-      const response = await fetch('/api/admin/current-client');
-      if (response.ok) {
-        const data = await response.json();
-        setCurrentClientId(data.clientId);
-      }
-    } catch (error) {
-      console.error('Error fetching current client:', error);
-    }
-  };
+  // Client selection now handled by ClientProvider via localStorage
 
   const handleSaveClient = async (client: ClientConfig) => {
     try {
@@ -114,24 +104,12 @@ export default function AdminPage() {
     }
   };
 
-  const handleSetCurrentClient = async (clientId: string) => {
-    try {
-      const response = await fetch('/api/admin/current-client', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ clientId }),
-      });
-
-      if (response.ok) {
-        setCurrentClientId(clientId);
-        // Client successfully changed - redirect to Business Overview dashboard
-        window.location.href = '/dashboards?section=overview';
-      } else {
-        console.error('Failed to set current client');
-      }
-    } catch (error) {
-      console.error('Error setting current client:', error);
-    }
+  const handleSetCurrentClient = (clientId: string) => {
+    // Use ClientProvider to set current client (stored in localStorage per-browser)
+    setCurrentClient(clientId);
+    console.log(`[Admin] Client switched to: ${clientId} via ClientProvider`);
+    // Client successfully changed - redirect to Business Overview dashboard
+    window.location.href = '/dashboards?section=overview';
   };
 
   const createNewClient = () => {
@@ -208,7 +186,7 @@ export default function AdminPage() {
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-semibold" style={{color: 'var(--text-primary)'}}>Current Active Client</h2>
             <span className="px-3 py-1 rounded-full text-sm font-medium" style={{background: 'var(--accent-bg)', color: 'var(--accent-primary)'}}>
-              {clients.find(c => c.id === currentClientId)?.name || 'None Selected'}
+              {clients.find(c => c.id === currentClient)?.name || 'None Selected'}
             </span>
           </div>
         </div>
@@ -234,7 +212,7 @@ export default function AdminPage() {
                   <div className="flex-1">
                     <div className="flex items-center gap-4">
                       <h3 className="text-lg font-medium" style={{color: 'var(--text-primary)'}}>{client.name}</h3>
-                      {currentClientId === client.id && (
+                      {currentClient === client.id && (
                         <span className="px-2 py-1 rounded text-xs font-medium" style={{background: 'var(--accent-bg)', color: 'var(--accent-primary)'}}>
                           ACTIVE
                         </span>
@@ -263,7 +241,7 @@ export default function AdminPage() {
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
-                    {currentClientId !== client.id && (
+                    {currentClient !== client.id && (
                       <button
                         onClick={() => handleSetCurrentClient(client.id)}
                         className="btn-secondary px-3 py-1 text-sm font-medium"

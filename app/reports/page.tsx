@@ -801,7 +801,10 @@ Performance leaders across the marketing funnel:`;
 
       const response = await fetch('/api/reports/export-google-doc', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'x-client-id': currentClient || '',
+        },
         body: JSON.stringify({
           clientId: currentClient,
           reportType: selectedTemplate?.id || 'custom',
@@ -882,7 +885,10 @@ Performance leaders across the marketing funnel:`;
       // Send the HTML content with inlined styles to the backend
       const response = await fetch('/api/reports/export-pdf', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'x-client-id': currentClient || '',
+        },
         body: JSON.stringify({
           htmlContent: styledHtml,
           clientId: currentClient,
@@ -945,7 +951,10 @@ Performance leaders across the marketing funnel:`;
 
           const dataResponse = await fetch('/api/reports/fetch-data', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: {
+              'Content-Type': 'application/json',
+              'x-client-id': currentClient || '',
+            },
             body: JSON.stringify({
               reportType: selectedTemplate.id,
               clientId: currentClient,
