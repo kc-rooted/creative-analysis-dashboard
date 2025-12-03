@@ -1166,11 +1166,6 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
                       7-Day Avg Impressions
                     </div>
 
-                    {/* YoY Change */}
-                    <div className={`text-sm font-medium ${dashboardData.kpis.searchDemand.yoyChange >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-                      {dashboardData.kpis.searchDemand.yoyChange >= 0 ? '↑' : '↓'} {Math.abs(dashboardData.kpis.searchDemand.yoyChange).toFixed(1)}% YoY
-                    </div>
-
                     {/* Trend Badge */}
                     <span
                       className="inline-block px-2 py-1 rounded text-xs font-medium"
@@ -3582,15 +3577,49 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
                 BFCM 2025 Forecast Scenarios
               </h3>
               <div className="space-y-4">
-                {Object.entries(bfcmData.scenarios).map(([name, data]: [string, any], index) => {
-                  const displayName = name === 'forecast' ? 'Forecast' :
-                                    name === 'stretchGoal' ? 'Stretch Goal' :
-                                    name.charAt(0).toUpperCase() + name.slice(1);
+                {(() => {
+                  // Calculate min/max once including actual
                   const scenarios = Object.values(bfcmData.scenarios) as any[];
-                  const minTotal = Math.min(...scenarios.map((s: any) => s.total));
-                  const maxTotal = Math.max(...scenarios.map((s: any) => s.total));
-                  // Add minimum 20% width, scale remaining 80%
-                  const percentage = 20 + ((data.total - minTotal) / (maxTotal - minTotal)) * 80;
+                  const allValues = bfcmData.actual && bfcmData.actual.count > 0
+                    ? [...scenarios.map((s: any) => s.total), bfcmData.actual.total]
+                    : scenarios.map((s: any) => s.total);
+                  const minTotal = Math.min(...allValues);
+                  const maxTotal = Math.max(...allValues);
+
+                  return (
+                    <>
+                      {/* Actual Sales - First Row */}
+                      {bfcmData.actual && bfcmData.actual.count > 0 && (
+                        <div>
+                          <div className="flex justify-between items-center mb-2">
+                            <span className="text-sm font-medium" style={{color: 'var(--text-secondary)'}}>
+                              Actual
+                            </span>
+                            <span className="text-lg font-bold" style={{color: 'var(--text-primary)'}}>
+                              {formatCurrency(bfcmData.actual.total, 1)}
+                            </span>
+                          </div>
+                          <div className="w-full h-3 rounded-full" style={{background: 'var(--border-muted)'}}>
+                            <div
+                              className="h-3 rounded-full transition-all duration-500"
+                              style={{
+                                width: `${20 + ((bfcmData.actual.total - minTotal) / (maxTotal - minTotal)) * 80}%`,
+                                background: 'linear-gradient(90deg, #89cdee, #89cdeeee)'
+                              }}
+                            />
+                          </div>
+                          <div className="text-xs mt-1" style={{color: 'var(--text-muted)'}}>
+                            {formatCurrency(bfcmData.actual.avg, 1)} / day ({bfcmData.actual.count} days)
+                          </div>
+                        </div>
+                      )}
+
+                      {Object.entries(bfcmData.scenarios).map(([name, data]: [string, any], index) => {
+                        const displayName = name === 'forecast' ? 'Forecast' :
+                                          name === 'stretchGoal' ? 'Stretch Goal' :
+                                          name.charAt(0).toUpperCase() + name.slice(1);
+                        // Use the same min/max calculated above
+                        const percentage = 20 + ((data.total - minTotal) / (maxTotal - minTotal)) * 80;
 
                   const getColor = (name: string) => {
                     if (name === 'conservative') return '#b55c5c';
@@ -3619,12 +3648,15 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
                           }}
                         />
                       </div>
-                      <div className="text-xs mt-1" style={{color: 'var(--text-muted)'}}>
-                        {formatCurrency(data.avg, 1)} / day
+                        <div className="text-xs mt-1" style={{color: 'var(--text-muted)'}}>
+                          {formatCurrency(data.avg, 1)} / day
+                        </div>
                       </div>
-                    </div>
-                  );
-                })}
+                    );
+                  })}
+                </>
+              );
+            })()}
               </div>
               <div className="mt-6 pt-4 border-t" style={{borderColor: 'var(--border-muted)'}}>
                 <p className="text-xs" style={{color: 'var(--text-muted)'}}>
@@ -3639,15 +3671,49 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
                 Q4 2025 Forecast Scenarios
               </h3>
               <div className="space-y-4">
-                {Object.entries(q4Data.scenarios).map(([name, data]: [string, any], index) => {
-                  const displayName = name === 'forecast' ? 'Forecast' :
-                                    name === 'stretchGoal' ? 'Stretch Goal' :
-                                    name.charAt(0).toUpperCase() + name.slice(1);
+                {(() => {
+                  // Calculate min/max once including actual
                   const scenarios = Object.values(q4Data.scenarios) as any[];
-                  const minTotal = Math.min(...scenarios.map((s: any) => s.total));
-                  const maxTotal = Math.max(...scenarios.map((s: any) => s.total));
-                  // Add minimum 20% width, scale remaining 80%
-                  const percentage = 20 + ((data.total - minTotal) / (maxTotal - minTotal)) * 80;
+                  const allValues = q4Data.actual && q4Data.actual.count > 0
+                    ? [...scenarios.map((s: any) => s.total), q4Data.actual.total]
+                    : scenarios.map((s: any) => s.total);
+                  const minTotal = Math.min(...allValues);
+                  const maxTotal = Math.max(...allValues);
+
+                  return (
+                    <>
+                      {/* Actual Sales - First Row */}
+                      {q4Data.actual && q4Data.actual.count > 0 && (
+                        <div>
+                          <div className="flex justify-between items-center mb-2">
+                            <span className="text-sm font-medium" style={{color: 'var(--text-secondary)'}}>
+                              Actual
+                            </span>
+                            <span className="text-lg font-bold" style={{color: 'var(--text-primary)'}}>
+                              {formatCurrency(q4Data.actual.total, 1)}
+                            </span>
+                          </div>
+                          <div className="w-full h-3 rounded-full" style={{background: 'var(--border-muted)'}}>
+                            <div
+                              className="h-3 rounded-full transition-all duration-500"
+                              style={{
+                                width: `${20 + ((q4Data.actual.total - minTotal) / (maxTotal - minTotal)) * 80}%`,
+                                background: 'linear-gradient(90deg, #89cdee, #89cdeeee)'
+                              }}
+                            />
+                          </div>
+                          <div className="text-xs mt-1" style={{color: 'var(--text-muted)'}}>
+                            {formatCurrency(q4Data.actual.avg, 1)} / day ({q4Data.actual.count} days)
+                          </div>
+                        </div>
+                      )}
+
+                      {Object.entries(q4Data.scenarios).map(([name, data]: [string, any], index) => {
+                        const displayName = name === 'forecast' ? 'Forecast' :
+                                          name === 'stretchGoal' ? 'Stretch Goal' :
+                                          name.charAt(0).toUpperCase() + name.slice(1);
+                        // Use the same min/max calculated above
+                        const percentage = 20 + ((data.total - minTotal) / (maxTotal - minTotal)) * 80;
 
                   const getColor = (name: string) => {
                     if (name === 'conservative') return '#b55c5c';
@@ -3676,12 +3742,15 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
                           }}
                         />
                       </div>
-                      <div className="text-xs mt-1" style={{color: 'var(--text-muted)'}}>
-                        {formatCurrency(data.avg, 1)} / day
+                        <div className="text-xs mt-1" style={{color: 'var(--text-muted)'}}>
+                          {formatCurrency(data.avg, 1)} / day
+                        </div>
                       </div>
-                    </div>
-                  );
-                })}
+                    );
+                  })}
+                </>
+              );
+            })()}
               </div>
               <div className="mt-6 pt-4 border-t" style={{borderColor: 'var(--border-muted)'}}>
                 <p className="text-xs" style={{color: 'var(--text-muted)'}}>

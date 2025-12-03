@@ -30,11 +30,36 @@ export async function GET(request: Request) {
       actual: actualsMap.get(day.date) || null
     }));
 
+    // Calculate actual totals for BFCM and Q4 periods
+    const calculateActualTotal = (startDate: string, endDate: string) => {
+      const start = new Date(startDate);
+      const end = new Date(endDate);
+      let total = 0;
+      let count = 0;
+
+      actuals.forEach(a => {
+        const date = new Date(a.date);
+        if (date >= start && date <= end) {
+          total += a.actual;
+          count++;
+        }
+      });
+
+      return {
+        total,
+        avg: count > 0 ? total / count : 0,
+        count
+      };
+    };
+
+    const bfcmActual = bfcmScenarios ? calculateActualTotal(bfcmScenarios.startDate, bfcmScenarios.endDate) : null;
+    const q4Actual = q4Scenarios ? calculateActualTotal(q4Scenarios.startDate, q4Scenarios.endDate) : null;
+
     return NextResponse.json({
       scenarios,
       daily: dailyWithActuals,
-      bfcm: bfcmScenarios,
-      q4: q4Scenarios
+      bfcm: bfcmScenarios ? { ...bfcmScenarios, actual: bfcmActual } : null,
+      q4: q4Scenarios ? { ...q4Scenarios, actual: q4Actual } : null
     });
   } catch (error) {
     console.error('Error in forecasting API:', error);

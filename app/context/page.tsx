@@ -34,7 +34,6 @@ interface ExtractedEntry {
   end_date: string | null;
   magnitude: 'major' | 'moderate' | 'minor';
   comparison_significant: boolean;
-  confidence: number;
   source: 'document';
   source_document: string;
   selected: boolean; // For UI selection
@@ -44,14 +43,15 @@ interface ExtractedEntry {
 const CATEGORIES = [
   { value: 'promotion', label: 'Promotion/Sale' },
   { value: 'product_launch', label: 'Product Launch' },
-  { value: 'campaign', label: 'Campaign' },
   { value: 'organic_pr_win', label: 'Organic PR Win' },
-  { value: 'influencer', label: 'Influencer Activity' },
-  { value: 'competitor', label: 'Competitor Activity' },
+  { value: 'influencer', label: 'Influencer' },
+  { value: 'competitor', label: 'Competitor' },
   { value: 'market_trend', label: 'Market Trend' },
+  { value: 'paid_media_strategy', label: 'Paid Media Strategy' },
   { value: 'budget_change', label: 'Budget Change' },
-  { value: 'technical_issue', label: 'Technical Issue' },
-  { value: 'seasonality', label: 'Seasonality' },
+  { value: 'site_issue', label: 'Site Issue' },
+  { value: 'inventory_issue', label: 'Inventory Issue' },
+  { value: 'standing_condition', label: 'Standing Condition' },
   { value: 'other', label: 'Other' },
 ];
 
@@ -63,14 +63,15 @@ const getCategoryColor = (category: string) => {
   const colors: Record<string, string> = {
     'promotion': '#f59e0b',
     'product_launch': '#06b6d4',
-    'campaign': '#8b5cf6',
     'organic_pr_win': '#22c55e',
     'influencer': '#ec4899',
     'competitor': '#f97316',
     'market_trend': '#3b82f6',
-    'budget_change': '#8b5cf6',
-    'technical_issue': '#ef4444',
-    'seasonality': '#3b82f6',
+    'paid_media_strategy': '#8b5cf6',
+    'budget_change': '#a855f7',
+    'site_issue': '#ef4444',
+    'inventory_issue': '#dc2626',
+    'standing_condition': '#6b7280',
     'other': '#6b7280',
   };
   return colors[category] || '#6b7280';
@@ -338,7 +339,6 @@ export default function ContextPage() {
           comparison_significant: entry.comparison_significant,
           source: 'document',
           source_document: entry.source_document,
-          confidence: entry.confidence,
         };
 
         const response = await fetch('/api/context', {
@@ -707,9 +707,6 @@ export default function ContextPage() {
                         YoY/MoM
                       </span>
                     )}
-                    <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
-                      {Math.round(entry.confidence * 100)}% confidence
-                    </span>
                   </div>
                   <h3 className="font-semibold text-sm mb-1" style={{ color: 'var(--text-primary)' }}>
                     {entry.title}
@@ -1272,12 +1269,11 @@ export default function ContextPage() {
                 </div>
 
                 {/* Source Info */}
-                {selectedItem.source === 'document' && (
+                {selectedItem.source === 'document' && selectedItem.source_document && (
                   <div className="flex items-center gap-2" style={{ color: 'var(--text-muted)' }}>
                     <FileText className="w-4 h-4" />
                     <span className="text-sm">
                       Extracted from: {selectedItem.source_document}
-                      {selectedItem.confidence && ` (${Math.round(selectedItem.confidence * 100)}% confidence)`}
                     </span>
                   </div>
                 )}

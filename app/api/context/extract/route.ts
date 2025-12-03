@@ -13,14 +13,15 @@ const anthropic = new Anthropic({
 const VALID_CATEGORIES = [
   'promotion',
   'product_launch',
-  'campaign',
   'organic_pr_win',
   'influencer',
   'competitor',
   'market_trend',
+  'paid_media_strategy',
   'budget_change',
-  'technical_issue',
-  'seasonality',
+  'site_issue',
+  'inventory_issue',
+  'standing_condition',
   'other',
 ];
 
@@ -29,23 +30,24 @@ const EXTRACTION_PROMPT = `You are an expert at extracting business context from
 Your task is to analyze the provided document and extract relevant business context entries. Each entry represents a significant event, decision, trend, or piece of information that would be valuable for understanding business performance.
 
 ## Categories to use:
-- promotion: Sales, discounts, promotional campaigns
-- product_launch: New product releases, product updates
-- campaign: Marketing campaigns, advertising initiatives
-- organic_pr_win: Press coverage, viral moments, organic wins
-- influencer: Influencer partnerships, UGC, social media wins
+- promotion: Sales, discounts, promotional campaigns (time-bound price reductions)
+- product_launch: New product releases, product updates, SKU additions
+- organic_pr_win: Press coverage, viral moments, unexpected organic wins
+- influencer: Influencer partnerships, UGC campaigns, creator content
 - competitor: Competitor activities, market movements
-- market_trend: Industry trends, market shifts
-- budget_change: Budget adjustments, spend changes
-- technical_issue: Website issues, platform problems
-- seasonality: Seasonal patterns, holiday impacts
-- other: Anything else significant
+- market_trend: Industry trends, market shifts (not routine seasonality)
+- paid_media_strategy: Strategy changes like "shifted to ABO testing", "launched new audience segments", "changed bidding strategy" (persistent, may be superseded)
+- budget_change: Spend adjustments - "increased Meta spend 20%", "cut Google budget" (point-in-time)
+- site_issue: Website problems, checkout issues, page errors
+- inventory_issue: Stock constraints, out-of-stock events, supply chain problems
+- standing_condition: Chronic/ongoing constraints like "limited inventory on core SKUs", "shipping delays to EU" (persistent context)
+- other: Anything else significant that doesn't fit above
 
 ## Output Format:
 Return a JSON array of context entries. Each entry must have:
 - category: One of the categories listed above
 - title: A short, descriptive title (max 100 characters)
-- description: Detailed explanation of the context (1-3 sentences)
+- description: Detailed explanation of the context (1-3 sentences). Include specific numbers, percentages, and metrics when available.
 - event_date: For point-in-time events (a single day occurrence), use this field (YYYY-MM-DD format)
 - start_date: For bounded events/campaigns that span multiple days, use start_date (YYYY-MM-DD format). If only a month is mentioned, use the 1st of that month.
 - end_date: When this ended (YYYY-MM-DD format, or null if ongoing). Only use with start_date for bounded events.
@@ -53,20 +55,30 @@ Return a JSON array of context entries. Each entry must have:
   - "major": Words like "significant", "dramatic", "substantial", "record-breaking", "massive", percentages > 20%
   - "moderate": Words like "notable", "meaningful", "solid", percentages 5-20%
   - "minor": Incremental changes, small adjustments, percentages < 5%
-- comparison_significant: true if this context would be important for explaining year-over-year or month-over-month comparisons (e.g., one-time events, anomalies, major strategy changes)
-- confidence: Your confidence in this extraction (0.0 to 1.0)
+- comparison_significant: Whether this context explains differences in YoY/MoM analysis. Follow these defaults:
+  - organic_pr_win: almost always TRUE (unexpected spikes)
+  - product_launch: TRUE (new revenue sources)
+  - influencer: TRUE only if magnitude = major
+  - site_issue: TRUE only if magnitude = major
+  - inventory_issue: TRUE (constrains potential)
+  - budget_change: FALSE (explains how spend changed, not why metrics differ)
+  - paid_media_strategy: FALSE (operational, not anomalous)
+  - promotion: TRUE (creates spikes that distort comparisons)
+  - market_trend: TRUE only if it's an unexpected shift, not routine
+  - standing_condition: FALSE (persistent, not anomalous)
+  - competitor: TRUE if it's a significant market event
 
 ## Guidelines:
 1. Extract ONLY factual information mentioned in the document
 2. Do NOT invent or assume dates - if no date is mentioned, skip that entry
 3. Use event_date for single-day events (product launches, viral moments, announcements)
-4. Use start_date/end_date for events spanning multiple days (campaigns, promotions, seasonal periods)
-5. Infer magnitude from the language used - look for intensity words, percentages, and context
-6. Mark comparison_significant=true for events that would cause notable differences in YoY/MoM analysis
+4. Use start_date/end_date for events spanning multiple days (campaigns, promotions)
+5. Use start_date with null end_date for ongoing/persistent conditions
+6. Infer magnitude from the language used - look for intensity words, percentages, and context
 7. Focus on actionable business context that explains performance changes
-8. Be specific in descriptions - include numbers, percentages, and specifics when available
-9. Each entry should be standalone and understandable without the original document
-10. Prefer fewer, high-quality entries over many low-quality ones
+8. Each entry should be standalone and understandable without the original document
+9. Prefer fewer, high-quality entries over many low-quality ones
+10. Do NOT extract routine calendar effects (e.g., "December has holiday sales") - only extract specific, actionable events
 
 ## Example Output:
 [
@@ -78,8 +90,7 @@ Return a JSON array of context entries. Each entry must have:
     "start_date": "2024-11-24",
     "end_date": "2024-11-27",
     "magnitude": "major",
-    "comparison_significant": true,
-    "confidence": 0.95
+    "comparison_significant": true
   },
   {
     "category": "organic_pr_win",
@@ -89,19 +100,27 @@ Return a JSON array of context entries. Each entry must have:
     "start_date": null,
     "end_date": null,
     "magnitude": "major",
-    "comparison_significant": true,
-    "confidence": 0.85
+    "comparison_significant": true
   },
   {
-    "category": "budget_change",
-    "title": "Incremental Meta Spend Increase",
-    "description": "Increased Meta ad spend by 5% to test new audience segments.",
-    "event_date": "2024-09-01",
-    "start_date": null,
+    "category": "paid_media_strategy",
+    "title": "Shifted Meta to ABO Campaign Structure",
+    "description": "Restructured Meta campaigns from CBO to ABO for better budget control across ad sets.",
+    "event_date": null,
+    "start_date": "2024-09-01",
     "end_date": null,
-    "magnitude": "minor",
-    "comparison_significant": false,
-    "confidence": 0.80
+    "magnitude": "moderate",
+    "comparison_significant": false
+  },
+  {
+    "category": "inventory_issue",
+    "title": "Core SKU Out of Stock",
+    "description": "Best-selling grip model out of stock for 2 weeks due to supplier delays, limiting revenue potential.",
+    "event_date": null,
+    "start_date": "2024-08-15",
+    "end_date": "2024-08-29",
+    "magnitude": "major",
+    "comparison_significant": true
   }
 ]
 
@@ -219,7 +238,6 @@ export async function POST(request: NextRequest) {
         end_date: entry.end_date || null,
         magnitude: VALID_MAGNITUDES.includes(entry.magnitude) ? entry.magnitude : 'moderate',
         comparison_significant: typeof entry.comparison_significant === 'boolean' ? entry.comparison_significant : false,
-        confidence: typeof entry.confidence === 'number' ? Math.min(1, Math.max(0, entry.confidence)) : 0.5,
         source: 'document' as const,
         source_document: file.name,
       }));
