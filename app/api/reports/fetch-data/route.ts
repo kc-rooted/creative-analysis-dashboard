@@ -19,7 +19,7 @@ export async function POST(request: Request) {
 
     console.log('[Report Data Fetch] Starting:', { reportType, clientId, period });
 
-    // Map client to dataset
+    // Map client to analytics dataset
     const clientDatasetMap: Record<string, string> = {
       'jumbomax': 'jumbomax_analytics',
       'puttout': 'puttout_analytics',
@@ -51,6 +51,7 @@ export async function POST(request: Request) {
         break;
 
       case 'jumbomax-monthly-performance':
+        // Note: jumbomax-6pillar uses same data fetcher, configured via data_fetcher column in BigQuery
         reportData = await fetchJumboMaxMonthlyPerformanceData(projectId, dataset, dateRange);
         break;
 
@@ -208,15 +209,15 @@ async function fetchWeeklyExecutiveData(projectId: string, dataset: string, date
       ORDER BY spend DESC
     `,
 
-    // Top products
+    // Top products - using daily_product_performance for accuracy (matches Shopify UI)
     topProducts: `
       SELECT
-        product_name,
-        SUM(quantity) as units_sold,
-        SUM(revenue) as revenue
-      FROM \`${projectId}.${dataset}.product_performance\`
+        product_title as product_name,
+        SUM(gross_units_sold) as units_sold,
+        SUM(gross_revenue) as revenue
+      FROM \`${projectId}.${dataset}.daily_product_performance\`
       WHERE ${dateRange.sql}
-      GROUP BY product_name
+      GROUP BY product_title
       ORDER BY revenue DESC
       LIMIT 10
     `
@@ -242,140 +243,81 @@ async function fetchWeeklyExecutiveData(projectId: string, dataset: string, date
  */
 async function fetchMonthlyPerformanceData(projectId: string, dataset: string, dateRange: any) {
   const queries = {
-    // 1. Monthly Executive Report - Hero metrics with MoM and YoY
-    monthlyExecutiveReport: `
-      SELECT
-        report_month,
-        revenue_total,
-        revenue_mom_pct,
-        revenue_yoy_pct,
-        paid_revenue_total,
-        paid_revenue_mom_pct,
-        paid_revenue_yoy_pct,
-        paid_spend_total as paid_media_spend,
-        paid_spend_mom_pct as paid_media_spend_mom_pct,
-        paid_spend_yoy_pct as paid_media_spend_yoy_pct,
-        ROUND(SAFE_DIVIDE(paid_revenue_total, paid_spend_total), 2) as attributed_blended_roas,
-        ROUND(paid_revenue_mom_pct, 1) as attributed_blended_roas_mom_pct,
-        ROUND(paid_revenue_yoy_pct, 1) as attributed_blended_roas_yoy_pct,
-        meta_spend,
-        meta_spend_mom_pct,
-        meta_spend_yoy_pct,
-        meta_revenue,
-        meta_revenue_mom_pct,
-        meta_revenue_yoy_pct,
-        meta_roas,
-        meta_roas_mom_pct,
-        meta_roas_yoy_pct,
-        google_spend,
-        google_spend_mom_pct,
-        google_spend_yoy_pct,
-        google_revenue,
-        google_revenue_mom_pct,
-        google_revenue_yoy_pct,
-        google_roas,
-        google_roas_mom_pct,
-        google_roas_yoy_pct,
-        top_emerging_product_title,
-        top_emerging_product_revenue,
-        top_emerging_product_growth_pct as top_emerging_product_mom_growth_pct,
-        top_emerging_product_category
-      FROM \`${projectId}.${dataset}.monthly_executive_report\`
-      WHERE report_month < DATE_TRUNC(CURRENT_DATE(), MONTH)
-      ORDER BY report_month DESC
-      LIMIT 1
-    `,
-
-    // 2. Executive Summary - Only essential MTD metrics (kept for backwards compatibility)
-    executiveSummary: `
-      SELECT
-        revenue_mtd,
-        orders_mtd,
-        aov_mtd,
-        revenue_mtd_yoy_growth_pct,
-        orders_mtd_yoy_growth_pct,
-        facebook_spend_mtd,
-        facebook_revenue_mtd,
-        facebook_roas_mtd,
-        facebook_spend_7d,
-        facebook_revenue_7d,
-        facebook_roas_7d,
-        google_spend_mtd,
-        google_revenue_mtd,
-        google_roas_mtd,
-        klaviyo_total_revenue_mtd,
-        klaviyo_total_revenue_mtd_yoy_growth_pct,
-        revenue_7d,
-        orders_7d,
-        aov_7d
-      FROM \`${projectId}.${dataset}.ai_executive_summary\`
-      ORDER BY report_date DESC
-      LIMIT 1
-    `,
-
-    // 2. Monthly Business Summary - Core metrics only
-    // NOTE: Filter to previous complete month to match monthly_executive_report
+    // 1. Monthly Business Summary - 24 months of raw data for Claude to analyze
+    // Claude will calculate MoM, YoY, trends, etc. from this data
+    // NOTE: Aggregating from daily_business_metrics instead of monthly_business_summary
+    // because the monthly view has a 12-month filter that excludes YoY comparison data
     monthlyBusinessSummary: `
       SELECT
-        month,
-        monthly_gross_sales,
-        monthly_net_sales_after_refunds,
-        monthly_orders,
-        avg_monthly_aov,
-        total_sales_roas,
-        attributed_blended_roas,
-        monthly_ad_spend,
-        monthly_facebook_spend,
-        monthly_google_spend
-      FROM \`${projectId}.${dataset}.monthly_business_summary\`
-      WHERE month < DATE_TRUNC(CURRENT_DATE(), MONTH)
+        DATE_TRUNC(date, MONTH) as month,
+        ROUND(SUM(gross_sales), 2) as monthly_gross_sales,
+        ROUND(SUM(net_sales_after_refunds), 2) as monthly_net_sales_after_refunds,
+        SUM(orders) as monthly_orders,
+        ROUND(AVG(aov), 2) as avg_monthly_aov,
+        ROUND(SUM(paid_attributed_revenue) / NULLIF(SUM(ad_spend), 0), 2) as attributed_blended_roas,
+        ROUND(SUM(ad_spend), 2) as monthly_ad_spend,
+        ROUND(SUM(facebook_spend), 2) as monthly_facebook_spend,
+        ROUND(SUM(google_spend), 2) as monthly_google_spend,
+        ROUND(SUM(paid_attributed_revenue), 2) as monthly_attributed_revenue,
+        ROUND(SUM(refunds_processed) / NULLIF(SUM(net_sales_before_refunds), 0) * 100, 2) as return_rate_pct,
+        ROUND(SUM(discounts) / NULLIF(SUM(gross_sales), 0) * 100, 2) as discount_rate_pct
+      FROM \`${projectId}.${dataset}.daily_business_metrics\`
+      WHERE date >= DATE_SUB(DATE_TRUNC(CURRENT_DATE(), MONTH), INTERVAL 24 MONTH)
+        AND date < DATE_TRUNC(CURRENT_DATE(), MONTH)
+      GROUP BY DATE_TRUNC(date, MONTH)
       ORDER BY month DESC
-      LIMIT 1
     `,
 
-    // 3. Top 10 Campaigns by ROAS + Bottom 5 by ROAS
+    // 3. Paid campaigns aggregated from paid_media_performance for the report month
+    // Sorted by ROAS DESC for top performers, ASC for bottom performers
     topCampaigns: `
       SELECT
         campaign_name,
-        spend_30d,
-        revenue_30d,
-        roas_30d,
-        ctr_30d,
-        purchases_30d,
-        recommended_action,
-        risk_flags
-      FROM \`${projectId}.${dataset}.ai_intelligent_campaign_analysis\`
-      ORDER BY roas_30d DESC
+        SUM(spend) as spend,
+        SUM(revenue) as revenue,
+        ROUND(SUM(revenue) / NULLIF(SUM(spend), 0), 2) as roas,
+        SUM(purchases) as purchases,
+        SUM(clicks) as clicks,
+        SUM(impressions) as impressions,
+        ROUND(SUM(clicks) / NULLIF(SUM(impressions), 0) * 100, 2) as ctr
+      FROM \`${projectId}.${dataset}.paid_media_performance\`
+      WHERE date >= '${dateRange.start}' AND date < DATE_ADD(DATE '${dateRange.start}', INTERVAL 1 MONTH)
+      GROUP BY campaign_name
+      ORDER BY roas DESC
       LIMIT 10
     `,
 
     bottomCampaigns: `
       SELECT
         campaign_name,
-        spend_30d,
-        revenue_30d,
-        roas_30d,
-        ctr_30d,
-        purchases_30d,
-        recommended_action,
-        risk_flags
-      FROM \`${projectId}.${dataset}.ai_intelligent_campaign_analysis\`
-      WHERE roas_30d IS NOT NULL
-      ORDER BY roas_30d ASC
+        SUM(spend) as spend,
+        SUM(revenue) as revenue,
+        ROUND(SUM(revenue) / NULLIF(SUM(spend), 0), 2) as roas,
+        SUM(purchases) as purchases,
+        SUM(clicks) as clicks,
+        SUM(impressions) as impressions,
+        ROUND(SUM(clicks) / NULLIF(SUM(impressions), 0) * 100, 2) as ctr
+      FROM \`${projectId}.${dataset}.paid_media_performance\`
+      WHERE date >= '${dateRange.start}' AND date < DATE_ADD(DATE '${dateRange.start}', INTERVAL 1 MONTH)
+      GROUP BY campaign_name
+      HAVING SUM(spend) > 0
+      ORDER BY roas ASC
       LIMIT 5
     `,
 
-    // 4. Top 10 Products only, key metrics
-    productIntelligence: `
+    // 4. Top 10 Products - aggregated from daily_product_performance (matches Shopify UI)
+    // NOTE: Using daily_product_performance instead of product_intelligence for accuracy
+    // Uses REPORT MONTH date range (not rolling 30 days from today)
+    topProducts: `
       SELECT
         product_title,
-        revenue_30d,
-        units_sold_30d,
-        total_inventory_quantity,
-        avg_variant_price,
-        performance_category_30d
-      FROM \`${projectId}.${dataset}.product_intelligence\`
-      ORDER BY revenue_30d DESC
+        SUM(gross_revenue) as revenue,
+        SUM(gross_units_sold) as units_sold,
+        ROUND(AVG(avg_selling_price), 2) as avg_price
+      FROM \`${projectId}.${dataset}.daily_product_performance\`
+      WHERE date >= '${dateRange.start}' AND date < DATE_ADD(DATE '${dateRange.start}', INTERVAL 1 MONTH)
+      GROUP BY product_title
+      ORDER BY revenue DESC
       LIMIT 10
     `,
 
@@ -404,7 +346,7 @@ async function fetchMonthlyPerformanceData(projectId: string, dataset: string, d
       LIMIT 1
     `,
 
-    // 7. Daily Business Performance - Revenue and orders by day from Shopify
+    // 7. Daily Business Performance - Report month + previous month (2 months of daily data)
     dailyBusinessPerformance: `
       SELECT
         date,
@@ -414,11 +356,12 @@ async function fetchMonthlyPerformanceData(projectId: string, dataset: string, d
         gross_sales,
         net_sales_after_refunds
       FROM \`${projectId}.${dataset}.daily_business_metrics\`
-      WHERE date >= '${dateRange.start}' AND date < DATE_ADD(DATE '${dateRange.start}', INTERVAL 1 MONTH)
+      WHERE date >= DATE_SUB(DATE '${dateRange.start}', INTERVAL 1 MONTH)
+        AND date < DATE_ADD(DATE '${dateRange.start}', INTERVAL 1 MONTH)
       ORDER BY date ASC
     `,
 
-    // 8. Daily Paid Media Performance - Spend and attributed revenue by day
+    // 8. Daily Paid Media Performance - Report month + previous month (aggregated by day)
     dailyPaidMediaPerformance: `
       SELECT
         date,
@@ -427,9 +370,46 @@ async function fetchMonthlyPerformanceData(projectId: string, dataset: string, d
         SUM(purchases) as purchases,
         ROUND(SUM(revenue) / NULLIF(SUM(spend), 0), 2) as roas
       FROM \`${projectId}.${dataset}.paid_media_performance\`
-      WHERE date >= '${dateRange.start}' AND date < DATE_ADD(DATE '${dateRange.start}', INTERVAL 1 MONTH)
+      WHERE date >= DATE_SUB(DATE '${dateRange.start}', INTERVAL 1 MONTH)
+        AND date < DATE_ADD(DATE '${dateRange.start}', INTERVAL 1 MONTH)
       GROUP BY date
       ORDER BY date ASC
+    `,
+
+    // 8b. Daily Paid Media by Platform - Report month + previous month (aggregated by day + platform)
+    dailyPaidMediaByPlatform: `
+      SELECT
+        date,
+        platform,
+        SUM(spend) as spend,
+        SUM(revenue) as attributed_revenue,
+        SUM(purchases) as purchases,
+        SUM(impressions) as impressions,
+        SUM(clicks) as clicks,
+        ROUND(SUM(revenue) / NULLIF(SUM(spend), 0), 2) as roas
+      FROM \`${projectId}.${dataset}.paid_media_performance\`
+      WHERE date >= DATE_SUB(DATE '${dateRange.start}', INTERVAL 1 MONTH)
+        AND date < DATE_ADD(DATE '${dateRange.start}', INTERVAL 1 MONTH)
+      GROUP BY date, platform
+      ORDER BY date ASC, platform
+    `,
+
+    // 8c. Weekly Paid Media by Platform - 24 months of weekly data for trend analysis
+    weeklyPaidMediaByPlatform: `
+      SELECT
+        DATE_TRUNC(date, WEEK(MONDAY)) as week_start,
+        platform,
+        SUM(spend) as spend,
+        SUM(revenue) as attributed_revenue,
+        SUM(purchases) as purchases,
+        SUM(impressions) as impressions,
+        SUM(clicks) as clicks,
+        ROUND(SUM(revenue) / NULLIF(SUM(spend), 0), 2) as roas
+      FROM \`${projectId}.${dataset}.paid_media_performance\`
+      WHERE date >= DATE_SUB(DATE_TRUNC(CURRENT_DATE(), MONTH), INTERVAL 24 MONTH)
+        AND date < DATE_TRUNC(CURRENT_DATE(), MONTH)
+      GROUP BY week_start, platform
+      ORDER BY week_start DESC, platform
     `,
 
     // 9. Country Performance - Revenue and units by key markets (US, Canada, UK)
@@ -486,108 +466,21 @@ async function fetchMonthlyPerformanceData(projectId: string, dataset: string, d
 
 /**
  * Fetch data for H&B Monthly Performance Review (extends standard monthly with funnel ads)
+ *
+ * SIMPLIFIED: Claude calculates ROAS, totals, etc from the daily data (dailyPaidMediaByPlatform).
+ * We no longer pre-aggregate paid media metrics - Claude is perfectly capable of summing
+ * spend and revenue and calculating ROAS from the daily rows.
  */
 async function fetchHBMonthlyPerformanceData(projectId: string, dataset: string, dateRange: any) {
   // First, get all the standard monthly performance data
   const baseData = await fetchMonthlyPerformanceData(projectId, dataset, dateRange);
 
-  // Add H&B-specific paid media performance metrics (Meta & Google Ads)
-  const paidMediaQuery = `
-    SELECT
-      platform,
-      SUM(spend) as total_spend,
-      SUM(revenue) as total_revenue,
-      SUM(impressions) as total_impressions,
-      SUM(clicks) as total_clicks,
-      SUM(reach) as total_reach,
-      SUM(purchases) as total_purchases,
-      AVG(frequency) as avg_frequency,
-      AVG(conversion_rate) as avg_conversion_rate,
-      SUM(revenue) / NULLIF(SUM(spend), 0) as calculated_roas,
-      SUM(spend) / NULLIF(SUM(impressions) / 1000, 0) as calculated_cpm,
-      SUM(spend) / NULLIF(SUM(clicks), 0) as calculated_cpc,
-      (SUM(clicks) / NULLIF(SUM(impressions), 0)) * 100 as calculated_ctr
-    FROM \`${projectId}.${dataset}.paid_media_performance\`
-    WHERE date >= '${dateRange.start}' AND date < DATE_ADD(DATE '${dateRange.start}', INTERVAL 1 MONTH)
-    GROUP BY platform
-    ORDER BY platform
-  `;
+  // NOTE: Paid media performance is available via dailyPaidMediaByPlatform in base data.
+  // Claude will aggregate spend/revenue and calculate ROAS from that daily data.
+  // No pre-aggregated paidMediaPerformance query needed.
 
-  try {
-    const paidMediaData = await runSQLQuery(paidMediaQuery);
-    console.log(`[Report Data] paidMediaPerformance: ${paidMediaData.length} rows fetched`);
-    baseData.paidMediaPerformance = paidMediaData;
-  } catch (error) {
-    console.error('[Report Data] Error fetching paid media performance:', error);
-    baseData.paidMediaPerformance = [];
-  }
-
-  // Add H&B-specific country performance with Meta attribution
-  const countryPerformanceEnhancedQuery = `
-    WITH meta_country_monthly AS (
-      SELECT
-        CASE
-          WHEN country = 'US' THEN 'United States'
-          WHEN country = 'CA' THEN 'Canada'
-          WHEN country = 'GB' THEN 'United Kingdom'
-          ELSE country
-        END as country_name,
-        CASE
-          WHEN country = 'US' THEN 'US'
-          WHEN country = 'CA' THEN 'CA'
-          WHEN country = 'GB' THEN 'GB'
-          ELSE country
-        END as country_code,
-        FORMAT_DATE('%Y-%m', date_start) as year_month,
-        SUM(spend) as meta_spend,
-        SUM(
-          CAST(
-            JSON_EXTRACT_SCALAR(action_value, '$.value') AS FLOAT64
-          )
-        ) as meta_revenue
-      FROM \`clients_hb.facebook_ads_insights_country\`,
-        UNNEST(JSON_EXTRACT_ARRAY(action_values)) as action_value
-      WHERE JSON_EXTRACT_SCALAR(action_value, '$.action_type') IN ('omni_purchase', 'purchase', 'offsite_conversion.fb_pixel_purchase')
-      GROUP BY country_name, country_code, year_month
-    ),
-    geo_product_agg AS (
-      SELECT
-        country,
-        country_code,
-        year_month,
-        SUM(total_revenue) as total_revenue,
-        SUM(total_units_sold) as total_units_sold,
-        AVG(avg_unit_price) as avg_unit_price
-      FROM \`${projectId}.${dataset}.geographic_product_performance\`
-      GROUP BY country, country_code, year_month
-    )
-    SELECT
-      g.country,
-      g.country_code,
-      g.year_month,
-      g.total_revenue,
-      g.total_units_sold,
-      ROUND(g.avg_unit_price, 2) as avg_unit_price,
-      COALESCE(m.meta_revenue, 0) as meta_attributed_revenue,
-      COALESCE(m.meta_spend, 0) as meta_spend,
-      ROUND(SAFE_DIVIDE(m.meta_revenue, m.meta_spend), 2) as meta_roas
-    FROM geo_product_agg g
-    LEFT JOIN meta_country_monthly m
-      ON g.country_code = m.country_code
-      AND g.year_month = m.year_month
-    WHERE g.year_month = FORMAT_DATE('%Y-%m', DATE '${dateRange.start}')
-      AND g.country_code IN ('US', 'CA', 'GB')
-    ORDER BY g.total_revenue DESC
-  `;
-
-  try {
-    const countryData = await runSQLQuery(countryPerformanceEnhancedQuery);
-    console.log(`[Report Data] countryPerformance (enhanced): ${countryData.length} rows fetched`);
-    baseData.countryPerformance = countryData;
-  } catch (error) {
-    console.error('[Report Data] Error fetching enhanced country performance:', error);
-    baseData.countryPerformance = [];
-  }
+  // NOTE: Country performance is already fetched in base fetchMonthlyPerformanceData
+  // using the validated geographic_product_performance view.
 
   // Add H&B-specific funnel ads data
   const funnelAdsQuery = `
@@ -635,75 +528,52 @@ async function fetchHBMonthlyPerformanceData(projectId: string, dataset: string,
 }
 
 /**
- * Fetch data for JumboMax Monthly Performance Review (extends H&B with email performance)
+ * Fetch data for JumboMax Monthly Performance Review (extends base with paid media, funnel ads, and email)
  */
 async function fetchJumboMaxMonthlyPerformanceData(projectId: string, dataset: string, dateRange: any) {
-  // First, get all the H&B report data (includes base metrics, paid media, funnel ads)
+  // Get the base + paid media + funnel ads data
   const baseData = await fetchHBMonthlyPerformanceData(projectId, dataset, dateRange);
 
-  // Add JumboMax-specific email performance from klaviyo_email_engagement_trends
-  const emailPerformanceQuery = `
-    SELECT
-      SUM(sends) as total_sends,
-      SUM(deliveries) as total_deliveries,
-      SUM(opens) as total_opens,
-      SUM(clicks) as total_clicks,
-      SUM(bounces) as total_bounces,
-      SUM(unsubscribes) as total_unsubscribes,
-      SUM(unique_recipients_sent) as unique_recipients_sent,
-      SUM(unique_recipients_opened) as unique_recipients_opened,
-      SUM(unique_recipients_clicked) as unique_recipients_clicked,
-      SUM(campaigns_sent) as campaigns_sent,
-      SUM(attributed_revenue) as total_attributed_revenue,
-      SUM(attributed_purchases) as total_attributed_purchases,
-      SUM(attributed_purchasers) as total_attributed_purchasers,
-      AVG(delivery_rate) as avg_delivery_rate,
-      AVG(open_rate) as avg_open_rate,
-      AVG(click_rate) as avg_click_rate,
-      AVG(click_to_open_rate) as avg_click_to_open_rate,
-      AVG(bounce_rate) as avg_bounce_rate,
-      AVG(unsubscribe_rate) as avg_unsubscribe_rate,
-      AVG(unique_open_rate) as avg_unique_open_rate,
-      AVG(unique_click_rate) as avg_unique_click_rate,
-      AVG(purchase_conversion_rate) as avg_purchase_conversion_rate,
-      AVG(revenue_per_send) as avg_revenue_per_send
-    FROM \`${projectId}.${dataset}.klaviyo_email_engagement_trends\`
-    WHERE event_date >= '${dateRange.start}' AND event_date < DATE_ADD(DATE '${dateRange.start}', INTERVAL 1 MONTH)
-  `;
-
-  // Email performance by campaign category
-  const emailByCategoryQuery = `
-    SELECT
-      campaign_category,
-      SUM(sends) as sends,
-      SUM(opens) as opens,
-      SUM(clicks) as clicks,
-      SUM(attributed_revenue) as attributed_revenue,
-      AVG(open_rate) as open_rate,
-      AVG(click_rate) as click_rate,
-      AVG(click_to_open_rate) as click_to_open_rate
-    FROM \`${projectId}.${dataset}.klaviyo_email_engagement_trends\`
-    WHERE event_date >= '${dateRange.start}' AND event_date < DATE_ADD(DATE '${dateRange.start}', INTERVAL 1 MONTH)
-      AND campaign_category IS NOT NULL
-    GROUP BY campaign_category
-    ORDER BY attributed_revenue DESC
-  `;
-
-  // Email performance by type (campaign vs flow)
+  // Email revenue by type (Campaign vs Flow) from klaviyo_daily_unified_attribution
+  // This uses PURCHASE date to match dashboard, not send date
   const emailByTypeQuery = `
     SELECT
-      email_type,
-      SUM(sends) as sends,
-      SUM(opens) as opens,
-      SUM(clicks) as clicks,
+      attributed_email_type as email_type,
+      SUM(attributed_purchasers) as purchasers,
+      SUM(attributed_purchases) as purchases,
       SUM(attributed_revenue) as attributed_revenue,
-      AVG(open_rate) as open_rate,
-      AVG(click_rate) as click_rate
-    FROM \`${projectId}.${dataset}.klaviyo_email_engagement_trends\`
-    WHERE event_date >= '${dateRange.start}' AND event_date < DATE_ADD(DATE '${dateRange.start}', INTERVAL 1 MONTH)
-      AND email_type IS NOT NULL
-    GROUP BY email_type
+      AVG(avg_order_value) as avg_order_value
+    FROM \`${projectId}.${dataset}.klaviyo_daily_unified_attribution\`
+    WHERE purchase_date >= '${dateRange.start}' AND purchase_date < DATE_ADD(DATE '${dateRange.start}', INTERVAL 1 MONTH)
+      AND attributed_email_type IS NOT NULL
+    GROUP BY attributed_email_type
     ORDER BY attributed_revenue DESC
+  `;
+
+  // Overall email totals (sum of campaign + flow revenue by PURCHASE date)
+  const emailPerformanceQuery = `
+    SELECT
+      SUM(attributed_purchasers) as total_attributed_purchasers,
+      SUM(attributed_purchases) as total_attributed_purchases,
+      SUM(attributed_revenue) as total_attributed_revenue,
+      AVG(avg_order_value) as avg_order_value
+    FROM \`${projectId}.${dataset}.klaviyo_daily_unified_attribution\`
+    WHERE purchase_date >= '${dateRange.start}' AND purchase_date < DATE_ADD(DATE '${dateRange.start}', INTERVAL 1 MONTH)
+  `;
+
+  // Campaign revenue details from klaviyo_daily_campaign_revenue (by PURCHASE date)
+  const emailCampaignRevenueQuery = `
+    SELECT
+      campaign_name,
+      SUM(attributed_purchasers) as attributed_purchasers,
+      SUM(attributed_purchases) as attributed_purchases,
+      SUM(attributed_revenue) as attributed_revenue,
+      AVG(avg_order_value) as avg_order_value
+    FROM \`${projectId}.${dataset}.klaviyo_daily_campaign_revenue\`
+    WHERE purchase_date >= '${dateRange.start}' AND purchase_date < DATE_ADD(DATE '${dateRange.start}', INTERVAL 1 MONTH)
+    GROUP BY campaign_name
+    ORDER BY attributed_revenue DESC
+    LIMIT 20
   `;
 
   // Flow revenue details from klaviyo_daily_flow_revenue
@@ -722,6 +592,25 @@ async function fetchJumboMaxMonthlyPerformanceData(projectId: string, dataset: s
     ORDER BY attributed_revenue DESC
   `;
 
+  // Email campaign send performance from klaviyo_campaigns_detailed (by SEND date)
+  // This provides engagement metrics: sends, opens, clicks, open rate, click rate
+  // NOTE: We use unique_clicks for accurate weighted click rate calculation (matches Klaviyo UI)
+  const emailCampaignSendPerformanceQuery = `
+    SELECT
+      campaign_name,
+      send_date,
+      sends,
+      unique_opens,
+      unique_clicks,
+      ROUND(open_rate * 100, 2) as open_rate_pct,
+      ROUND(click_rate * 100, 2) as click_rate_pct,
+      attributed_revenue,
+      avg_order_value
+    FROM \`${projectId}.${dataset}.klaviyo_campaigns_detailed\`
+    WHERE send_date >= '${dateRange.start}' AND send_date < DATE_ADD(DATE '${dateRange.start}', INTERVAL 1 MONTH)
+    ORDER BY send_date DESC
+  `;
+
   try {
     const emailOverall = await runSQLQuery(emailPerformanceQuery);
     console.log(`[Report Data] emailPerformance: ${emailOverall.length} rows fetched`);
@@ -729,15 +618,6 @@ async function fetchJumboMaxMonthlyPerformanceData(projectId: string, dataset: s
   } catch (error) {
     console.error('[Report Data] Error fetching email performance:', error);
     baseData.emailPerformance = [];
-  }
-
-  try {
-    const emailByCategory = await runSQLQuery(emailByCategoryQuery);
-    console.log(`[Report Data] emailByCategory: ${emailByCategory.length} rows fetched`);
-    baseData.emailByCategory = emailByCategory;
-  } catch (error) {
-    console.error('[Report Data] Error fetching email by category:', error);
-    baseData.emailByCategory = [];
   }
 
   try {
@@ -750,6 +630,24 @@ async function fetchJumboMaxMonthlyPerformanceData(projectId: string, dataset: s
   }
 
   try {
+    const emailCampaignRevenue = await runSQLQuery(emailCampaignRevenueQuery);
+    console.log(`[Report Data] emailCampaignRevenue: ${emailCampaignRevenue.length} rows fetched`);
+    baseData.emailCampaignRevenue = emailCampaignRevenue;
+  } catch (error) {
+    console.error('[Report Data] Error fetching email campaign revenue:', error);
+    baseData.emailCampaignRevenue = [];
+  }
+
+  try {
+    const emailCampaignSendPerformance = await runSQLQuery(emailCampaignSendPerformanceQuery);
+    console.log(`[Report Data] emailCampaignSendPerformance: ${emailCampaignSendPerformance.length} rows fetched`);
+    baseData.emailCampaignSendPerformance = emailCampaignSendPerformance;
+  } catch (error) {
+    console.error('[Report Data] Error fetching email campaign send performance:', error);
+    baseData.emailCampaignSendPerformance = [];
+  }
+
+  try {
     const flowRevenue = await runSQLQuery(flowRevenueQuery);
     console.log(`[Report Data] flowRevenue: ${flowRevenue.length} rows fetched`);
     baseData.flowRevenue = flowRevenue;
@@ -758,12 +656,112 @@ async function fetchJumboMaxMonthlyPerformanceData(projectId: string, dataset: s
     baseData.flowRevenue = [];
   }
 
+  // ========================================
+  // YoY EMAIL DATA (same month, previous year)
+  // ========================================
+  // Calculate YoY date - same month, previous year
+  const yoyStartDate = getYoYDate(dateRange.start);
+
+  // YoY Email totals by type (Campaign vs Flow)
+  const yoyEmailByTypeQuery = `
+    SELECT
+      attributed_email_type as email_type,
+      SUM(attributed_purchasers) as purchasers,
+      SUM(attributed_purchases) as purchases,
+      SUM(attributed_revenue) as attributed_revenue,
+      AVG(avg_order_value) as avg_order_value
+    FROM \`${projectId}.${dataset}.klaviyo_daily_unified_attribution\`
+    WHERE purchase_date >= '${yoyStartDate}' AND purchase_date < DATE_ADD(DATE '${yoyStartDate}', INTERVAL 1 MONTH)
+      AND attributed_email_type IS NOT NULL
+    GROUP BY attributed_email_type
+    ORDER BY attributed_revenue DESC
+  `;
+
+  // YoY Overall email totals
+  const yoyEmailPerformanceQuery = `
+    SELECT
+      SUM(attributed_purchasers) as total_attributed_purchasers,
+      SUM(attributed_purchases) as total_attributed_purchases,
+      SUM(attributed_revenue) as total_attributed_revenue,
+      AVG(avg_order_value) as avg_order_value
+    FROM \`${projectId}.${dataset}.klaviyo_daily_unified_attribution\`
+    WHERE purchase_date >= '${yoyStartDate}' AND purchase_date < DATE_ADD(DATE '${yoyStartDate}', INTERVAL 1 MONTH)
+  `;
+
+  // YoY Campaign revenue details
+  const yoyEmailCampaignRevenueQuery = `
+    SELECT
+      campaign_name,
+      SUM(attributed_purchasers) as attributed_purchasers,
+      SUM(attributed_purchases) as attributed_purchases,
+      SUM(attributed_revenue) as attributed_revenue,
+      AVG(avg_order_value) as avg_order_value
+    FROM \`${projectId}.${dataset}.klaviyo_daily_campaign_revenue\`
+    WHERE purchase_date >= '${yoyStartDate}' AND purchase_date < DATE_ADD(DATE '${yoyStartDate}', INTERVAL 1 MONTH)
+    GROUP BY campaign_name
+    ORDER BY attributed_revenue DESC
+    LIMIT 20
+  `;
+
+  // YoY Flow revenue details
+  const yoyFlowRevenueQuery = `
+    SELECT
+      flow_name,
+      flow_category,
+      SUM(attributed_purchasers) as attributed_purchasers,
+      SUM(attributed_purchases) as attributed_purchases,
+      SUM(attributed_revenue) as attributed_revenue,
+      AVG(avg_order_value) as avg_order_value,
+      AVG(revenue_per_purchaser) as revenue_per_purchaser
+    FROM \`${projectId}.${dataset}.klaviyo_daily_flow_revenue\`
+    WHERE purchase_date >= '${yoyStartDate}' AND purchase_date < DATE_ADD(DATE '${yoyStartDate}', INTERVAL 1 MONTH)
+    GROUP BY flow_name, flow_category
+    ORDER BY attributed_revenue DESC
+  `;
+
+  // Fetch YoY email data
+  try {
+    const yoyEmailPerformance = await runSQLQuery(yoyEmailPerformanceQuery);
+    console.log(`[Report Data] yoyEmailPerformance: ${yoyEmailPerformance.length} rows fetched`);
+    baseData.yoyEmailPerformance = yoyEmailPerformance;
+  } catch (error) {
+    console.error('[Report Data] Error fetching YoY email performance:', error);
+    baseData.yoyEmailPerformance = [];
+  }
+
+  try {
+    const yoyEmailByType = await runSQLQuery(yoyEmailByTypeQuery);
+    console.log(`[Report Data] yoyEmailByType: ${yoyEmailByType.length} rows fetched`);
+    baseData.yoyEmailByType = yoyEmailByType;
+  } catch (error) {
+    console.error('[Report Data] Error fetching YoY email by type:', error);
+    baseData.yoyEmailByType = [];
+  }
+
+  try {
+    const yoyEmailCampaignRevenue = await runSQLQuery(yoyEmailCampaignRevenueQuery);
+    console.log(`[Report Data] yoyEmailCampaignRevenue: ${yoyEmailCampaignRevenue.length} rows fetched`);
+    baseData.yoyEmailCampaignRevenue = yoyEmailCampaignRevenue;
+  } catch (error) {
+    console.error('[Report Data] Error fetching YoY email campaign revenue:', error);
+    baseData.yoyEmailCampaignRevenue = [];
+  }
+
+  try {
+    const yoyFlowRevenue = await runSQLQuery(yoyFlowRevenueQuery);
+    console.log(`[Report Data] yoyFlowRevenue: ${yoyFlowRevenue.length} rows fetched`);
+    baseData.yoyFlowRevenue = yoyFlowRevenue;
+  } catch (error) {
+    console.error('[Report Data] Error fetching YoY flow revenue:', error);
+    baseData.yoyFlowRevenue = [];
+  }
+
   return baseData;
 }
 
 /**
  * Fetch data for PuttOUT Monthly Performance Review
- * Similar to JumboMax but without Google Ads detailed breakouts and funnel ads
+ * Uses base monthly data with paid media and email performance
  */
 async function fetchPuttOutMonthlyPerformanceData(projectId: string, dataset: string, dateRange: any) {
   // Start with base monthly performance data
@@ -800,69 +798,31 @@ async function fetchPuttOutMonthlyPerformanceData(projectId: string, dataset: st
     baseData.paidMediaPerformance = [];
   }
 
-  // Add email performance from klaviyo_email_engagement_trends
-  const emailPerformanceQuery = `
-    SELECT
-      SUM(sends) as total_sends,
-      SUM(deliveries) as total_deliveries,
-      SUM(opens) as total_opens,
-      SUM(clicks) as total_clicks,
-      SUM(bounces) as total_bounces,
-      SUM(unsubscribes) as total_unsubscribes,
-      SUM(unique_recipients_sent) as unique_recipients_sent,
-      SUM(unique_recipients_opened) as unique_recipients_opened,
-      SUM(unique_recipients_clicked) as unique_recipients_clicked,
-      SUM(campaigns_sent) as campaigns_sent,
-      SUM(attributed_revenue) as total_attributed_revenue,
-      SUM(attributed_purchases) as total_attributed_purchases,
-      SUM(attributed_purchasers) as total_attributed_purchasers,
-      AVG(delivery_rate) as avg_delivery_rate,
-      AVG(open_rate) as avg_open_rate,
-      AVG(click_rate) as avg_click_rate,
-      AVG(click_to_open_rate) as avg_click_to_open_rate,
-      AVG(bounce_rate) as avg_bounce_rate,
-      AVG(unsubscribe_rate) as avg_unsubscribe_rate,
-      AVG(unique_open_rate) as avg_unique_open_rate,
-      AVG(unique_click_rate) as avg_unique_click_rate,
-      AVG(purchase_conversion_rate) as avg_purchase_conversion_rate,
-      AVG(revenue_per_send) as avg_revenue_per_send
-    FROM \`${projectId}.${dataset}.klaviyo_email_engagement_trends\`
-    WHERE event_date >= '${dateRange.start}' AND event_date < DATE_ADD(DATE '${dateRange.start}', INTERVAL 1 MONTH)
-  `;
-
-  // Email performance by campaign category
-  const emailByCategoryQuery = `
-    SELECT
-      campaign_category,
-      SUM(sends) as sends,
-      SUM(opens) as opens,
-      SUM(clicks) as clicks,
-      SUM(attributed_revenue) as attributed_revenue,
-      AVG(open_rate) as open_rate,
-      AVG(click_rate) as click_rate,
-      AVG(click_to_open_rate) as click_to_open_rate
-    FROM \`${projectId}.${dataset}.klaviyo_email_engagement_trends\`
-    WHERE event_date >= '${dateRange.start}' AND event_date < DATE_ADD(DATE '${dateRange.start}', INTERVAL 1 MONTH)
-      AND campaign_category IS NOT NULL
-    GROUP BY campaign_category
-    ORDER BY attributed_revenue DESC
-  `;
-
-  // Email performance by type (campaign vs flow)
+  // Email revenue by type (Campaign vs Flow) from klaviyo_daily_unified_attribution
+  // This uses PURCHASE date to match dashboard, not send date
   const emailByTypeQuery = `
     SELECT
-      email_type,
-      SUM(sends) as sends,
-      SUM(opens) as opens,
-      SUM(clicks) as clicks,
+      attributed_email_type as email_type,
+      SUM(attributed_purchasers) as purchasers,
+      SUM(attributed_purchases) as purchases,
       SUM(attributed_revenue) as attributed_revenue,
-      AVG(open_rate) as open_rate,
-      AVG(click_rate) as click_rate
-    FROM \`${projectId}.${dataset}.klaviyo_email_engagement_trends\`
-    WHERE event_date >= '${dateRange.start}' AND event_date < DATE_ADD(DATE '${dateRange.start}', INTERVAL 1 MONTH)
-      AND email_type IS NOT NULL
-    GROUP BY email_type
+      AVG(avg_order_value) as avg_order_value
+    FROM \`${projectId}.${dataset}.klaviyo_daily_unified_attribution\`
+    WHERE purchase_date >= '${dateRange.start}' AND purchase_date < DATE_ADD(DATE '${dateRange.start}', INTERVAL 1 MONTH)
+      AND attributed_email_type IS NOT NULL
+    GROUP BY attributed_email_type
     ORDER BY attributed_revenue DESC
+  `;
+
+  // Overall email totals (sum of campaign + flow revenue by PURCHASE date)
+  const emailPerformanceQuery = `
+    SELECT
+      SUM(attributed_purchasers) as total_attributed_purchasers,
+      SUM(attributed_purchases) as total_attributed_purchases,
+      SUM(attributed_revenue) as total_attributed_revenue,
+      AVG(avg_order_value) as avg_order_value
+    FROM \`${projectId}.${dataset}.klaviyo_daily_unified_attribution\`
+    WHERE purchase_date >= '${dateRange.start}' AND purchase_date < DATE_ADD(DATE '${dateRange.start}', INTERVAL 1 MONTH)
   `;
 
   // Flow revenue details from klaviyo_daily_flow_revenue
@@ -888,15 +848,6 @@ async function fetchPuttOutMonthlyPerformanceData(projectId: string, dataset: st
   } catch (error) {
     console.error('[Report Data] Error fetching email performance:', error);
     baseData.emailPerformance = [];
-  }
-
-  try {
-    const emailByCategory = await runSQLQuery(emailByCategoryQuery);
-    console.log(`[Report Data] emailByCategory: ${emailByCategory.length} rows fetched`);
-    baseData.emailByCategory = emailByCategory;
-  } catch (error) {
-    console.error('[Report Data] Error fetching email by category:', error);
-    baseData.emailByCategory = [];
   }
 
   try {
@@ -1033,7 +984,7 @@ function formatDataAsMarkdown(data: any, reportType: string): string {
   if (reportType === 'hb-monthly-performance') {
     return formatHBMonthlyReportAsMarkdown(data);
   }
-  if (reportType === 'jumbomax-monthly-performance') {
+  if (reportType === 'jumbomax-monthly-performance' || reportType === 'jumbomax-6pillar-performance') {
     return formatJumboMaxMonthlyReportAsMarkdown(data);
   }
   if (reportType === 'puttout-monthly-performance') {
@@ -1056,48 +1007,16 @@ function formatMonthlyReportAsMarkdown(data: any): string {
   markdown += `Include insights about ROAS trends, geographic performance, and Meta attribution in your Executive Summary bullet points.\n\n`;
   markdown += `---\n\n`;
 
-  // Hero Metrics from Monthly Executive Report (NEW)
-  if (data.monthlyExecutiveReport?.[0]) {
-    const hero = data.monthlyExecutiveReport[0];
-    markdown += `## HERO METRICS (for Executive Summary)\n`;
-    markdown += `**Use these 6 metrics EXACTLY as specified in the prompt:**\n\n`;
-
-    markdown += `**Row 1 - Monthly Revenue**:\n`;
-    markdown += `- revenue_total: $${hero.revenue_total?.toLocaleString() || 'N/A'}\n`;
-    markdown += `- revenue_mom_pct: ${hero.revenue_mom_pct?.toFixed(1) || 0}%\n`;
-    markdown += `- revenue_yoy_pct: ${hero.revenue_yoy_pct?.toFixed(1) || 0}%\n\n`;
-
-    markdown += `**Row 3 - Monthly ROAS (Attributed Blended ROAS - Paid Media Only)**:\n`;
-    markdown += `- attributed_blended_roas: ${hero.attributed_blended_roas?.toFixed(2) || 'N/A'}x\n`;
-    markdown += `- attributed_blended_roas_mom_pct: ${hero.attributed_blended_roas_mom_pct?.toFixed(1) || 0}%\n`;
-    markdown += `- attributed_blended_roas_yoy_pct: ${hero.attributed_blended_roas_yoy_pct?.toFixed(1) || 0}%\n\n`;
-
-    markdown += `**Row 4 - Paid Media Spend**:\n`;
-    markdown += `- paid_media_spend: $${hero.paid_media_spend?.toLocaleString() || 'N/A'}\n`;
-    markdown += `- paid_media_spend_mom_pct: ${hero.paid_media_spend_mom_pct?.toFixed(1) || 0}%\n`;
-    markdown += `- paid_media_spend_yoy_pct: ${hero.paid_media_spend_yoy_pct?.toFixed(1) || 0}%\n\n`;
-
-    markdown += `**Row 6 - Top Emerging SKU**:\n`;
-    markdown += `- top_emerging_product_title: ${hero.top_emerging_product_title || 'N/A'}\n`;
-    markdown += `- top_emerging_product_revenue: $${hero.top_emerging_product_revenue?.toLocaleString() || 'N/A'}\n`;
-    markdown += `- top_emerging_product_mom_growth_pct: ${hero.top_emerging_product_mom_growth_pct?.toFixed(1) || 0}%\n\n`;
-  }
-
-  // Annual Revenue Forecast (Bayesian)
+  // Annual Revenue Forecast (Bayesian) - Model output, not calculable from raw data
   if (data.bayesianForecast?.[0]) {
     const forecast = data.bayesianForecast[0];
-    markdown += `## ANNUAL REVENUE FORECAST (for Hero Metric Row 2)\n`;
-    markdown += `**Use these fields for Annual Revenue Pacing row:**\n\n`;
+    markdown += `## ANNUAL REVENUE FORECAST\n`;
+    markdown += `**Bayesian forecast model output for annual pacing:**\n\n`;
 
-    markdown += `**Row 2 - Annual Revenue Pacing**:\n`;
-    markdown += `- prophet_annual_revenue_base (Base Scenario forecast): $${forecast.prophet_annual_revenue_base?.toLocaleString() || 'N/A'}\n`;
-    markdown += `- annual_revenue_target (Target): $${forecast.annual_revenue_target?.toLocaleString() || 'N/A'}\n`;
-    markdown += `- probability_hit_revenue_target: ${forecast.probability_hit_revenue_target}%\n`;
-    markdown += `- days_remaining: ${forecast.days_remaining}\n`;
-    markdown += `- CALCULATE SHORTFALL: annual_revenue_target MINUS prophet_annual_revenue_base\n\n`;
-
-    markdown += `**Additional Context** (for reference only):\n`;
-    markdown += `- Forecast Year: ${forecast.forecast_year}\n`;
+    markdown += `- Forecasted Annual Revenue (Base): $${forecast.prophet_annual_revenue_base?.toLocaleString() || 'N/A'}\n`;
+    markdown += `- Annual Revenue Target: $${forecast.annual_revenue_target?.toLocaleString() || 'N/A'}\n`;
+    markdown += `- Probability to Hit Target: ${forecast.probability_hit_revenue_target}%\n`;
+    markdown += `- Days Remaining in Year: ${forecast.days_remaining}\n`;
     markdown += `- YTD Revenue: $${parseFloat(forecast.ytd_revenue)?.toLocaleString() || 'N/A'}\n`;
     markdown += `- YTD Attainment: ${forecast.ytd_attainment_pct?.toFixed(1) || 0}%\n`;
     markdown += `- Conservative Scenario: $${forecast.prophet_annual_revenue_conservative?.toLocaleString() || 'N/A'}\n`;
@@ -1105,41 +1024,18 @@ function formatMonthlyReportAsMarkdown(data: any): string {
     markdown += `- Risk Level: ${forecast.revenue_risk_level}\n\n`;
   }
 
-  // Executive Summary (MTD - for detailed breakdown)
-  if (data.executiveSummary?.[0]) {
-    const exec = data.executiveSummary[0];
-    markdown += `## Platform Breakdown (MTD)\n`;
-    markdown += `- Revenue: $${exec.revenue_mtd?.toLocaleString() || 'N/A'} | Orders: ${exec.orders_mtd || 'N/A'} | AOV: $${exec.aov_mtd?.toFixed(2) || 'N/A'}\n`;
-    markdown += `- YoY Growth: Revenue ${exec.revenue_mtd_yoy_growth_pct || 0 > 0 ? '+' : ''}${exec.revenue_mtd_yoy_growth_pct?.toFixed(1) || 0}% | Orders ${exec.orders_mtd_yoy_growth_pct || 0 > 0 ? '+' : ''}${exec.orders_mtd_yoy_growth_pct?.toFixed(1) || 0}%\n`;
-
-    if (exec.facebook_spend_mtd > 0) {
-      markdown += `\n### Facebook MTD\n`;
-      markdown += `- Spend: $${exec.facebook_spend_mtd?.toLocaleString() || 'N/A'} | Revenue: $${exec.facebook_revenue_mtd?.toLocaleString() || 'N/A'} | ROAS: ${exec.facebook_roas_mtd?.toFixed(2) || 'N/A'}x\n`;
-      markdown += `- 7D: Spend $${exec.facebook_spend_7d?.toLocaleString() || 'N/A'} | Revenue $${exec.facebook_revenue_7d?.toLocaleString() || 'N/A'} | ROAS ${exec.facebook_roas_7d?.toFixed(2) || 'N/A'}x\n`;
-    }
-
-    if (exec.google_spend_mtd > 0) {
-      markdown += `\n### Google Ads MTD\n`;
-      markdown += `- Spend: $${exec.google_spend_mtd?.toLocaleString() || 'N/A'} | Revenue: $${exec.google_revenue_mtd?.toLocaleString() || 'N/A'} | ROAS: ${exec.google_roas_mtd?.toFixed(2) || 'N/A'}x\n`;
-    }
-
-    if (exec.klaviyo_total_revenue_mtd > 0) {
-      markdown += `\n### Email MTD\n`;
-      markdown += `- Revenue: $${exec.klaviyo_total_revenue_mtd?.toLocaleString() || 'N/A'} | YoY: ${exec.klaviyo_total_revenue_mtd_yoy_growth_pct || 0 > 0 ? '+' : ''}${exec.klaviyo_total_revenue_mtd_yoy_growth_pct?.toFixed(1) || 0}%\n`;
-    }
-
-    markdown += `\n### Last 7 Days\n`;
-    markdown += `- Revenue: $${exec.revenue_7d?.toLocaleString() || 'N/A'} | Orders: ${exec.orders_7d || 'N/A'} | AOV: $${exec.aov_7d?.toFixed(2) || 'N/A'}\n`;
-  }
-
-  // Monthly Business Summary
-  if (data.monthlyBusinessSummary?.[0]) {
-    const monthly = data.monthlyBusinessSummary[0];
-    markdown += `\n## Monthly Business Metrics\n`;
-    markdown += `- Gross Sales: $${monthly.monthly_gross_sales?.toLocaleString() || 'N/A'} | Net Sales (after refunds): $${monthly.monthly_net_sales_after_refunds?.toLocaleString() || 'N/A'}\n`;
-    markdown += `- Total Orders: ${monthly.monthly_orders || 'N/A'} | AOV: $${monthly.avg_monthly_aov?.toFixed(2) || 'N/A'}\n`;
-    markdown += `- Attributed Blended ROAS (Paid Media Only): ${monthly.attributed_blended_roas?.toFixed(2) || 'N/A'}x\n`;
-    markdown += `- Total Ad Spend: $${monthly.monthly_ad_spend?.toLocaleString() || 'N/A'} (FB: $${monthly.monthly_facebook_spend?.toLocaleString() || 0}, Google: $${monthly.monthly_google_spend?.toLocaleString() || 0})\n`;
+  // Monthly Business Summary - 24 months of raw data
+  // Claude will calculate MoM, YoY, trends from this data
+  if (data.monthlyBusinessSummary?.length > 0) {
+    markdown += `\n## MONTHLY BUSINESS PERFORMANCE (24 months)\n`;
+    markdown += `**Calculate MoM (compare to previous row) and YoY (compare to same month last year) from this data:**\n\n`;
+    markdown += `| Month | Gross Sales | Net Sales | Orders | AOV | ROAS | Ad Spend | FB Spend | Google Spend |\n`;
+    markdown += `|-------|-------------|-----------|--------|-----|------|----------|----------|-------------|\n`;
+    data.monthlyBusinessSummary.forEach((m: any) => {
+      const monthStr = m.month?.value || m.month;
+      markdown += `| ${monthStr} | $${parseFloat(m.monthly_gross_sales || 0).toLocaleString('en-US', {maximumFractionDigits: 0})} | $${parseFloat(m.monthly_net_sales_after_refunds || 0).toLocaleString('en-US', {maximumFractionDigits: 0})} | ${m.monthly_orders || 0} | $${parseFloat(m.avg_monthly_aov || 0).toFixed(2)} | ${m.attributed_blended_roas?.toFixed(2) || 0}x | $${parseFloat(m.monthly_ad_spend || 0).toLocaleString('en-US', {maximumFractionDigits: 0})} | $${parseFloat(m.monthly_facebook_spend || 0).toLocaleString('en-US', {maximumFractionDigits: 0})} | $${parseFloat(m.monthly_google_spend || 0).toLocaleString('en-US', {maximumFractionDigits: 0})} |\n`;
+    });
+    markdown += `\n`;
   }
 
   // Client Config - Parse JSON field for revenue targets
@@ -1160,39 +1056,40 @@ function formatMonthlyReportAsMarkdown(data: any): string {
     }
   }
 
-  // Top Campaigns
+  // Top Campaigns by ROAS (from paid_media_performance for report month)
   if (data.topCampaigns?.length > 0) {
-    markdown += `\n## Top 10 Campaigns by ROAS\n`;
-    markdown += `| Campaign | Spend | Revenue | ROAS | CTR | Purchases |\n`;
-    markdown += `|----------|-------|---------|------|-----|--------|\n`;
+    markdown += `\n## PAID CAMPAIGNS BY ROAS (Report Month)\n`;
+    markdown += `**Campaign performance for the report period:**\n\n`;
+    markdown += `| Campaign | Spend | Revenue | ROAS | Purchases | CTR |\n`;
+    markdown += `|----------|-------|---------|------|-----------|-----|\n`;
     data.topCampaigns.forEach((c: any) => {
-      markdown += `| ${c.campaign_name} | $${c.spend_30d?.toLocaleString() || 0} | $${c.revenue_30d?.toLocaleString() || 0} | ${c.roas_30d?.toFixed(2) || 0}x | ${(c.ctr_30d * 100)?.toFixed(2) || 0}% | ${c.purchases_30d || 0} |\n`;
+      markdown += `| ${c.campaign_name} | $${parseFloat(c.spend || 0).toLocaleString('en-US', {maximumFractionDigits: 0})} | $${parseFloat(c.revenue || 0).toLocaleString('en-US', {maximumFractionDigits: 0})} | ${c.roas?.toFixed(2) || 0}x | ${c.purchases || 0} | ${c.ctr?.toFixed(2) || 0}% |\n`;
     });
+    markdown += `\n`;
   }
 
-  // Bottom Campaigns
+  // Bottom Campaigns by ROAS (lowest performers)
   if (data.bottomCampaigns?.length > 0) {
-    markdown += `\n## Bottom 5 Campaigns Needing Attention\n`;
-    markdown += `| Campaign | Spend | Revenue | ROAS | Action | Flags |\n`;
-    markdown += `|----------|-------|---------|------|--------|-------|\n`;
+    markdown += `\n## LOWEST ROAS CAMPAIGNS (Report Month)\n`;
+    markdown += `**Campaigns with lowest ROAS for review:**\n\n`;
+    markdown += `| Campaign | Spend | Revenue | ROAS | Purchases | CTR |\n`;
+    markdown += `|----------|-------|---------|------|-----------|-----|\n`;
     data.bottomCampaigns.forEach((c: any) => {
-      markdown += `| ${c.campaign_name} | $${c.spend_30d?.toLocaleString() || 0} | $${c.revenue_30d?.toLocaleString() || 0} | ${c.roas_30d?.toFixed(2) || 0}x | ${c.recommended_action || 'N/A'} | ${c.risk_flags || 'None'} |\n`;
+      markdown += `| ${c.campaign_name} | $${parseFloat(c.spend || 0).toLocaleString('en-US', {maximumFractionDigits: 0})} | $${parseFloat(c.revenue || 0).toLocaleString('en-US', {maximumFractionDigits: 0})} | ${c.roas?.toFixed(2) || 0}x | ${c.purchases || 0} | ${c.ctr?.toFixed(2) || 0}% |\n`;
     });
+    markdown += `\n`;
   }
 
-  // Products - WITH EXPLICIT ROW 5 HERO METRIC
-  if (data.productIntelligence?.length > 0) {
-    markdown += `\n## TOP PERFORMING SKU (for Hero Metric Row 5)\n`;
-    markdown += `**Row 5 - Top Performing SKU**:\n`;
-    markdown += `- product_title: ${data.productIntelligence[0].product_title}\n`;
-    markdown += `- revenue_30d: $${data.productIntelligence[0].revenue_30d?.toLocaleString() || 0}\n\n`;
-
-    markdown += `**All Top 10 Products** (for context):\n`;
-    markdown += `| Product | Revenue (30d) | Units Sold | Inventory |\n`;
-    markdown += `|---------|---------------|------------|----------|\n`;
-    data.productIntelligence.forEach((p: any) => {
-      markdown += `| ${p.product_title} | $${p.revenue_30d?.toLocaleString() || 0} | ${p.units_sold_30d || 0} | ${p.total_inventory_quantity || 0} |\n`;
+  // Products - Top 10 by revenue for the REPORT MONTH
+  if (data.topProducts?.length > 0) {
+    markdown += `\n## TOP PRODUCTS (Report Month)\n`;
+    markdown += `**Product revenue for the report period:**\n\n`;
+    markdown += `| Product | Revenue | Units Sold | Avg Price |\n`;
+    markdown += `|---------|---------|------------|----------|\n`;
+    data.topProducts.forEach((p: any) => {
+      markdown += `| ${p.product_title} | $${parseFloat(p.revenue || 0).toLocaleString('en-US', {maximumFractionDigits: 0})} | ${p.units_sold || 0} | $${parseFloat(p.avg_price || 0).toFixed(2)} |\n`;
     });
+    markdown += `\n`;
   }
 
   // Daily Business Performance - Revenue and orders by day from Shopify
@@ -1221,31 +1118,102 @@ function formatMonthlyReportAsMarkdown(data: any): string {
     }
   }
 
-  // Daily Paid Media Performance - Spend and attributed revenue by day
-  if (data.dailyPaidMediaPerformance?.length > 0) {
-    markdown += `\n## DAILY PAID MEDIA PERFORMANCE (Ad Spend & Attribution)\n`;
-    markdown += `**Daily ad spend and attributed revenue for the month:**\n\n`;
-    markdown += `| Date | Spend | Attributed Revenue | Purchases | ROAS |\n`;
-    markdown += `|------|-------|-------------------|-----------|------|\n`;
-    data.dailyPaidMediaPerformance.forEach((day: any) => {
+  // PLATFORM SUMMARY - Pre-calculated monthly totals (source of truth for platform ROAS)
+  // Aggregate from dailyPaidMediaByPlatform to get report month and previous month totals
+  if (data.dailyPaidMediaByPlatform?.length > 0) {
+    // Group daily data by month and platform
+    const monthlyPlatformTotals: Record<string, Record<string, { spend: number; revenue: number; purchases: number; impressions: number; clicks: number }>> = {};
+
+    data.dailyPaidMediaByPlatform.forEach((day: any) => {
       const dateStr = day.date?.value || day.date;
-      markdown += `| ${dateStr} | $${parseFloat(day.spend || 0).toLocaleString('en-US', {maximumFractionDigits: 0})} | $${parseFloat(day.attributed_revenue || 0).toLocaleString('en-US', {maximumFractionDigits: 0})} | ${day.purchases || 0} | ${day.roas?.toFixed(2) || '0.00'}x |\n`;
+      const monthKey = dateStr.substring(0, 7); // YYYY-MM
+      const platform = day.platform;
+
+      if (!monthlyPlatformTotals[monthKey]) {
+        monthlyPlatformTotals[monthKey] = {};
+      }
+      if (!monthlyPlatformTotals[monthKey][platform]) {
+        monthlyPlatformTotals[monthKey][platform] = { spend: 0, revenue: 0, purchases: 0, impressions: 0, clicks: 0 };
+      }
+
+      monthlyPlatformTotals[monthKey][platform].spend += parseFloat(day.spend || 0);
+      monthlyPlatformTotals[monthKey][platform].revenue += parseFloat(day.attributed_revenue || 0);
+      monthlyPlatformTotals[monthKey][platform].purchases += parseInt(day.purchases || 0);
+      monthlyPlatformTotals[monthKey][platform].impressions += parseInt(day.impressions || 0);
+      monthlyPlatformTotals[monthKey][platform].clicks += parseInt(day.clicks || 0);
     });
 
-    // Add weekly summaries
-    if (data.dailyPaidMediaPerformance.length >= 7) {
-      markdown += `\n**Weekly Summaries:**\n`;
-      const weeks = Math.ceil(data.dailyPaidMediaPerformance.length / 7);
-      for (let i = 0; i < weeks; i++) {
-        const weekData = data.dailyPaidMediaPerformance.slice(i * 7, Math.min((i + 1) * 7, data.dailyPaidMediaPerformance.length));
-        const totalSpend = weekData.reduce((sum: number, d: any) => sum + parseFloat(d.spend || 0), 0);
-        const totalRevenue = weekData.reduce((sum: number, d: any) => sum + parseFloat(d.attributed_revenue || 0), 0);
-        const totalPurchases = weekData.reduce((sum: number, d: any) => sum + (d.purchases || 0), 0);
-        const weekRoas = totalSpend > 0 ? totalRevenue / totalSpend : 0;
-        markdown += `- Week ${i + 1}: Spend $${totalSpend.toLocaleString('en-US', { maximumFractionDigits: 0 })}, Revenue $${totalRevenue.toLocaleString('en-US', { maximumFractionDigits: 0 })}, ROAS ${weekRoas.toFixed(2)}x, Purchases ${totalPurchases}\n`;
+    // Sort months descending (most recent first)
+    const sortedMonths = Object.keys(monthlyPlatformTotals).sort().reverse();
+
+    // Output platform summaries for each month
+    sortedMonths.forEach((monthKey, index) => {
+      const monthDate = new Date(monthKey + '-01T00:00:00');
+      const monthName = monthDate.toLocaleString('en-US', { month: 'long', year: 'numeric' });
+      const platforms = monthlyPlatformTotals[monthKey];
+
+      // Calculate totals across all platforms
+      let totalSpend = 0;
+      let totalRevenue = 0;
+      let totalPurchases = 0;
+
+      Object.values(platforms).forEach(p => {
+        totalSpend += p.spend;
+        totalRevenue += p.revenue;
+        totalPurchases += p.purchases;
+      });
+
+      const blendedRoas = totalSpend > 0 ? totalRevenue / totalSpend : 0;
+
+      if (index === 0) {
+        markdown += `\n## MONTHLY PLATFORM SUMMARY - ${monthName} (REPORT MONTH)\n`;
+        markdown += `**USE THESE PRE-CALCULATED VALUES FOR PLATFORM ROAS REPORTING:**\n\n`;
+      } else {
+        markdown += `\n## MONTHLY PLATFORM SUMMARY - ${monthName} (PRIOR MONTH - for MoM comparison)\n`;
+        markdown += `**Use these values to calculate Month-over-Month changes:**\n\n`;
       }
+
+      markdown += `| Platform | Spend | Attributed Revenue | Purchases | ROAS |\n`;
+      markdown += `|----------|-------|-------------------|-----------|------|\n`;
+
+      // Normalize platform names for display
+      Object.entries(platforms).forEach(([platform, totals]) => {
+        const displayName = platform === 'Facebook' ? 'Meta' : platform;
+        const roas = totals.spend > 0 ? totals.revenue / totals.spend : 0;
+        markdown += `| ${displayName} | $${totals.spend.toLocaleString('en-US', {maximumFractionDigits: 0})} | $${totals.revenue.toLocaleString('en-US', {maximumFractionDigits: 0})} | ${totals.purchases.toLocaleString()} | ${roas.toFixed(2)}x |\n`;
+      });
+
+      // Add total row
+      markdown += `| **TOTAL (Blended)** | **$${totalSpend.toLocaleString('en-US', {maximumFractionDigits: 0})}** | **$${totalRevenue.toLocaleString('en-US', {maximumFractionDigits: 0})}** | **${totalPurchases.toLocaleString()}** | **${blendedRoas.toFixed(2)}x** |\n`;
       markdown += `\n`;
-    }
+    });
+  }
+
+  // Daily Paid Media by Platform - for trend analysis (NOT for monthly totals)
+  if (data.dailyPaidMediaByPlatform?.length > 0) {
+    markdown += `\n## DAILY PAID MEDIA BY PLATFORM (Trend Analysis)\n`;
+    markdown += `**Use for daily trend analysis and pattern identification.**\n`;
+    markdown += `**Do NOT manually aggregate for monthly platform totals - use PLATFORM SUMMARY above.**\n\n`;
+    markdown += `| Date | Platform | Spend | Revenue | Purchases | Impressions | Clicks | ROAS |\n`;
+    markdown += `|------|----------|-------|---------|-----------|-------------|--------|------|\n`;
+    data.dailyPaidMediaByPlatform.forEach((day: any) => {
+      const dateStr = day.date?.value || day.date;
+      markdown += `| ${dateStr} | ${day.platform} | $${parseFloat(day.spend || 0).toLocaleString('en-US', {maximumFractionDigits: 0})} | $${parseFloat(day.attributed_revenue || 0).toLocaleString('en-US', {maximumFractionDigits: 0})} | ${day.purchases || 0} | ${parseFloat(day.impressions || 0).toLocaleString('en-US', {maximumFractionDigits: 0})} | ${parseFloat(day.clicks || 0).toLocaleString('en-US', {maximumFractionDigits: 0})} | ${day.roas?.toFixed(2) || '0.00'}x |\n`;
+    });
+    markdown += `\n`;
+  }
+
+  // Weekly Paid Media by Platform - 24 months of weekly data for trend analysis
+  if (data.weeklyPaidMediaByPlatform?.length > 0) {
+    markdown += `\n## WEEKLY PAID MEDIA BY PLATFORM (24 months)\n`;
+    markdown += `**Weekly totals by platform for long-term trend analysis:**\n\n`;
+    markdown += `| Week Start | Platform | Spend | Revenue | Purchases | Impressions | Clicks | ROAS |\n`;
+    markdown += `|------------|----------|-------|---------|-----------|-------------|--------|------|\n`;
+    data.weeklyPaidMediaByPlatform.forEach((week: any) => {
+      const weekStr = week.week_start?.value || week.week_start;
+      markdown += `| ${weekStr} | ${week.platform} | $${parseFloat(week.spend || 0).toLocaleString('en-US', {maximumFractionDigits: 0})} | $${parseFloat(week.attributed_revenue || 0).toLocaleString('en-US', {maximumFractionDigits: 0})} | ${week.purchases || 0} | ${parseFloat(week.impressions || 0).toLocaleString('en-US', {maximumFractionDigits: 0})} | ${parseFloat(week.clicks || 0).toLocaleString('en-US', {maximumFractionDigits: 0})} | ${week.roas?.toFixed(2) || '0.00'}x |\n`;
+    });
+    markdown += `\n`;
   }
 
   // Country Performance - Revenue by key markets
@@ -1310,17 +1278,12 @@ function formatHBMonthlyReportAsMarkdown(data: any): string {
   // Start with the standard monthly report formatting
   let markdown = formatMonthlyReportAsMarkdown(data);
 
-  // Add report month information at the top
-  // Try monthlyExecutiveReport first, then fall back to monthlyBusinessSummary
-  let reportMonthValue = data.monthlyExecutiveReport?.[0]?.report_month;
-  const sourceTable = reportMonthValue ? 'monthlyExecutiveReport' : 'monthlyBusinessSummary';
-
-  if (!reportMonthValue && data.monthlyBusinessSummary?.[0]?.month) {
-    reportMonthValue = data.monthlyBusinessSummary[0].month;
-  }
+  // Add report month information at the top using monthlyBusinessSummary
+  // Note: monthlyExecutiveReport view is unreliable, so we use monthlyBusinessSummary as the source
+  let reportMonthValue = data.monthlyBusinessSummary?.[0]?.month;
 
   if (reportMonthValue) {
-    console.log('[HB Report] Raw report_month from', sourceTable, ':', reportMonthValue);
+    console.log('[HB Report] Raw report_month from monthlyBusinessSummary:', reportMonthValue);
 
     // Handle BigQuery date object or string
     let reportMonth: Date;
@@ -1335,8 +1298,6 @@ function formatHBMonthlyReportAsMarkdown(data: any): string {
     }
 
     console.log('[HB Report] Parsed reportMonth date:', reportMonth);
-    console.log('[HB Report] reportMonth.getMonth():', reportMonth.getMonth());
-    console.log('[HB Report] reportMonth.getFullYear():', reportMonth.getFullYear());
 
     // Validate the date is valid
     if (!isNaN(reportMonth.getTime())) {
@@ -1347,83 +1308,13 @@ function formatHBMonthlyReportAsMarkdown(data: any): string {
       console.error('[HB Report] Invalid date from report_month:', reportMonthValue);
     }
   } else {
-    console.error('[HB Report] No report_month found in either monthlyExecutiveReport or monthlyBusinessSummary');
+    console.error('[HB Report] No report_month found in monthlyBusinessSummary');
   }
 
-  // Add platform-level performance with MoM/YoY from monthly_executive_report
-  if (data.monthlyExecutiveReport?.[0]) {
-    const hero = data.monthlyExecutiveReport[0];
-
-    // Meta Ads Performance with MoM/YoY
-    if (hero.meta_spend !== null && hero.meta_spend !== undefined) {
-      markdown += `\n## META ADS PERFORMANCE METRICS\n`;
-      markdown += `**Use these metrics with MoM/YoY changes for the Meta Ads Performance section:**\n\n`;
-
-      markdown += `**Spend:**\n`;
-      markdown += `- meta_spend: $${hero.meta_spend?.toLocaleString() || 'N/A'}\n`;
-      markdown += `- meta_spend_mom_pct: ${hero.meta_spend_mom_pct?.toFixed(1) || 0}%\n`;
-      markdown += `- meta_spend_yoy_pct: ${hero.meta_spend_yoy_pct?.toFixed(1) || 0}%\n\n`;
-
-      markdown += `**Revenue:**\n`;
-      markdown += `- meta_revenue: $${hero.meta_revenue?.toLocaleString() || 'N/A'}\n`;
-      markdown += `- meta_revenue_mom_pct: ${hero.meta_revenue_mom_pct?.toFixed(1) || 0}%\n`;
-      markdown += `- meta_revenue_yoy_pct: ${hero.meta_revenue_yoy_pct?.toFixed(1) || 0}%\n\n`;
-
-      markdown += `**ROAS:**\n`;
-      markdown += `- meta_roas: ${hero.meta_roas?.toFixed(2) || 'N/A'}x\n`;
-      markdown += `- meta_roas_mom_pct: ${hero.meta_roas_mom_pct?.toFixed(1) || 0}%\n`;
-      markdown += `- meta_roas_yoy_pct: ${hero.meta_roas_yoy_pct?.toFixed(1) || 0}%\n\n`;
-    }
-
-    // Google Ads Performance with MoM/YoY
-    if (hero.google_spend !== null && hero.google_spend !== undefined) {
-      markdown += `\n## GOOGLE ADS PERFORMANCE METRICS\n`;
-      markdown += `**Use these metrics with MoM/YoY changes for the Google Ads Performance section:**\n\n`;
-
-      markdown += `**Spend:**\n`;
-      markdown += `- google_spend: $${hero.google_spend?.toLocaleString() || 'N/A'}\n`;
-      markdown += `- google_spend_mom_pct: ${hero.google_spend_mom_pct?.toFixed(1) || 0}%\n`;
-      markdown += `- google_spend_yoy_pct: ${hero.google_spend_yoy_pct?.toFixed(1) || 0}%\n\n`;
-
-      markdown += `**Revenue:**\n`;
-      markdown += `- google_revenue: $${hero.google_revenue?.toLocaleString() || 'N/A'}\n`;
-      markdown += `- google_revenue_mom_pct: ${hero.google_revenue_mom_pct?.toFixed(1) || 0}%\n`;
-      markdown += `- google_revenue_yoy_pct: ${hero.google_revenue_yoy_pct?.toFixed(1) || 0}%\n\n`;
-
-      markdown += `**ROAS:**\n`;
-      markdown += `- google_roas: ${hero.google_roas?.toFixed(2) || 'N/A'}x\n`;
-      markdown += `- google_roas_mom_pct: ${hero.google_roas_mom_pct?.toFixed(1) || 0}%\n`;
-      markdown += `- google_roas_yoy_pct: ${hero.google_roas_yoy_pct?.toFixed(1) || 0}%\n\n`;
-    }
-  }
-
-  // Add detailed paid media performance metrics from paid_media_performance table (for granular metrics like CPM, CPC, CTR, Frequency)
-  if (data.paidMediaPerformance?.length > 0) {
-    const metaData = data.paidMediaPerformance.find((p: any) => p.platform === 'Facebook');
-    const googleData = data.paidMediaPerformance.find((p: any) => p.platform === 'Google Ads');
-
-    if (metaData) {
-      markdown += `\n## META ADS GRANULAR METRICS (for detailed performance metrics)\n`;
-      markdown += `- CPM: $${metaData.calculated_cpm?.toFixed(2) || 'N/A'}\n`;
-      markdown += `- CPC: $${metaData.calculated_cpc?.toFixed(2) || 'N/A'}\n`;
-      markdown += `- CTR: ${metaData.calculated_ctr?.toFixed(2) || 'N/A'}%\n`;
-      markdown += `- Frequency: ${metaData.avg_frequency?.toFixed(2) || 'N/A'}\n`;
-      markdown += `- Total Impressions: ${metaData.total_impressions?.toLocaleString() || 'N/A'}\n`;
-      markdown += `- Total Clicks: ${metaData.total_clicks?.toLocaleString() || 'N/A'}\n`;
-      markdown += `- Total Purchases: ${metaData.total_purchases?.toLocaleString() || 'N/A'}\n\n`;
-    }
-
-    if (googleData) {
-      markdown += `\n## GOOGLE ADS GRANULAR METRICS (for detailed performance metrics)\n`;
-      markdown += `- CPM: $${googleData.calculated_cpm?.toFixed(2) || 'N/A'}\n`;
-      markdown += `- CPC: $${googleData.calculated_cpc?.toFixed(2) || 'N/A'}\n`;
-      markdown += `- CTR: ${googleData.calculated_ctr?.toFixed(2) || 'N/A'}%\n`;
-      markdown += `- Conversion Rate: ${googleData.avg_conversion_rate?.toFixed(2) || 'N/A'}%\n`;
-      markdown += `- Total Impressions: ${googleData.total_impressions?.toLocaleString() || 'N/A'}\n`;
-      markdown += `- Total Clicks: ${googleData.total_clicks?.toLocaleString() || 'N/A'}\n`;
-      markdown += `- Total Purchases: ${googleData.total_purchases?.toLocaleString() || 'N/A'}\n\n`;
-    }
-  }
+  // SIMPLIFIED: Platform-level metrics (ROAS, spend, revenue) are calculated by Claude
+  // from the dailyPaidMediaByPlatform data in the base markdown. Claude sums the daily
+  // rows for the report month to get totals and calculates ROAS as revenue/spend.
+  // No pre-aggregated paidMediaPerformance or monthlyExecutiveReport data needed.
 
   // NOTE: Funnel ads section is now handled via client-side injection
   // The funnel ads data is still fetched and returned in the response,
@@ -1441,62 +1332,77 @@ function formatHBMonthlyReportAsMarkdown(data: any): string {
 }
 
 function formatJumboMaxMonthlyReportAsMarkdown(data: any): string {
-  console.log('[JumboMax Report] Starting formatting with report_month:', data.monthlyExecutiveReport?.[0]?.report_month);
+  console.log('[JumboMax Report] Starting formatting');
 
-  // Start with the H&B report formatting (includes hero metrics, campaigns, products, paid media, funnel ads)
+  // Start with the H&B report formatting (includes campaigns, products, paid media, funnel ads)
+  // Note: Platform ROAS/spend/revenue is now calculated by Claude from dailyPaidMediaByPlatform
   let markdown = formatHBMonthlyReportAsMarkdown(data);
 
-  // Add JumboMax-specific email performance section
+  // Add email revenue summary (by PURCHASE date - matches dashboard)
   if (data.emailPerformance?.[0]) {
     const email = data.emailPerformance[0];
 
-    markdown += `\n## EMAIL PERFORMANCE OVERVIEW\n`;
-    markdown += `**Overall Email Metrics for the Month:**\n\n`;
-
-    markdown += `**Volume:**\n`;
-    markdown += `- Total Sends: ${email.total_sends?.toLocaleString() || 'N/A'}\n`;
-    markdown += `- Total Deliveries: ${email.total_deliveries?.toLocaleString() || 'N/A'}\n`;
-    markdown += `- Campaigns Sent: ${email.campaigns_sent || 'N/A'}\n`;
-    markdown += `- Unique Recipients: ${email.unique_recipients_sent?.toLocaleString() || 'N/A'}\n\n`;
-
-    markdown += `**Engagement:**\n`;
-    markdown += `- Open Rate: ${(email.avg_open_rate * 100)?.toFixed(2) || 'N/A'}% (${email.total_opens?.toLocaleString() || 'N/A'} opens)\n`;
-    markdown += `- Click Rate: ${(email.avg_click_rate * 100)?.toFixed(2) || 'N/A'}% (${email.total_clicks?.toLocaleString() || 'N/A'} clicks)\n`;
-    markdown += `- Click-to-Open Rate: ${(email.avg_click_to_open_rate * 100)?.toFixed(2) || 'N/A'}%\n`;
-    markdown += `- Unique Open Rate: ${(email.avg_unique_open_rate * 100)?.toFixed(2) || 'N/A'}%\n`;
-    markdown += `- Unique Click Rate: ${(email.avg_unique_click_rate * 100)?.toFixed(2) || 'N/A'}%\n\n`;
-
-    markdown += `**Performance:**\n`;
-    markdown += `- Attributed Revenue: $${email.total_attributed_revenue?.toLocaleString() || 'N/A'}\n`;
-    markdown += `- Attributed Purchases: ${email.total_attributed_purchases?.toLocaleString() || 'N/A'}\n`;
-    markdown += `- Attributed Purchasers: ${email.total_attributed_purchasers?.toLocaleString() || 'N/A'}\n`;
-    markdown += `- Purchase Conversion Rate: ${(email.avg_purchase_conversion_rate * 100)?.toFixed(2) || 'N/A'}%\n`;
-    markdown += `- Revenue per Send: $${email.avg_revenue_per_send?.toFixed(2) || 'N/A'}\n\n`;
-
-    markdown += `**Deliverability:**\n`;
-    markdown += `- Delivery Rate: ${(email.avg_delivery_rate * 100)?.toFixed(2) || 'N/A'}%\n`;
-    markdown += `- Bounce Rate: ${(email.avg_bounce_rate * 100)?.toFixed(2) || 'N/A'}% (${email.total_bounces || 'N/A'} bounces)\n`;
-    markdown += `- Unsubscribe Rate: ${(email.avg_unsubscribe_rate * 100)?.toFixed(2) || 'N/A'}% (${email.total_unsubscribes || 'N/A'} unsubscribes)\n\n`;
+    markdown += `\n## EMAIL REVENUE SUMMARY (By Purchase Date)\n`;
+    markdown += `**USE THESE VALUES FOR TOTAL EMAIL REVENUE REPORTING:**\n\n`;
+    markdown += `- **Total Email Revenue:** $${email.total_attributed_revenue?.toLocaleString() || 'N/A'}\n`;
+    markdown += `- **Total Email Purchases:** ${email.total_attributed_purchases?.toLocaleString() || 'N/A'}\n`;
+    markdown += `- **Total Email Purchasers:** ${email.total_attributed_purchasers?.toLocaleString() || 'N/A'}\n`;
+    markdown += `- **Average Order Value:** $${email.avg_order_value?.toFixed(2) || 'N/A'}\n\n`;
   }
 
-  // Email performance by campaign category
-  if (data.emailByCategory?.length > 0) {
-    markdown += `\n## EMAIL PERFORMANCE BY CATEGORY\n`;
-    markdown += `| Category | Sends | Opens | Clicks | Revenue | Open Rate | Click Rate | CTOR |\n`;
-    markdown += `|----------|-------|-------|--------|---------|-----------|------------|---------|\n`;
-    data.emailByCategory.forEach((cat: any) => {
-      markdown += `| ${cat.campaign_category} | ${cat.sends?.toLocaleString() || 0} | ${cat.opens?.toLocaleString() || 0} | ${cat.clicks?.toLocaleString() || 0} | $${cat.attributed_revenue?.toLocaleString() || 0} | ${(cat.open_rate * 100)?.toFixed(2) || 0}% | ${(cat.click_rate * 100)?.toFixed(2) || 0}% | ${(cat.click_to_open_rate * 100)?.toFixed(2) || 0}% |\n`;
+  // Email revenue by type (campaigns vs flows) - by PURCHASE date
+  if (data.emailByType?.length > 0) {
+    markdown += `\n## EMAIL REVENUE BY TYPE (Campaigns vs Flows)\n`;
+    markdown += `**Revenue breakdown by email type (matches dashboard):**\n\n`;
+    markdown += `| Type | Revenue | Purchases | Purchasers | AOV |\n`;
+    markdown += `|------|---------|-----------|------------|-----|\n`;
+    data.emailByType.forEach((type: any) => {
+      markdown += `| ${type.email_type} | $${type.attributed_revenue?.toLocaleString() || 0} | ${type.purchases?.toLocaleString() || 0} | ${type.purchasers?.toLocaleString() || 0} | $${type.avg_order_value?.toFixed(2) || 0} |\n`;
     });
     markdown += `\n`;
   }
 
-  // Email performance by type (campaigns vs flows)
-  if (data.emailByType?.length > 0) {
-    markdown += `\n## EMAIL PERFORMANCE BY TYPE (Campaigns vs Flows)\n`;
-    markdown += `| Type | Sends | Opens | Clicks | Revenue | Open Rate | Click Rate |\n`;
-    markdown += `|------|-------|-------|--------|---------|-----------|------------|\n`;
-    data.emailByType.forEach((type: any) => {
-      markdown += `| ${type.email_type} | ${type.sends?.toLocaleString() || 0} | ${type.opens?.toLocaleString() || 0} | ${type.clicks?.toLocaleString() || 0} | $${type.attributed_revenue?.toLocaleString() || 0} | ${(type.open_rate * 100)?.toFixed(2) || 0}% | ${(type.click_rate * 100)?.toFixed(2) || 0}% |\n`;
+  // Email campaign send performance (by SEND date - engagement metrics)
+  if (data.emailCampaignSendPerformance?.length > 0) {
+    // Aggregate totals from individual campaigns (source of truth for campaign metrics)
+    const totalSends = data.emailCampaignSendPerformance.reduce((sum: number, c: any) => sum + (c.sends || 0), 0);
+    const totalUniqueOpens = data.emailCampaignSendPerformance.reduce((sum: number, c: any) => sum + (c.unique_opens || 0), 0);
+    const totalUniqueClicks = data.emailCampaignSendPerformance.reduce((sum: number, c: any) => sum + (c.unique_clicks || 0), 0);
+    const totalCampaignRevenue = data.emailCampaignSendPerformance.reduce((sum: number, c: any) => sum + (c.attributed_revenue || 0), 0);
+    const weightedOpenRate = totalSends > 0 ? (totalUniqueOpens / totalSends * 100).toFixed(2) : '0';
+    const weightedClickRate = totalSends > 0 ? (totalUniqueClicks / totalSends * 100).toFixed(2) : '0';
+
+    markdown += `\n## CAMPAIGN PERFORMANCE SUMMARY (Aggregated from Send Data)\n`;
+    markdown += `**USE THESE VALUES FOR CAMPAIGN TOTALS - aggregated from individual campaigns below:**\n\n`;
+    markdown += `| Metric | Value |\n`;
+    markdown += `|--------|-------|\n`;
+    markdown += `| Total Campaigns | ${data.emailCampaignSendPerformance.length} |\n`;
+    markdown += `| Total Sends | ${totalSends.toLocaleString()} |\n`;
+    markdown += `| Total Unique Opens | ${totalUniqueOpens.toLocaleString()} |\n`;
+    markdown += `| Total Unique Clicks | ${totalUniqueClicks.toLocaleString()} |\n`;
+    markdown += `| Weighted Open Rate | ${weightedOpenRate}% |\n`;
+    markdown += `| Weighted Click Rate | ${weightedClickRate}% |\n`;
+    markdown += `| Total Campaign Revenue | $${totalCampaignRevenue.toLocaleString()} |\n`;
+    markdown += `\n`;
+
+    markdown += `\n## EMAIL CAMPAIGN SEND PERFORMANCE (Individual Campaigns)\n`;
+    markdown += `**Campaign engagement metrics (by send date):**\n\n`;
+    markdown += `| Campaign Name | Send Date | Sends | Opens | Clicks | Open Rate | Click Rate | Revenue |\n`;
+    markdown += `|---------------|-----------|-------|-------|--------|-----------|------------|--------|\n`;
+    data.emailCampaignSendPerformance.forEach((campaign: any) => {
+      const sendDate = campaign.send_date?.value || campaign.send_date;
+      markdown += `| ${campaign.campaign_name} | ${sendDate} | ${campaign.sends?.toLocaleString() || 0} | ${campaign.unique_opens?.toLocaleString() || 0} | ${campaign.unique_clicks?.toLocaleString() || 0} | ${campaign.open_rate_pct || 0}% | ${campaign.click_rate_pct || 0}% | $${campaign.attributed_revenue?.toLocaleString() || 0} |\n`;
+    });
+    markdown += `\n`;
+  }
+
+  // Top campaign revenue breakdown
+  if (data.emailCampaignRevenue?.length > 0) {
+    markdown += `\n## TOP EMAIL CAMPAIGNS BY REVENUE\n`;
+    markdown += `| Campaign Name | Revenue | Purchases | Purchasers | AOV |\n`;
+    markdown += `|---------------|---------|-----------|------------|-----|\n`;
+    data.emailCampaignRevenue.slice(0, 10).forEach((campaign: any) => {
+      markdown += `| ${campaign.campaign_name} | $${campaign.attributed_revenue?.toLocaleString() || 0} | ${campaign.attributed_purchases?.toLocaleString() || 0} | ${campaign.attributed_purchasers?.toLocaleString() || 0} | $${campaign.avg_order_value?.toFixed(2) || 0} |\n`;
     });
     markdown += `\n`;
   }
@@ -1523,6 +1429,63 @@ function formatJumboMaxMonthlyReportAsMarkdown(data: any): string {
     markdown += `- Active Flows: ${data.flowRevenue.length}\n\n`;
   }
 
+  // ========================================
+  // YoY EMAIL DATA (Same Month, Previous Year)
+  // ========================================
+  if (data.yoyEmailPerformance?.[0] || data.yoyEmailByType?.length > 0) {
+    markdown += `\n## YoY EMAIL COMPARISON DATA (Same Month, Previous Year)\n`;
+    markdown += `**Use this data for year-over-year email performance comparisons:**\n\n`;
+
+    // YoY Email totals
+    if (data.yoyEmailPerformance?.[0]) {
+      const yoyEmail = data.yoyEmailPerformance[0];
+      markdown += `### YoY Email Revenue Summary\n`;
+      markdown += `| Metric | YoY Value |\n`;
+      markdown += `|--------|----------|\n`;
+      markdown += `| Total Email Revenue | $${yoyEmail.total_attributed_revenue?.toLocaleString() || 'N/A'} |\n`;
+      markdown += `| Total Email Purchases | ${yoyEmail.total_attributed_purchases?.toLocaleString() || 'N/A'} |\n`;
+      markdown += `| Total Email Purchasers | ${yoyEmail.total_attributed_purchasers?.toLocaleString() || 'N/A'} |\n`;
+      markdown += `| Average Order Value | $${yoyEmail.avg_order_value?.toFixed(2) || 'N/A'} |\n`;
+      markdown += `\n`;
+    }
+
+    // YoY Email by type
+    if (data.yoyEmailByType?.length > 0) {
+      markdown += `### YoY Email Revenue by Type\n`;
+      markdown += `| Type | Revenue | Purchases | Purchasers | AOV |\n`;
+      markdown += `|------|---------|-----------|------------|-----|\n`;
+      data.yoyEmailByType.forEach((type: any) => {
+        markdown += `| ${type.email_type} | $${type.attributed_revenue?.toLocaleString() || 0} | ${type.purchases?.toLocaleString() || 0} | ${type.purchasers?.toLocaleString() || 0} | $${type.avg_order_value?.toFixed(2) || 0} |\n`;
+      });
+      markdown += `\n`;
+    }
+
+    // YoY Campaign revenue
+    if (data.yoyEmailCampaignRevenue?.length > 0) {
+      markdown += `### YoY Top Email Campaigns\n`;
+      markdown += `| Campaign Name | Revenue | Purchases | AOV |\n`;
+      markdown += `|---------------|---------|-----------|-----|\n`;
+      data.yoyEmailCampaignRevenue.slice(0, 10).forEach((campaign: any) => {
+        markdown += `| ${campaign.campaign_name} | $${campaign.attributed_revenue?.toLocaleString() || 0} | ${campaign.attributed_purchases?.toLocaleString() || 0} | $${campaign.avg_order_value?.toFixed(2) || 0} |\n`;
+      });
+      markdown += `\n`;
+    }
+
+    // YoY Flow revenue
+    if (data.yoyFlowRevenue?.length > 0) {
+      const yoyTotalFlowRevenue = data.yoyFlowRevenue.reduce((sum: number, flow: any) => sum + (flow.attributed_revenue || 0), 0);
+      const yoyTotalFlowPurchases = data.yoyFlowRevenue.reduce((sum: number, flow: any) => sum + (flow.attributed_purchases || 0), 0);
+
+      markdown += `### YoY Flow Revenue Summary\n`;
+      markdown += `| Metric | YoY Value |\n`;
+      markdown += `|--------|----------|\n`;
+      markdown += `| Total Flow Revenue | $${yoyTotalFlowRevenue?.toLocaleString() || 0} |\n`;
+      markdown += `| Total Flow Purchases | ${yoyTotalFlowPurchases?.toLocaleString() || 0} |\n`;
+      markdown += `| Active Flows | ${data.yoyFlowRevenue.length} |\n`;
+      markdown += `\n`;
+    }
+  }
+
   return markdown;
 }
 
@@ -1530,17 +1493,11 @@ function formatPuttOutMonthlyReportAsMarkdown(data: any): string {
   // Start with the base monthly report formatting
   let markdown = formatMonthlyReportAsMarkdown(data);
 
-  // Add report month information at the top
-  // Try monthlyExecutiveReport first, then fall back to monthlyBusinessSummary
-  let reportMonthValue = data.monthlyExecutiveReport?.[0]?.report_month;
-  const sourceTable = reportMonthValue ? 'monthlyExecutiveReport' : 'monthlyBusinessSummary';
-
-  if (!reportMonthValue && data.monthlyBusinessSummary?.[0]?.month) {
-    reportMonthValue = data.monthlyBusinessSummary[0].month;
-  }
+  // Add report month information at the top using monthlyBusinessSummary
+  let reportMonthValue = data.monthlyBusinessSummary?.[0]?.month;
 
   if (reportMonthValue) {
-    console.log('[PuttOUT Report] Raw report_month from', sourceTable, ':', reportMonthValue);
+    console.log('[PuttOUT Report] Raw report_month from monthlyBusinessSummary:', reportMonthValue);
 
     // Handle BigQuery date object or string
     let reportMonth: Date;
@@ -1562,102 +1519,34 @@ function formatPuttOutMonthlyReportAsMarkdown(data: any): string {
       console.error('[PuttOUT Report] Invalid date from report_month:', reportMonthValue);
     }
   } else {
-    console.error('[PuttOUT Report] No report_month found in either monthlyExecutiveReport or monthlyBusinessSummary');
+    console.error('[PuttOUT Report] No report_month found in monthlyBusinessSummary');
   }
 
-  // Add Meta Ads performance with MoM/YoY from monthly_executive_report
-  if (data.monthlyExecutiveReport?.[0]) {
-    const hero = data.monthlyExecutiveReport[0];
+  // SIMPLIFIED: Platform-level metrics (ROAS, spend, revenue) are calculated by Claude
+  // from the dailyPaidMediaByPlatform data in the base markdown. Claude sums the daily
+  // rows for the report month to get totals and calculates ROAS as revenue/spend.
+  // PuttOut only uses Meta (Facebook) - no Google Ads.
 
-    // Meta Ads Performance with MoM/YoY (focus on Meta only, no detailed Google breakout)
-    if (hero.meta_spend !== null && hero.meta_spend !== undefined) {
-      markdown += `\n## META ADS PERFORMANCE METRICS\n`;
-      markdown += `**Use these metrics with MoM/YoY changes for the Meta Ads Performance section:**\n\n`;
-
-      markdown += `**Spend:**\n`;
-      markdown += `- meta_spend: $${hero.meta_spend?.toLocaleString() || 'N/A'}\n`;
-      markdown += `- meta_spend_mom_pct: ${hero.meta_spend_mom_pct?.toFixed(1) || 0}%\n`;
-      markdown += `- meta_spend_yoy_pct: ${hero.meta_spend_yoy_pct?.toFixed(1) || 0}%\n\n`;
-
-      markdown += `**Revenue:**\n`;
-      markdown += `- meta_revenue: $${hero.meta_revenue?.toLocaleString() || 'N/A'}\n`;
-      markdown += `- meta_revenue_mom_pct: ${hero.meta_revenue_mom_pct?.toFixed(1) || 0}%\n`;
-      markdown += `- meta_revenue_yoy_pct: ${hero.meta_revenue_yoy_pct?.toFixed(1) || 0}%\n\n`;
-
-      markdown += `**ROAS:**\n`;
-      markdown += `- meta_roas: ${hero.meta_roas?.toFixed(2) || 'N/A'}x\n`;
-      markdown += `- meta_roas_mom_pct: ${hero.meta_roas_mom_pct?.toFixed(1) || 0}%\n`;
-      markdown += `- meta_roas_yoy_pct: ${hero.meta_roas_yoy_pct?.toFixed(1) || 0}%\n\n`;
-    }
-  }
-
-  // Add detailed Meta paid media performance metrics (granular metrics like CPM, CPC, CTR, Frequency)
-  if (data.paidMediaPerformance?.length > 0) {
-    const metaData = data.paidMediaPerformance.find((p: any) => p.platform === 'Facebook');
-
-    if (metaData) {
-      markdown += `\n## META ADS GRANULAR METRICS (for detailed performance metrics)\n`;
-      markdown += `- CPM: $${metaData.calculated_cpm?.toFixed(2) || 'N/A'}\n`;
-      markdown += `- CPC: $${metaData.calculated_cpc?.toFixed(2) || 'N/A'}\n`;
-      markdown += `- CTR: ${metaData.calculated_ctr?.toFixed(2) || 'N/A'}%\n`;
-      markdown += `- Frequency: ${metaData.avg_frequency?.toFixed(2) || 'N/A'}\n`;
-      markdown += `- Total Impressions: ${metaData.total_impressions?.toLocaleString() || 'N/A'}\n`;
-      markdown += `- Total Clicks: ${metaData.total_clicks?.toLocaleString() || 'N/A'}\n`;
-      markdown += `- Total Purchases: ${metaData.total_purchases?.toLocaleString() || 'N/A'}\n\n`;
-    }
-  }
-
-  // Add email performance section (same as JumboMax)
+  // Add email revenue summary (by PURCHASE date - matches dashboard)
   if (data.emailPerformance?.[0]) {
     const email = data.emailPerformance[0];
 
-    markdown += `\n## EMAIL PERFORMANCE OVERVIEW\n`;
-    markdown += `**Overall Email Metrics for the Month:**\n\n`;
-
-    markdown += `**Volume:**\n`;
-    markdown += `- Total Sends: ${email.total_sends?.toLocaleString() || 'N/A'}\n`;
-    markdown += `- Total Deliveries: ${email.total_deliveries?.toLocaleString() || 'N/A'}\n`;
-    markdown += `- Campaigns Sent: ${email.campaigns_sent || 'N/A'}\n`;
-    markdown += `- Unique Recipients: ${email.unique_recipients_sent?.toLocaleString() || 'N/A'}\n\n`;
-
-    markdown += `**Engagement:**\n`;
-    markdown += `- Open Rate: ${(email.avg_open_rate * 100)?.toFixed(2) || 'N/A'}% (${email.total_opens?.toLocaleString() || 'N/A'} opens)\n`;
-    markdown += `- Click Rate: ${(email.avg_click_rate * 100)?.toFixed(2) || 'N/A'}% (${email.total_clicks?.toLocaleString() || 'N/A'} clicks)\n`;
-    markdown += `- Click-to-Open Rate: ${(email.avg_click_to_open_rate * 100)?.toFixed(2) || 'N/A'}%\n`;
-    markdown += `- Unique Open Rate: ${(email.avg_unique_open_rate * 100)?.toFixed(2) || 'N/A'}%\n`;
-    markdown += `- Unique Click Rate: ${(email.avg_unique_click_rate * 100)?.toFixed(2) || 'N/A'}%\n\n`;
-
-    markdown += `**Performance:**\n`;
-    markdown += `- Attributed Revenue: $${email.total_attributed_revenue?.toLocaleString() || 'N/A'}\n`;
-    markdown += `- Attributed Purchases: ${email.total_attributed_purchases?.toLocaleString() || 'N/A'}\n`;
-    markdown += `- Attributed Purchasers: ${email.total_attributed_purchasers?.toLocaleString() || 'N/A'}\n`;
-    markdown += `- Purchase Conversion Rate: ${(email.avg_purchase_conversion_rate * 100)?.toFixed(2) || 'N/A'}%\n`;
-    markdown += `- Revenue per Send: $${email.avg_revenue_per_send?.toFixed(2) || 'N/A'}\n\n`;
-
-    markdown += `**Deliverability:**\n`;
-    markdown += `- Delivery Rate: ${(email.avg_delivery_rate * 100)?.toFixed(2) || 'N/A'}%\n`;
-    markdown += `- Bounce Rate: ${(email.avg_bounce_rate * 100)?.toFixed(2) || 'N/A'}% (${email.total_bounces || 'N/A'} bounces)\n`;
-    markdown += `- Unsubscribe Rate: ${(email.avg_unsubscribe_rate * 100)?.toFixed(2) || 'N/A'}% (${email.total_unsubscribes || 'N/A'} unsubscribes)\n\n`;
+    markdown += `\n## EMAIL REVENUE SUMMARY (By Purchase Date)\n`;
+    markdown += `**USE THESE VALUES FOR TOTAL EMAIL REVENUE REPORTING:**\n\n`;
+    markdown += `- **Total Email Revenue:** $${email.total_attributed_revenue?.toLocaleString() || 'N/A'}\n`;
+    markdown += `- **Total Email Purchases:** ${email.total_attributed_purchases?.toLocaleString() || 'N/A'}\n`;
+    markdown += `- **Total Email Purchasers:** ${email.total_attributed_purchasers?.toLocaleString() || 'N/A'}\n`;
+    markdown += `- **Average Order Value:** $${email.avg_order_value?.toFixed(2) || 'N/A'}\n\n`;
   }
 
-  // Email performance by campaign category
-  if (data.emailByCategory?.length > 0) {
-    markdown += `\n## EMAIL PERFORMANCE BY CATEGORY\n`;
-    markdown += `| Category | Sends | Opens | Clicks | Revenue | Open Rate | Click Rate | CTOR |\n`;
-    markdown += `|----------|-------|-------|--------|---------|-----------|------------|---------|\n`;
-    data.emailByCategory.forEach((cat: any) => {
-      markdown += `| ${cat.campaign_category} | ${cat.sends?.toLocaleString() || 0} | ${cat.opens?.toLocaleString() || 0} | ${cat.clicks?.toLocaleString() || 0} | $${cat.attributed_revenue?.toLocaleString() || 0} | ${(cat.open_rate * 100)?.toFixed(2) || 0}% | ${(cat.click_rate * 100)?.toFixed(2) || 0}% | ${(cat.click_to_open_rate * 100)?.toFixed(2) || 0}% |\n`;
-    });
-    markdown += `\n`;
-  }
-
-  // Email performance by type (campaigns vs flows)
+  // Email revenue by type (campaigns vs flows) - by PURCHASE date
   if (data.emailByType?.length > 0) {
-    markdown += `\n## EMAIL PERFORMANCE BY TYPE (Campaigns vs Flows)\n`;
-    markdown += `| Type | Sends | Opens | Clicks | Revenue | Open Rate | Click Rate |\n`;
-    markdown += `|------|-------|-------|--------|---------|-----------|------------|\n`;
+    markdown += `\n## EMAIL REVENUE BY TYPE (Campaigns vs Flows)\n`;
+    markdown += `**Revenue breakdown by email type (matches dashboard):**\n\n`;
+    markdown += `| Type | Revenue | Purchases | Purchasers | AOV |\n`;
+    markdown += `|------|---------|-----------|------------|-----|\n`;
     data.emailByType.forEach((type: any) => {
-      markdown += `| ${type.email_type} | ${type.sends?.toLocaleString() || 0} | ${type.opens?.toLocaleString() || 0} | ${type.clicks?.toLocaleString() || 0} | $${type.attributed_revenue?.toLocaleString() || 0} | ${(type.open_rate * 100)?.toFixed(2) || 0}% | ${(type.click_rate * 100)?.toFixed(2) || 0}% |\n`;
+      markdown += `| ${type.email_type} | $${type.attributed_revenue?.toLocaleString() || 0} | ${type.purchases?.toLocaleString() || 0} | ${type.purchasers?.toLocaleString() || 0} | $${type.avg_order_value?.toFixed(2) || 0} |\n`;
     });
     markdown += `\n`;
   }

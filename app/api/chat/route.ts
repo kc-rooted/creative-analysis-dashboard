@@ -204,7 +204,8 @@ Keep your response concise, focused, and actionable.`;
       model: anthropic('claude-haiku-4-5-20251001'),
       system: systemMessage,
       tools,
-       stopWhen: stepCountIs(10), // Intelligent stopping condition,
+      maxOutputTokens: 16384, // Allow longer responses for comprehensive reports (Haiku 4.5 supports up to 64K)
+      stopWhen: stepCountIs(10), // Intelligent stopping condition,
       messages: modelMessages,
       onFinish: async (result) => {
         // Log any errors for debugging

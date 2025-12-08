@@ -22,6 +22,24 @@ function toTitleCase(text: string): string {
   return text;
 }
 
+// Helper to extract text content from React children (which may contain objects)
+function extractTextFromChildren(children: React.ReactNode): string {
+  if (typeof children === 'string') {
+    return children;
+  }
+  if (typeof children === 'number') {
+    return String(children);
+  }
+  if (Array.isArray(children)) {
+    return children.map(extractTextFromChildren).join('');
+  }
+  if (children && typeof children === 'object' && 'props' in children) {
+    // It's a React element, extract text from its children
+    return extractTextFromChildren((children as React.ReactElement).props.children);
+  }
+  return '';
+}
+
 const MemoizedMarkdownBlock = memo(
   ({ content }: { content: string }) => {
     return (
@@ -29,29 +47,37 @@ const MemoizedMarkdownBlock = memo(
         remarkPlugins={[remarkGfm]}
         components={{
           // Custom heading renderers to convert ALL CAPS to Title Case
+          // Use extractTextFromChildren to properly handle React elements (like <strong>)
           h1: ({ node, children, ...props }) => {
-            const text = Array.isArray(children) ? children.join('') : String(children);
-            return <h1 {...props}>{toTitleCase(text)}</h1>;
+            const text = extractTextFromChildren(children);
+            const processedText = toTitleCase(text);
+            // If title case changed the text, render processed version; otherwise render children as-is
+            return <h1 {...props}>{text === processedText ? children : processedText}</h1>;
           },
           h2: ({ node, children, ...props }) => {
-            const text = Array.isArray(children) ? children.join('') : String(children);
-            return <h2 {...props}>{toTitleCase(text)}</h2>;
+            const text = extractTextFromChildren(children);
+            const processedText = toTitleCase(text);
+            return <h2 {...props}>{text === processedText ? children : processedText}</h2>;
           },
           h3: ({ node, children, ...props }) => {
-            const text = Array.isArray(children) ? children.join('') : String(children);
-            return <h4 {...props}>{toTitleCase(text)}</h4>;
+            const text = extractTextFromChildren(children);
+            const processedText = toTitleCase(text);
+            return <h4 {...props}>{text === processedText ? children : processedText}</h4>;
           },
           h4: ({ node, children, ...props }) => {
-            const text = Array.isArray(children) ? children.join('') : String(children);
-            return <h4 {...props}>{toTitleCase(text)}</h4>;
+            const text = extractTextFromChildren(children);
+            const processedText = toTitleCase(text);
+            return <h4 {...props}>{text === processedText ? children : processedText}</h4>;
           },
           h5: ({ node, children, ...props }) => {
-            const text = Array.isArray(children) ? children.join('') : String(children);
-            return <h5 {...props}>{toTitleCase(text)}</h5>;
+            const text = extractTextFromChildren(children);
+            const processedText = toTitleCase(text);
+            return <h5 {...props}>{text === processedText ? children : processedText}</h5>;
           },
           h6: ({ node, children, ...props }) => {
-            const text = Array.isArray(children) ? children.join('') : String(children);
-            return <h6 {...props}>{toTitleCase(text)}</h6>;
+            const text = extractTextFromChildren(children);
+            const processedText = toTitleCase(text);
+            return <h6 {...props}>{text === processedText ? children : processedText}</h6>;
           },
           // Custom image renderer to ensure images display
           img: ({ node, ...props }) => {

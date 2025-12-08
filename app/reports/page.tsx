@@ -3,10 +3,10 @@
 import { useChat } from '@ai-sdk/react';
 import { Input } from "@/components/conversation/input"
 import { Button } from "@/components/conversation/button"
-import { ArrowUpFromDot, ChevronLeft, ChevronRight, FileText, Download, Loader2, CheckCircle, Cog, X, FileDown } from "lucide-react"
+import { ArrowUpFromDot, ChevronLeft, ChevronRight, FileText, Download, Loader2, CheckCircle, Cog, X, FileDown, Pencil } from "lucide-react"
 import { MemoizedMarkdown } from '@/components/conversation/memoized-markdown';
 import { useClient } from '@/components/client-provider';
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { AdCreativeCard } from '@/app/reports/components/ReportSection';
 
 import {
@@ -15,474 +15,182 @@ import {
   AvatarImage,
 } from "@/components/conversation/avatar"
 
-// Report template interface
+// Report template interface - matches BigQuery schema
 interface ReportTemplate {
   id: string;
+  client_id: string;
+  template_id: string;
   title: string;
   description: string;
   category: string;
-  icon: string;
-  clients: string[];
   prompt: string;
+  period: string; // '30d', 'previous-month', '7d', etc.
+  data_fetcher: string; // Which fetch function to use on the backend
+  is_active?: boolean;
+  created_at?: string;
+  updated_at?: string;
+  created_by?: string;
+  modified_by?: string;
 }
 
-// Report templates
-const reportTemplates: ReportTemplate[] = [
-  // ========== CLIENT-SPECIFIC TEMPLATES ==========
-
-  // H&B-specific monthly report
-  {
-    id: 'hb-monthly-performance',
-    title: 'H&B Monthly Performance',
-    description: 'Custom monthly report for Holderness & Bourne',
-    category: 'performance',
-    icon: '📈',
-    clients: ['hb'], // Only visible to H&B
-    prompt: `You are a marketing analytics expert generating a comprehensive monthly marketing report for Holderness & Bourne.
-
-REPORT HEADER:
-Start the report with an H3 heading showing the report month and year (e.g., "### October 2025"). DO NOT use "Last 30 days" anywhere in the report.
-
-REPORT STRUCTURE:
-Generate a strategic, executive-level monthly marketing report with the following sections:
-
-1. EXECUTIVE SUMMARY
-   **Format**: 1-2 sentence summary paragraph, followed by hero metrics table, then key insights
-
-   **Summary**: Brief strategic overview (1-2 sentences) about overall business performance
-
-   **Hero Metrics Table** (use data from HERO METRICS and ANNUAL REVENUE FORECAST sections):
-   Create a table with 3 columns: Metric | Value | Analysis
-
-   | Metric | Value | Analysis |
-   |--------|-------|----------|
-   | **Monthly Revenue** | $[current month revenue] | MoM: [+/-X]%, YoY: [+/-X]% |
-   | **Annual Revenue Pacing** | $[forecasted annual revenue - Base Scenario] | [X]% probability to hit $[target]. Shortfall: $[target minus forecast], [X] days left |
-   | **Monthly ROAS** | [X.XX]x | MoM: [+/-X]%, YoY: [+/-X]% |
-   | **Paid Media Spend** | $[current month spend] | MoM: [+/-X]%, YoY: [+/-X]% |
-   | **Top Performing SKU** | [Product Name] | Revenue: $[amount] |
-   | **Top Emerging SKU** | [Product Name] | Revenue: $[amount], MoM: [+/-X]% |
-
-   CRITICAL INSTRUCTIONS:
-   - Row 1 (Monthly Revenue): Use revenue_total from HERO METRICS with revenue_mom_pct and revenue_yoy_pct
-   - Row 2 (Annual Revenue Pacing): Use prophet_annual_revenue_base with probability_hit_revenue_target. Calculate shortfall as (annual_revenue_target - prophet_annual_revenue_base). **IMPORTANT:** If probability_hit_revenue_target is 100%, do NOT mention the probability. Instead, show how much OVER projection we are (e.g., "Tracking $[X] over target, [X] days left")
-   - Row 3 (Monthly ROAS): Use attributed_blended_roas from HERO METRICS with attributed_blended_roas_mom_pct and attributed_blended_roas_yoy_pct (this is PAID MEDIA ONLY ROAS)
-   - Row 4 (Paid Media Spend): Use paid_media_spend from HERO METRICS with paid_media_spend_mom_pct and paid_media_spend_yoy_pct
-   - Do NOT calculate percentages - use exact values from the data
-
-   **After the table**, add 3-5 key bullet points with insights about wins and challenges
-
-   **CRITICAL - Daily Performance Trends**: Review the DAILY PERFORMANCE PROGRESSION table to identify key patterns:
-   - Did ROAS improve, decline, or stay stable throughout the month?
-   - Which week(s) showed the strongest/weakest performance?
-   - Were there any notable spikes or dips?
-   - Incorporate these trend insights into your bullet points above
-
-   **CRITICAL - Geographic Performance**: Review the COUNTRY PERFORMANCE table to identify geographic insights:
-   - How is revenue distributed across US, Canada, and UK markets?
-   - Which market shows the strongest per-unit pricing?
-   - For H&B: Which market has the highest Meta ROAS? How does Meta revenue compare to total revenue by country?
-   - Are there any notable geographic trends or opportunities?
-   - Incorporate geographic insights into your bullet points above if significant
-
-2. BUSINESS PERFORMANCE (use ## for section heading)
-   - Use monthly_business_summary for complete monthly metrics
-   - Report on attributed_blended_roas (paid media attributed revenue / ad spend) - this is the ONLY ROAS we report
-   - Present revenue breakdown (gross, net, refunds)
-   - Analyze operational metrics (orders, AOV, units)
-   - Calculate and interpret key rates (discount, return, etc.)
-   - **CRITICAL**: Analyze the DAILY PERFORMANCE PROGRESSION table to identify ROAS, Revenue, and Order trends throughout the month. Note any significant patterns, improvements, or declines week-over-week.
-
-3. META ADS PERFORMANCE (use ## for section heading)
-   **Use data from META ADS PERFORMANCE METRICS section**
-
-   Present Spend, Revenue, and ROAS with MoM and YoY changes:
-   - Spend: $[X,XXX] (MoM: [+/-X]%, YoY: [+/-X]%)
-   - Revenue: $[X,XXX] (MoM: [+/-X]%, YoY: [+/-X]%)
-   - ROAS: [X.XX]x (MoM: [+/-X]%, YoY: [+/-X]%)
-
-   Then present granular metrics:
-   - CPM: $[XX.XX]
-   - CPC: $[X.XX]
-   - CTR: [X.XX]%
-   - Frequency: [X.XX]
-
-   Add 2-3 sentences interpreting performance trends based on MoM/YoY changes
-
-4. GOOGLE ADS PERFORMANCE (use ## for section heading)
-   **Use data from GOOGLE ADS PERFORMANCE METRICS section**
-
-   Present Spend, Revenue, and ROAS with MoM and YoY changes:
-   - Spend: $[X,XXX] (MoM: [+/-X]%, YoY: [+/-X]%)
-   - Revenue: $[X,XXX] (MoM: [+/-X]%, YoY: [+/-X]%)
-   - ROAS: [X.XX]x (MoM: [+/-X]%, YoY: [+/-X]%)
-
-   Then present granular metrics:
-   - CPM: $[XX.XX]
-   - CPC: $[X.XX]
-   - CTR: [X.XX]%
-   - Conversion Rate: [X.XX]%
-
-   Add 2-3 sentences interpreting performance trends based on MoM/YoY changes
-
-5. CAMPAIGN ANALYSIS (use ## for section heading)
-   - Use ai_intelligent_campaign_analysis
-   - Create subsections for "Top Performing Campaigns" (use #### for subsection heading)
-   - Create subsections for "Campaigns Needing Attention" (use #### for subsection heading)
-   - Identify top 5 performing campaigns with context
-   - Flag campaigns needing attention (use recommended_action, risk_flags)
-   - Provide 2-3 specific optimization recommendations
-   - Note: Top ads by funnel stage will be added separately
-
-5. PRODUCT INSIGHTS (use ## for section heading)
-   - Use product_intelligence for top performers
-   - Identify growth trends and opportunities
-   - Flag inventory or performance concerns
-   - H&B Focus: Emphasize golf apparel seasonal trends
-
-6. STRATEGIC RECOMMENDATIONS (use ## for section heading)
-   - Focus on Paid Media Performance
-   - H&B-specific: Consider golf season timing and weather impact
-
-TONE & FORMAT:
-- Write at a strategic/executive level (50,000 foot view)
-- Use clear, uncomplicated business-focused language, avoid jargon
-- Include specific numbers but emphasize insights over data dumps
-- Use bullet points for scannability
-- Bold key metrics and findings
-- Keep total report to 1,000 words
-- Do not use any emojis
-- CRITICAL: Do NOT use horizontal rules (---) or <hr> tags anywhere in the report
-- CRITICAL: Do NOT use "Last 30 days" - use the actual month name and year (e.g., "October 2025")
-- CRITICAL: ALL section headings MUST use proper markdown syntax (## for H2, ### for H3, #### for H4)
-- CRITICAL: Do NOT use bold text (**text**) as a substitute for headings - use actual markdown heading syntax
-
-CRITICAL REQUIREMENTS:
-- Always compare MTD vs YoY to show context
-- Calculate growth rates and interpret them
-- Identify both opportunities and risks
-- Be specific with recommendations (don't be vague)
-- Focus on actionable intelligence, not just reporting numbers
-- Never speak in absolute truths around your recommendations, they are simply recommendations and not facts
-- Do not panic or use panic-sounding statements or overly enthusiastic statements as well`
-  },
-
-  // JumboMax-specific monthly report
-  {
-    id: 'jumbomax-monthly-performance',
-    title: 'JumboMax Monthly Performance',
-    description: 'Custom monthly report for JumboMax',
-    category: 'performance',
-    icon: '📈',
-    clients: ['jumbomax'], // Only visible to JumboMax
-    prompt: `You are a marketing analytics expert generating a comprehensive monthly marketing report for JumboMax.
-
-REPORT HEADER:
-Start the report with an H3 heading showing the report month and year (e.g., "### October 2025"). DO NOT use "Last 30 days" anywhere in the report.
-
-REPORT STRUCTURE:
-Generate a strategic, executive-level monthly marketing report with the following sections:
-
-1. EXECUTIVE SUMMARY
-   **Format**: 1-2 sentence summary paragraph, followed by hero metrics table, then key insights
-
-   **Summary**: Brief strategic overview (1-2 sentences) about overall business performance
-
-   **Hero Metrics Table** (use data from HERO METRICS and ANNUAL REVENUE FORECAST sections):
-   Create a table with 3 columns: Metric | Value | Analysis
-
-   | Metric | Value | Analysis |
-   |--------|-------|----------|
-   | **Monthly Revenue** | $[current month revenue] | MoM: [+/-X]%, YoY: [+/-X]% |
-   | **Annual Revenue Pacing** | $[forecasted annual revenue - Base Scenario] | [X]% probability to hit $[target]. Shortfall: $[target minus forecast], [X] days left |
-   | **Monthly ROAS** | [X.XX]x | MoM: [+/-X]%, YoY: [+/-X]% |
-   | **Paid Media Spend** | $[current month spend] | MoM: [+/-X]%, YoY: [+/-X]% |
-   | **Top Performing SKU** | [Product Name] | Revenue: $[amount] |
-   | **Top Emerging SKU** | [Product Name] | Revenue: $[amount], MoM: [+/-X]% |
-
-   CRITICAL INSTRUCTIONS:
-   - Row 1 (Monthly Revenue): Use revenue_total from HERO METRICS with revenue_mom_pct and revenue_yoy_pct
-   - Row 2 (Annual Revenue Pacing): Use prophet_annual_revenue_base with probability_hit_revenue_target. Calculate shortfall as (annual_revenue_target - prophet_annual_revenue_base). **IMPORTANT:** If probability_hit_revenue_target is 100%, do NOT mention the probability. Instead, show how much OVER projection we are (e.g., "Tracking $[X] over target, [X] days left")
-   - Row 3 (Monthly ROAS): Use attributed_blended_roas from HERO METRICS with attributed_blended_roas_mom_pct and attributed_blended_roas_yoy_pct (this is PAID MEDIA ONLY ROAS)
-   - Row 4 (Paid Media Spend): Use paid_media_spend from HERO METRICS with paid_media_spend_mom_pct and paid_media_spend_yoy_pct
-   - Do NOT calculate percentages - use exact values from the data
-
-   **After the table**, add 3-5 key bullet points with insights about wins and challenges
-
-   **CRITICAL - Daily Performance Trends**: Review the DAILY PERFORMANCE PROGRESSION table to identify key patterns:
-   - Did ROAS improve, decline, or stay stable throughout the month?
-   - Which week(s) showed the strongest/weakest performance?
-   - Were there any notable spikes or dips?
-   - Incorporate these trend insights into your bullet points above
-
-   **CRITICAL - Geographic Performance**: Review the COUNTRY PERFORMANCE table to identify geographic insights:
-   - How is revenue distributed across US, Canada, and UK markets?
-   - Which market shows the strongest per-unit pricing?
-   - For H&B: Which market has the highest Meta ROAS? How does Meta revenue compare to total revenue by country?
-   - Are there any notable geographic trends or opportunities?
-   - Incorporate geographic insights into your bullet points above if significant
-
-2. BUSINESS PERFORMANCE (use ## for section heading)
-   - Use monthly_business_summary for complete monthly metrics
-   - Report on attributed_blended_roas (paid media attributed revenue / ad spend) - this is the ONLY ROAS we report
-   - Present revenue breakdown (gross, net, refunds)
-   - Analyze operational metrics (orders, AOV, units)
-   - Calculate and interpret key rates (discount, return, etc.)
-   - **CRITICAL**: Analyze the DAILY PERFORMANCE PROGRESSION table to identify ROAS, Revenue, and Order trends throughout the month. Note any significant patterns, improvements, or declines week-over-week.
-
-3. META ADS PERFORMANCE (use ## for section heading)
-   **Use data from META ADS PERFORMANCE METRICS section**
-
-   Present Spend, Revenue, and ROAS with MoM and YoY changes:
-   - Spend: $[X,XXX] (MoM: [+/-X]%, YoY: [+/-X]%)
-   - Revenue: $[X,XXX] (MoM: [+/-X]%, YoY: [+/-X]%)
-   - ROAS: [X.XX]x (MoM: [+/-X]%, YoY: [+/-X]%)
-
-   Then present granular metrics:
-   - CPM: $[XX.XX]
-   - CPC: $[X.XX]
-   - CTR: [X.XX]%
-   - Frequency: [X.XX]
-
-   Add 2-3 sentences interpreting performance trends based on MoM/YoY changes
-
-4. GOOGLE ADS PERFORMANCE (use ## for section heading)
-   **Use data from GOOGLE ADS PERFORMANCE METRICS section**
-
-   Present Spend, Revenue, and ROAS with MoM and YoY changes:
-   - Spend: $[X,XXX] (MoM: [+/-X]%, YoY: [+/-X]%)
-   - Revenue: $[X,XXX] (MoM: [+/-X]%, YoY: [+/-X]%)
-   - ROAS: [X.XX]x (MoM: [+/-X]%, YoY: [+/-X]%)
-
-   Then present granular metrics:
-   - CPM: $[XX.XX]
-   - CPC: $[X.XX]
-   - CTR: [X.XX]%
-   - Conversion Rate: [X.XX]%
-
-   Add 2-3 sentences interpreting performance trends based on MoM/YoY changes
-
-5. CAMPAIGN ANALYSIS (use ## for section heading)
-   - Use ai_intelligent_campaign_analysis
-   - Create subsections for "Top Performing Campaigns" (use #### for subsection heading)
-   - Create subsections for "Campaigns Needing Attention" (use #### for subsection heading)
-   - Identify top 5 performing campaigns with context
-   - Flag campaigns needing attention (use recommended_action, risk_flags)
-   - Provide 2-3 specific optimization recommendations
-
-6. EMAIL PERFORMANCE (use ## for section heading)
-   **Use data from EMAIL PERFORMANCE OVERVIEW, EMAIL PERFORMANCE BY CATEGORY, and FLOW REVENUE BREAKDOWN sections**
-
-   Present overall email metrics for the month:
-   - Volume: Sends, Deliveries, Campaigns Sent
-   - Engagement: Open Rate, Click Rate, Click-to-Open Rate
-   - Performance: Attributed Revenue, Revenue per Send, Purchase Conversion Rate
-   - Deliverability: Delivery Rate, Bounce Rate, Unsubscribe Rate
-
-   Analyze performance by category (if available):
-   - Show top performing email categories by revenue
-   - Highlight engagement differences between categories
-
-   Analyze Campaigns vs Flows (if available):
-   - Compare campaign performance vs automated flow performance
-   - Identify which type drives more revenue
-
-   **CRITICAL - Flow Strategy Analysis:**
-   Use the FLOW REVENUE BREAKDOWN section to highlight JumboMax's automated flow strategy:
-   - Total flow revenue and number of active flows
-   - Top 3-5 performing flows by revenue
-   - Flow AOV and revenue per purchaser metrics
-   - Emphasize the importance of flows in the overall email strategy
-
-   Add 2-3 sentences interpreting email performance trends and opportunities, specifically noting the contribution of automated flows
-
-7. PRODUCT INSIGHTS (use ## for section heading)
-   - Use product_intelligence for top performers
-   - Identify growth trends and opportunities
-   - Flag inventory or performance concerns
-   - JumboMax Focus: Emphasize golf equipment and oversized driver trends
-
-8. STRATEGIC RECOMMENDATIONS (use ## for section heading)
-   - Focus on Paid Media Performance
-   - JumboMax-specific: Consider golf season timing and equipment innovation trends
-
-TONE & FORMAT:
-- Write at a strategic/executive level (50,000 foot view)
-- Use clear, uncomplicated business-focused language, avoid jargon
-- Include specific numbers but emphasize insights over data dumps
-- Use bullet points for scannability
-- Bold key metrics and findings
-- Keep total report to 1,000 words
-- Do not use any emojis
-- CRITICAL: Do NOT use horizontal rules (---) or <hr> tags anywhere in the report
-- CRITICAL: Do NOT use "Last 30 days" - use the actual month name and year (e.g., "October 2025")
-- CRITICAL: ALL section headings MUST use proper markdown syntax (## for H2, ### for H3, #### for H4)
-- CRITICAL: Do NOT use bold text (**text**) as a substitute for headings - use actual markdown heading syntax
-
-CRITICAL REQUIREMENTS:
-- Always compare MTD vs YoY to show context
-- Calculate growth rates and interpret them
-- Identify both opportunities and risks
-- Be specific with recommendations (don't be vague)
-- Focus on actionable intelligence, not just reporting numbers
-- Never speak in absolute truths around your recommendations, they are simply recommendations and not facts
-- Do not panic or use panic-sounding statements or overly enthusiastic statements as well`
-  },
-
-  // PuttOUT-specific monthly report
-  {
-    id: 'puttout-monthly-performance',
-    title: 'PuttOUT Monthly Performance',
-    description: 'Custom monthly report for PuttOUT',
-    category: 'performance',
-    icon: '📈',
-    clients: ['puttout'], // Only visible to PuttOUT
-    prompt: `You are a marketing analytics expert generating a comprehensive monthly marketing report for PuttOUT.
-
-REPORT HEADER:
-Start the report with an H3 heading showing the report month and year (e.g., "### October 2025"). DO NOT use "Last 30 days" anywhere in the report.
-
-REPORT STRUCTURE:
-Generate a strategic, executive-level monthly marketing report with the following sections:
-
-1. EXECUTIVE SUMMARY
-   **Format**: 1-2 sentence summary paragraph, followed by hero metrics table, then key insights
-
-   **Summary**: Brief strategic overview (1-2 sentences) about overall business performance
-
-   **Hero Metrics Table** (use data from HERO METRICS and ANNUAL REVENUE FORECAST sections):
-   Create a table with 3 columns: Metric | Value | Analysis
-
-   | Metric | Value | Analysis |
-   |--------|-------|----------|
-   | **Monthly Revenue** | $[current month revenue] | MoM: [+/-X]%, YoY: [+/-X]% |
-   | **Annual Revenue Pacing** | $[forecasted annual revenue - Base Scenario] | [X]% probability to hit $[target]. Shortfall: $[target minus forecast], [X] days left |
-   | **Monthly ROAS** | [X.XX]x | MoM: [+/-X]%, YoY: [+/-X]% |
-   | **Paid Media Spend** | $[current month spend] | MoM: [+/-X]%, YoY: [+/-X]% |
-   | **Top Performing SKU** | [Product Name] | Revenue: $[amount] |
-   | **Top Emerging SKU** | [Product Name] | Revenue: $[amount], MoM: [+/-X]% |
-
-   CRITICAL INSTRUCTIONS:
-   - Row 1 (Monthly Revenue): Use revenue_total from HERO METRICS with revenue_mom_pct and revenue_yoy_pct
-   - Row 2 (Annual Revenue Pacing): Use prophet_annual_revenue_base with probability_hit_revenue_target. Calculate shortfall as (annual_revenue_target - prophet_annual_revenue_base). **IMPORTANT:** If probability_hit_revenue_target is 100%, do NOT mention the probability. Instead, show how much OVER projection we are (e.g., "Tracking $[X] over target, [X] days left")
-   - Row 3 (Monthly ROAS): Use attributed_blended_roas from HERO METRICS with attributed_blended_roas_mom_pct and attributed_blended_roas_yoy_pct (this is PAID MEDIA ONLY ROAS)
-   - Row 4 (Paid Media Spend): Use paid_media_spend from HERO METRICS with paid_media_spend_mom_pct and paid_media_spend_yoy_pct
-   - Do NOT calculate percentages - use exact values from the data
-
-   **After the table**, add 3-5 key bullet points with insights about wins and challenges
-
-   **CRITICAL - Daily Performance Trends**: Review the DAILY PERFORMANCE PROGRESSION table to identify key patterns:
-   - Did ROAS improve, decline, or stay stable throughout the month?
-   - Which week(s) showed the strongest/weakest performance?
-   - Were there any notable spikes or dips?
-   - Incorporate these trend insights into your bullet points above
-
-   **CRITICAL - Geographic Performance**: Review the COUNTRY PERFORMANCE table to identify geographic insights:
-   - How is revenue distributed across US, Canada, and UK markets?
-   - Which market shows the strongest per-unit pricing?
-   - For H&B: Which market has the highest Meta ROAS? How does Meta revenue compare to total revenue by country?
-   - Are there any notable geographic trends or opportunities?
-   - Incorporate geographic insights into your bullet points above if significant
-
-2. BUSINESS PERFORMANCE (use ## for section heading)
-   - Use monthly_business_summary for complete monthly metrics
-   - Report on attributed_blended_roas (paid media attributed revenue / ad spend) - this is the ONLY ROAS we report
-   - Present revenue breakdown (gross, net, refunds)
-   - Analyze operational metrics (orders, AOV, units)
-   - Calculate and interpret key rates (discount, return, etc.)
-   - **CRITICAL**: Analyze the DAILY PERFORMANCE PROGRESSION table to identify ROAS, Revenue, and Order trends throughout the month. Note any significant patterns, improvements, or declines week-over-week.
-
-3. META ADS PERFORMANCE (use ## for section heading)
-   **Use data from META ADS PERFORMANCE METRICS section**
-
-   Present Spend, Revenue, and ROAS with MoM and YoY changes:
-   - Spend: $[X,XXX] (MoM: [+/-X]%, YoY: [+/-X]%)
-   - Revenue: $[X,XXX] (MoM: [+/-X]%, YoY: [+/-X]%)
-   - ROAS: [X.XX]x (MoM: [+/-X]%, YoY: [+/-X]%)
-
-   Then present granular metrics:
-   - CPM: $[XX.XX]
-   - CPC: $[X.XX]
-   - CTR: [X.XX]%
-   - Frequency: [X.XX]
-
-   Add 2-3 sentences interpreting performance trends based on MoM/YoY changes
-
-4. CAMPAIGN ANALYSIS (use ## for section heading)
-   - Use ai_intelligent_campaign_analysis
-   - Create subsections for "Top Performing Campaigns" (use #### for subsection heading)
-   - Create subsections for "Campaigns Needing Attention" (use #### for subsection heading)
-   - Identify top 5 performing campaigns with context
-   - Flag campaigns needing attention (use recommended_action, risk_flags)
-   - Provide 2-3 specific optimization recommendations
-
-5. EMAIL PERFORMANCE (use ## for section heading)
-   **Use data from EMAIL PERFORMANCE OVERVIEW, EMAIL PERFORMANCE BY CATEGORY, and FLOW REVENUE BREAKDOWN sections**
-
-   Present overall email metrics for the month:
-   - Volume: Sends, Deliveries, Campaigns Sent
-   - Engagement: Open Rate, Click Rate, Click-to-Open Rate
-   - Performance: Attributed Revenue, Revenue per Send, Purchase Conversion Rate
-   - Deliverability: Delivery Rate, Bounce Rate, Unsubscribe Rate
-
-   Analyze performance by category (if available):
-   - Show top performing email categories by revenue
-   - Highlight engagement differences between categories
-
-   Analyze Campaigns vs Flows (if available):
-   - Compare campaign performance vs automated flow performance
-   - Identify which type drives more revenue
-
-   **CRITICAL - Flow Strategy Analysis:**
-   Use the FLOW REVENUE BREAKDOWN section to highlight PuttOUT's automated flow strategy:
-   - Total flow revenue and number of active flows
-   - Top 3-5 performing flows by revenue
-   - Flow AOV and revenue per purchaser metrics
-   - Emphasize the importance of flows in the overall email strategy
-
-   Add 2-3 sentences interpreting email performance trends and opportunities, specifically noting the contribution of automated flows
-
-6. PRODUCT INSIGHTS (use ## for section heading)
-   - Use product_intelligence for top performers
-   - Identify growth trends and opportunities
-   - Flag inventory or performance concerns
-   - PuttOUT Focus: Emphasize golf training aids and putting accessories trends
-
-7. STRATEGIC RECOMMENDATIONS (use ## for section heading)
-   - Focus on Paid Media Performance
-   - PuttOUT-specific: Consider golf season timing and training aid innovation trends
-
-TONE & FORMAT:
-- Write at a strategic/executive level (50,000 foot view)
-- Use clear, uncomplicated business-focused language, avoid jargon
-- Include specific numbers but emphasize insights over data dumps
-- Use bullet points for scannability
-- Bold key metrics and findings
-- Keep total report to 1,000 words
-- Do not use any emojis
-- CRITICAL: Do NOT use horizontal rules (---) or <hr> tags anywhere in the report
-- CRITICAL: Do NOT use "Last 30 days" - use the actual month name and year (e.g., "October 2025")
-- CRITICAL: ALL section headings MUST use proper markdown syntax (## for H2, ### for H3, #### for H4)
-- CRITICAL: Do NOT use bold text (**text**) as a substitute for headings - use actual markdown heading syntax
-
-CRITICAL REQUIREMENTS:
-- Always compare MTD vs YoY to show context
-- Calculate growth rates and interpret them
-- Identify both opportunities and risks
-- Be specific with recommendations (don't be vague)
-- Focus on actionable intelligence, not just reporting numbers
-- Never speak in absolute truths around your recommendations, they are simply recommendations and not facts
-- Do not panic or use panic-sounding statements or overly enthusiastic statements as well`
-  },
-];
-
-// Helper function to get templates available for current client
-function getAvailableTemplates(currentClient: string | null) {
-  if (!currentClient) return [];
-  return reportTemplates.filter(template =>
-    !template.clients ||
-    template.clients.includes('all') ||
-    template.clients.includes(currentClient)
+// Report templates are now loaded from BigQuery database
+// API: /api/reports/templates
+
+// Fetch templates from API
+async function fetchTemplatesFromAPI(clientId: string): Promise<ReportTemplate[]> {
+  try {
+    const response = await fetch('/api/reports/templates', {
+      headers: {
+        'x-client-id': clientId,
+      },
+    });
+    if (!response.ok) {
+      throw new Error('Failed to fetch templates');
+    }
+    const data = await response.json();
+    return data.templates || [];
+  } catch (error) {
+    console.error('[Reports] Error fetching templates:', error);
+    return [];
+  }
+}
+
+// Save template to API
+async function saveTemplateToAPI(
+  templateId: string,
+  prompt: string,
+  modifiedBy: string = 'user'
+): Promise<boolean> {
+  try {
+    const response = await fetch('/api/reports/templates', {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        template_id: templateId,
+        prompt,
+        modified_by: modifiedBy,
+      }),
+    });
+    return response.ok;
+  } catch (error) {
+    console.error('[Reports] Error saving template:', error);
+    return false;
+  }
+}
+
+// Report templates are now stored in BigQuery: admin_configs.report_templates
+// Templates are loaded via /api/reports/templates API
+
+// Prompt Editor Modal Component
+function PromptEditorModal({
+  template,
+  isOpen,
+  onClose,
+  onSave,
+  onReset,
+}: {
+  template: ReportTemplate | null;
+  isOpen: boolean;
+  onClose: () => void;
+  onSave: (templateId: string, prompt: string) => void;
+  onReset: (templateId: string) => void;
+}) {
+  const [editedPrompt, setEditedPrompt] = useState('');
+
+  useEffect(() => {
+    if (template && isOpen) {
+      // Load the current prompt from the template (from DB)
+      setEditedPrompt(template.prompt);
+    }
+  }, [template, isOpen]);
+
+  if (!isOpen || !template) return null;
+
+  const handleSave = () => {
+    onSave(template.template_id, editedPrompt);
+    onClose();
+  };
+
+  const handleReset = () => {
+    // Reset just reloads from DB
+    setEditedPrompt(template.prompt);
+    onReset(template.template_id);
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center">
+      {/* Backdrop */}
+      <div
+        className="absolute inset-0 bg-black/70"
+        onClick={onClose}
+      />
+
+      {/* Modal */}
+      <div
+        className="relative w-full max-w-4xl max-h-[90vh] mx-4 rounded-lg border overflow-hidden flex flex-col"
+        style={{
+          background: 'var(--bg-card)',
+          borderColor: 'var(--border-muted)',
+        }}
+      >
+        {/* Header */}
+        <div
+          className="flex items-center justify-between p-4 border-b"
+          style={{ borderColor: 'var(--border-muted)' }}
+        >
+          <div>
+            <h2 className="text-lg font-bold" style={{ color: 'var(--text-primary)' }}>
+              Edit Prompt: {template.title}
+            </h2>
+            <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
+              Changes will be saved to the database
+            </p>
+          </div>
+          <button
+            onClick={onClose}
+            className="p-2 rounded-lg hover:bg-[var(--bg-elevated)] transition-colors"
+          >
+            <X className="w-5 h-5" style={{ color: 'var(--text-secondary)' }} />
+          </button>
+        </div>
+
+        {/* Content */}
+        <div className="flex-1 overflow-y-auto p-4">
+          <textarea
+            value={editedPrompt}
+            onChange={(e) => setEditedPrompt(e.target.value)}
+            className="w-full h-[60vh] p-4 rounded-lg border font-mono text-sm resize-none"
+            style={{
+              background: 'var(--bg-elevated)',
+              borderColor: 'var(--border-muted)',
+              color: 'var(--text-primary)',
+            }}
+            placeholder="Enter your custom prompt..."
+          />
+        </div>
+
+        {/* Footer */}
+        <div
+          className="flex items-center justify-end p-4 border-t gap-3"
+          style={{ borderColor: 'var(--border-muted)' }}
+        >
+          <Button
+            onClick={onClose}
+            className="btn-secondary text-sm"
+          >
+            Cancel
+          </Button>
+          <Button
+            onClick={handleSave}
+            className="btn-primary text-sm"
+          >
+            Save Changes
+          </Button>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -578,7 +286,13 @@ function ReportsPageInner({ currentClient }: { currentClient: string }) {
   const [pdfExportState, setPdfExportState] = useState<'idle' | 'exporting' | 'success' | 'error'>('idle');
   const [pdfExportMessage, setPdfExportMessage] = useState<string>('');
   const [funnelAdsData, setFunnelAdsData] = useState<any>(null); // Store funnel ads for client-side injection
-
+  const [editingTemplate, setEditingTemplate] = useState<ReportTemplate | null>(null);
+  const [isPromptEditorOpen, setIsPromptEditorOpen] = useState(false);
+  const [isSavingTemplate, setIsSavingTemplate] = useState(false);
+  const [availableTemplates, setAvailableTemplates] = useState<ReportTemplate[]>([]);
+  const [isLoadingTemplates, setIsLoadingTemplates] = useState(true);
+  const [templatesVersion, setTemplatesVersion] = useState(0); // Track template refreshes
+  const [toneContext, setToneContext] = useState<string>(''); // Global tone context for all reports
 
   const { messages, sendMessage, status, error, setMessages } = useChat({
     id: `reports-${currentClient}`,
@@ -593,32 +307,61 @@ function ReportsPageInner({ currentClient }: { currentClient: string }) {
     },
   });
 
-  // Get templates available for current client
-  const availableTemplates = getAvailableTemplates(currentClient);
+  // Fetch templates from API on mount and when client changes
+  useEffect(() => {
+    async function loadTemplates() {
+      setIsLoadingTemplates(true);
+      console.log('[Reports] Fetching templates for client:', currentClient);
+      const templates = await fetchTemplatesFromAPI(currentClient);
+      console.log('[Reports] Fetched', templates.length, 'templates');
+      setAvailableTemplates(templates);
+      setIsLoadingTemplates(false);
 
-  // Reset messages when client changes and auto-select client-specific template
-  React.useEffect(() => {
-    console.log('Client changed to:', currentClient);
-    setMessages([]);
-
-    // Auto-select client-specific monthly performance template if available
-    const clientSpecificTemplate = reportTemplates.find(
-      t => t.id === `${currentClient}-monthly-performance`
-    );
-
-    if (clientSpecificTemplate) {
-      console.log('[Reports] Auto-selecting client-specific template:', clientSpecificTemplate.id);
-      setSelectedTemplate(clientSpecificTemplate);
-      const promptWithClient = clientSpecificTemplate.prompt.replace(
-        /\{\{client\}\}/g,
-        getClientDisplayName(currentClient)
+      // Auto-select client-specific monthly performance template if available
+      const clientSpecificTemplate = templates.find(
+        t => t.template_id === `${currentClient}-monthly-performance`
       );
-      setInput(promptWithClient);
-    } else {
-      setSelectedTemplate(null);
-      setInput('');
+
+      if (clientSpecificTemplate) {
+        console.log('[Reports] Auto-selecting client-specific template:', clientSpecificTemplate.template_id);
+        setSelectedTemplate(clientSpecificTemplate);
+        const processedPrompt = applyPromptReplacements(clientSpecificTemplate.prompt);
+        setInput(processedPrompt);
+      } else {
+        setSelectedTemplate(null);
+        setInput('');
+      }
     }
-  }, [currentClient, setMessages]);
+
+    setMessages([]);
+    loadTemplates();
+  }, [currentClient, setMessages, templatesVersion]);
+
+  // Fetch global tone context on mount
+  useEffect(() => {
+    async function loadToneContext() {
+      try {
+        const response = await fetch('/api/settings/global?key=tone_context');
+        const data = await response.json();
+        if (data.success && data.setting?.value) {
+          console.log('[Reports] Loaded tone context');
+          setToneContext(data.setting.value);
+        }
+      } catch (error) {
+        console.error('[Reports] Error fetching tone context:', error);
+      }
+    }
+    loadToneContext();
+  }, []);
+
+  // Re-apply prompt replacements when tone context is loaded (if a template is selected)
+  useEffect(() => {
+    if (toneContext && selectedTemplate && input.includes('{{tone}}')) {
+      console.log('[Reports] Applying tone context to prompt');
+      const processedPrompt = input.replace(/\{\{tone\}\}/g, toneContext);
+      setInput(processedPrompt);
+    }
+  }, [toneContext]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const isGenerating = status === 'streaming' || status === 'submitted';
   const isProcessing = isGenerating || isPrefetching;
@@ -635,12 +378,55 @@ function ReportsPageInner({ currentClient }: { currentClient: string }) {
     return clientNames[clientId] || clientId.toUpperCase();
   };
 
+  // Helper to apply all prompt replacements (client name, tone context)
+  const applyPromptReplacements = (prompt: string) => {
+    let result = prompt
+      .replace(/\{\{client\}\}/g, getClientDisplayName(currentClient))
+      .replace(/\{\{tone\}\}/g, toneContext);
+    return result;
+  };
+
   const handleTemplateSelect = async (template: ReportTemplate) => {
-    console.log('[Reports] Template selected:', template.id);
+    console.log('[Reports] Template selected:', template.template_id);
     setSelectedTemplate(template);
-    // Replace {{client}} placeholder with proper display name
-    const promptWithClient = template.prompt.replace(/\{\{client\}\}/g, getClientDisplayName(currentClient));
-    setInput(promptWithClient);
+    // Use template prompt directly (DB is now source of truth)
+    const processedPrompt = applyPromptReplacements(template.prompt);
+    setInput(processedPrompt);
+  };
+
+  const handleEditPrompt = (template: ReportTemplate, e: React.MouseEvent) => {
+    e.stopPropagation(); // Prevent template selection when clicking edit
+    setEditingTemplate(template);
+    setIsPromptEditorOpen(true);
+  };
+
+  const handleSavePrompt = async (templateId: string, prompt: string) => {
+    setIsSavingTemplate(true);
+    console.log('[Reports] Saving prompt for template:', templateId);
+
+    const success = await saveTemplateToAPI(templateId, prompt, 'user');
+
+    if (success) {
+      // Refresh templates from API
+      setTemplatesVersion(v => v + 1);
+      // If this template is currently selected, update the input
+      if (selectedTemplate?.template_id === templateId) {
+        const processedPrompt = applyPromptReplacements(prompt);
+        setInput(processedPrompt);
+      }
+      console.log('[Reports] Template saved successfully');
+    } else {
+      console.error('[Reports] Failed to save template');
+    }
+
+    setIsSavingTemplate(false);
+  };
+
+  const handleResetPrompt = (templateId: string) => {
+    // With DB storage, reset refreshes from the database
+    // The current DB value IS the "default" - there's no separate default vs custom
+    console.log('[Reports] Reset requested for:', templateId, '- refreshing from database');
+    setTemplatesVersion(v => v + 1);
   };
 
   const loadSampleReport = () => {
@@ -799,7 +585,7 @@ Performance leaders across the marketing funnel:`;
 
     setMessages([mockMessage]);
     setFunnelAdsData(sampleAds);
-    setSelectedTemplate(reportTemplates.find(t => t.id === 'hb-monthly-performance') || null);
+    setSelectedTemplate(availableTemplates.find(t => t.template_id === 'hb-monthly-performance') || null);
   };
 
 
@@ -832,7 +618,7 @@ Performance leaders across the marketing funnel:`;
         },
         body: JSON.stringify({
           clientId: currentClient,
-          reportType: selectedTemplate?.id || 'custom',
+          reportType: selectedTemplate?.template_id || 'custom',
           markdownContent: reportContent,
           funnelAds: funnelAdsData, // Include funnel ads data
         })
@@ -917,7 +703,7 @@ Performance leaders across the marketing funnel:`;
         body: JSON.stringify({
           htmlContent: styledHtml,
           clientId: currentClient,
-          reportType: selectedTemplate?.id || 'custom',
+          reportType: selectedTemplate?.template_id || 'custom',
           useInlineStyles: true,
         })
       });
@@ -965,14 +751,14 @@ Performance leaders across the marketing funnel:`;
       if (selectedTemplate && !isRefinement) {
         try {
           setIsPrefetching(true);
-          console.log('[Reports] Pre-fetching data for initial generation:', selectedTemplate.id);
+          console.log('[Reports] Pre-fetching data for initial generation:', selectedTemplate.template_id);
 
-          // Use 'previous-month' period for H&B, JumboMax, and PuttOUT monthly reports, '30d' for others
-          const period = (
-            selectedTemplate.id === 'hb-monthly-performance' ||
-            selectedTemplate.id === 'jumbomax-monthly-performance' ||
-            selectedTemplate.id === 'puttout-monthly-performance'
-          ) ? 'previous-month' : '30d';
+          // Use period and data_fetcher from template configuration (stored in BigQuery)
+          // This eliminates hardcoded template-specific logic
+          const period = selectedTemplate.period || '30d';
+          const dataFetcher = selectedTemplate.data_fetcher || selectedTemplate.template_id;
+
+          console.log('[Reports] Using template config - period:', period, 'data_fetcher:', dataFetcher);
 
           const dataResponse = await fetch('/api/reports/fetch-data', {
             method: 'POST',
@@ -981,7 +767,7 @@ Performance leaders across the marketing funnel:`;
               'x-client-id': currentClient || '',
             },
             body: JSON.stringify({
-              reportType: selectedTemplate.id,
+              reportType: dataFetcher, // Use data_fetcher to determine which fetch function to use
               clientId: currentClient,
               period
             })
@@ -1097,18 +883,19 @@ Performance leaders across the marketing funnel:`;
 
           <div className="space-y-3 flex-1 overflow-y-auto">
             {availableTemplates.map((template) => (
-              <button
-                key={template.id}
-                onClick={() => handleTemplateSelect(template)}
-                className={`w-full text-left p-4 rounded-lg border transition-all ${
-                  selectedTemplate?.id === template.id
+              <div
+                key={template.template_id}
+                className={`relative w-full text-left p-4 rounded-lg border transition-all cursor-pointer ${
+                  selectedTemplate?.template_id === template.template_id
                     ? 'border-[var(--accent-primary)] bg-[var(--accent-bg)]'
                     : 'border-[var(--border-muted)] hover:border-[var(--border-subtle)]'
                 }`}
                 style={{
-                  background: selectedTemplate?.id === template.id ? 'var(--accent-bg)' : 'var(--bg-elevated)',
+                  background: selectedTemplate?.template_id === template.template_id ? 'var(--accent-bg)' : 'var(--bg-elevated)',
+                  opacity: isProcessing ? 0.6 : 1,
+                  pointerEvents: isProcessing ? 'none' : 'auto',
                 }}
-                disabled={isProcessing}
+                onClick={() => handleTemplateSelect(template)}
               >
                 <div className="flex items-start gap-3">
                   <div className="flex-1">
@@ -1118,9 +905,21 @@ Performance leaders across the marketing funnel:`;
                     <div className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
                       {template.description}
                     </div>
+                    {template.updated_at && (
+                      <div className="text-[10px] mt-1" style={{ color: 'var(--text-muted)', opacity: 0.7 }}>
+                        Last Edit: {new Date(template.updated_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                      </div>
+                    )}
                   </div>
+                  <button
+                    onClick={(e) => handleEditPrompt(template, e)}
+                    className="p-1.5 rounded hover:bg-[var(--bg-card)] transition-colors"
+                    title="Edit prompt"
+                  >
+                    <Pencil className="w-3.5 h-3.5" style={{ color: 'var(--text-muted)' }} />
+                  </button>
                 </div>
-              </button>
+              </div>
             ))}
           </div>
         </div>
@@ -1177,7 +976,7 @@ Performance leaders across the marketing funnel:`;
                     {selectedTemplate && (
                       <div className="mb-3 p-2 rounded-lg border" style={{ background: 'var(--accent-bg)', borderColor: 'var(--accent-border)' }}>
                         <div className="flex items-center gap-2">
-                          <span className="text-lg">{selectedTemplate.icon}</span>
+                          <FileText className="w-4 h-4" style={{ color: 'var(--accent-primary)' }} />
                           <span className="text-xs font-medium" style={{ color: 'var(--accent-primary)' }}>
                             {selectedTemplate.title}
                           </span>
@@ -1274,7 +1073,7 @@ Performance leaders across the marketing funnel:`;
                     {selectedTemplate && (
                       <div className="mb-3 p-2 rounded-lg border" style={{ background: 'var(--accent-bg)', borderColor: 'var(--accent-border)' }}>
                         <div className="flex items-center gap-2">
-                          <span className="text-lg">{selectedTemplate.icon}</span>
+                          <FileText className="w-4 h-4" style={{ color: 'var(--accent-primary)' }} />
                           <span className="text-xs font-medium" style={{ color: 'var(--accent-primary)' }}>
                             {selectedTemplate.title}
                           </span>
@@ -1463,6 +1262,18 @@ Performance leaders across the marketing funnel:`;
           </div>
         </div>
       </div>
+
+      {/* Prompt Editor Modal */}
+      <PromptEditorModal
+        template={editingTemplate}
+        isOpen={isPromptEditorOpen}
+        onClose={() => {
+          setIsPromptEditorOpen(false);
+          setEditingTemplate(null);
+        }}
+        onSave={handleSavePrompt}
+        onReset={handleResetPrompt}
+      />
     </div>
   );
 }

@@ -2,7 +2,7 @@
 
 import { useClient } from '@/components/client-provider';
 import React, { useState, useEffect, useRef } from 'react';
-import { Plus, Calendar, Pencil, Trash2, FileText, Upload, X, Check, Loader2, ChevronDown, ChevronRight } from 'lucide-react';
+import { Plus, Calendar, Pencil, Trash2, FileText, Upload, X, Check, Loader2, ChevronDown, ChevronRight, Settings2 } from 'lucide-react';
 
 // Unified context entry type matching the new schema
 interface ContextEntry {
@@ -123,6 +123,61 @@ export default function ContextPage() {
   const [editingExtractedIndex, setEditingExtractedIndex] = useState<number | null>(null);
   const [expandedMonths, setExpandedMonths] = useState<Set<string>>(new Set());
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Tone Context Modal state
+  const [showToneModal, setShowToneModal] = useState(false);
+  const [toneContext, setToneContext] = useState('');
+  const [toneContextDraft, setToneContextDraft] = useState('');
+  const [isSavingTone, setIsSavingTone] = useState(false);
+  const [isLoadingTone, setIsLoadingTone] = useState(false);
+
+  // Fetch tone context on mount
+  useEffect(() => {
+    fetchToneContext();
+  }, []);
+
+  const fetchToneContext = async () => {
+    setIsLoadingTone(true);
+    try {
+      const response = await fetch('/api/settings/global?key=tone_context');
+      const data = await response.json();
+      if (data.success && data.setting?.value) {
+        setToneContext(data.setting.value);
+        setToneContextDraft(data.setting.value);
+      }
+    } catch (error) {
+      console.error('Error fetching tone context:', error);
+    } finally {
+      setIsLoadingTone(false);
+    }
+  };
+
+  const saveToneContext = async () => {
+    setIsSavingTone(true);
+    try {
+      const response = await fetch('/api/settings/global', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          key: 'tone_context',
+          value: toneContextDraft,
+          updated_by: 'user',
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to save');
+      }
+
+      setToneContext(toneContextDraft);
+      setShowToneModal(false);
+    } catch (error) {
+      console.error('Error saving tone context:', error);
+      alert('Failed to save tone context. Please try again.');
+    } finally {
+      setIsSavingTone(false);
+    }
+  };
 
   // Form state
   const [formData, setFormData] = useState({
@@ -786,6 +841,17 @@ export default function ContextPage() {
                 Context
               </h2>
               <div className="flex items-center gap-2">
+                {/* Tone & Style Button */}
+                <button
+                  onClick={() => {
+                    setToneContextDraft(toneContext);
+                    setShowToneModal(true);
+                  }}
+                  className="btn-secondary p-2 rounded-lg"
+                  title="Tone & Style Settings"
+                >
+                  <Settings2 className="w-4 h-4" />
+                </button>
                 {/* Upload Button */}
                 <input
                   ref={fileInputRef}
@@ -1310,6 +1376,100 @@ export default function ContextPage() {
           </div>
         </div>
       </div>
+
+      {/* Tone Context Modal */}
+      {showToneModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          {/* Backdrop */}
+          <div
+            className="absolute inset-0 bg-black/50"
+            onClick={() => setShowToneModal(false)}
+          />
+
+          {/* Modal */}
+          <div
+            className="relative w-full max-w-2xl mx-4 rounded-xl shadow-2xl"
+            style={{ background: 'var(--bg-elevated)' }}
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between p-6 border-b" style={{ borderColor: 'var(--border-muted)' }}>
+              <div>
+                <h2 className="text-xl font-bold" style={{ color: 'var(--text-primary)' }}>
+                  Tone & Style Settings
+                </h2>
+                <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>
+                  This tone context is applied to all reports across all clients
+                </p>
+              </div>
+              <button
+                onClick={() => setShowToneModal(false)}
+                className="p-2 rounded-lg hover:bg-[var(--bg-primary)]"
+              >
+                <X className="w-5 h-5" style={{ color: 'var(--text-muted)' }} />
+              </button>
+            </div>
+
+            {/* Content */}
+            <div className="p-6">
+              {isLoadingTone ? (
+                <div className="flex items-center justify-center py-12">
+                  <Loader2 className="w-6 h-6 animate-spin" style={{ color: 'var(--text-muted)' }} />
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium mb-2" style={{ color: 'var(--text-primary)' }}>
+                      Global Tone Context
+                    </label>
+                    <p className="text-xs mb-3" style={{ color: 'var(--text-muted)' }}>
+                      Define the voice, tone, and style guidelines for all AI-generated reports. This will replace the TONE placeholder in report templates.
+                    </p>
+                    <textarea
+                      value={toneContextDraft}
+                      onChange={(e) => setToneContextDraft(e.target.value)}
+                      placeholder="Example: Write in a professional but conversational tone. Be data-driven and specific. Avoid jargon. Focus on actionable insights..."
+                      rows={10}
+                      className="w-full p-4 rounded-lg border text-sm"
+                      style={{
+                        background: 'var(--bg-primary)',
+                        borderColor: 'var(--border-muted)',
+                        color: 'var(--text-primary)',
+                      }}
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="flex items-center justify-end gap-3 p-6 border-t" style={{ borderColor: 'var(--border-muted)' }}>
+              <button
+                onClick={() => setShowToneModal(false)}
+                className="btn-secondary px-4 py-2 rounded-lg font-medium"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={saveToneContext}
+                disabled={isSavingTone}
+                className="btn-primary px-4 py-2 rounded-lg font-medium flex items-center gap-2"
+              >
+                {isSavingTone ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Saving...
+                  </>
+                ) : (
+                  <>
+                    <Check className="w-4 h-4" />
+                    Save
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

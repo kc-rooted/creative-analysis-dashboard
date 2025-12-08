@@ -4338,10 +4338,32 @@ export async function getRelevantContextForReport(
         continue;
       }
 
-      // Standing conditions - include if not superseded
+      // Standing conditions - smart handling based on dates and report period
       if (category === 'standing_condition') {
-        if (!entry.superseded_by) {
-          alwaysOn.push(entry);
+        // Skip if superseded
+        if (entry.superseded_by) {
+          continue;
+        }
+
+        const entryEndDate = entry.end_date ? new Date(entry.end_date) : null;
+        const entryStartDate = entry.start_date ? new Date(entry.start_date) : null;
+
+        // Current standing condition: no end_date OR end_date is in the future (relative to report)
+        if (!entryEndDate || entryEndDate >= reportEnd) {
+          // Only include if it started before or during the report period
+          if (!entryStartDate || entryStartDate <= reportEnd) {
+            alwaysOn.push(entry);
+          }
+        } else {
+          // Historical standing condition: has end_date that has passed
+          // Include in direct context ONLY if it overlapped with the report period
+          // This provides historical context for why things might have been different
+          if (entryStartDate && entryEndDate) {
+            // Check if the standing condition period overlaps with report period
+            if (entryStartDate <= reportEnd && entryEndDate >= reportStart) {
+              direct.push(entry);
+            }
+          }
         }
         continue;
       }
@@ -4454,9 +4476,19 @@ export function formatContextForPrompt(context: RelevantContext): string {
   if (context.direct.length > 0) {
     sections.push('\n### Direct Context (affects this report period)');
     for (const entry of context.direct) {
-      const dateStr = entry.event_date || entry.start_date || '';
       const magnitude = entry.magnitude ? ` [${entry.magnitude}]` : '';
-      sections.push(`- [${entry.category}]${magnitude} ${entry.title} (${dateStr})`);
+      // Format date range for standing conditions and bounded events
+      let dateStr = '';
+      if (entry.start_date && entry.end_date) {
+        dateStr = `${entry.start_date} to ${entry.end_date}`;
+      } else if (entry.event_date) {
+        dateStr = entry.event_date;
+      } else if (entry.start_date) {
+        dateStr = `from ${entry.start_date}`;
+      }
+      // Mark historical standing conditions clearly
+      const historicalTag = entry.category === 'standing_condition' && entry.end_date ? ' [HISTORICAL]' : '';
+      sections.push(`- [${entry.category}]${magnitude}${historicalTag} ${entry.title} (${dateStr})`);
       if (entry.description) {
         sections.push(`  ${entry.description}`);
       }
