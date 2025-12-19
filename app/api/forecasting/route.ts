@@ -16,9 +16,13 @@ export async function GET(request: Request) {
       getForecastActuals(clientId)
     ]);
 
-    // Find BFCM and Q4 data (or first two scenarios if not found)
-    const bfcmScenarios = scenarios.find(s => s.period.includes('BFCM')) || scenarios[0];
-    const q4Scenarios = scenarios.find(s => s.period.includes('Q4')) || scenarios[1];
+    // Find BFCM and Q4 data from scenarios
+    const bfcmScenarios = scenarios.find(s => s.period === 'BFCM 2025') || scenarios.find(s => s.period?.includes('BFCM')) || scenarios[0];
+    const q4Scenarios = scenarios.find(s => s.period === 'Q4 2025') || scenarios.find(s => s.period?.includes('Q4')) || scenarios[1];
+
+    // Hardcoded BFCM 2025 period: 11/22 - 12/3
+    const BFCM_2025_START = '2025-11-22';
+    const BFCM_2025_END = '2025-12-03';
 
     // Create a map of actuals by date string for efficient lookup
     const actualsMap = new Map(
@@ -31,7 +35,7 @@ export async function GET(request: Request) {
       actual: actualsMap.get(day.date) || null
     }));
 
-    // Calculate actual totals for BFCM and Q4 periods
+    // Calculate actual totals for a date range
     const calculateActualTotal = (startDate: string, endDate: string) => {
       const start = new Date(startDate);
       const end = new Date(endDate);
@@ -53,7 +57,8 @@ export async function GET(request: Request) {
       };
     };
 
-    const bfcmActual = bfcmScenarios ? calculateActualTotal(bfcmScenarios.startDate, bfcmScenarios.endDate) : null;
+    // Use hardcoded BFCM dates for actuals calculation
+    const bfcmActual = calculateActualTotal(BFCM_2025_START, BFCM_2025_END);
     const q4Actual = q4Scenarios ? calculateActualTotal(q4Scenarios.startDate, q4Scenarios.endDate) : null;
 
     return NextResponse.json({

@@ -1,6 +1,9 @@
 import { NextResponse } from 'next/server';
 import { getFacebookPerformanceData, getFacebookPerformanceByCountry } from '@/lib/bigquery';
 
+// Clients that don't have geographic paid media data
+const CLIENTS_WITHOUT_GEOGRAPHIC_DATA = ['benhogan', 'bh'];
+
 export async function GET(request: Request) {
   try {
     // Get requested client from header (sent from frontend)
@@ -16,9 +19,14 @@ export async function GET(request: Request) {
     const endDate = searchParams.get('endDate') || undefined;
     const comparisonType = searchParams.get('comparisonType') || 'previous-period';
 
+    // Only fetch geographic data for clients that have it
+    const hasGeographicData = !CLIENTS_WITHOUT_GEOGRAPHIC_DATA.includes(clientId);
+
     const [facebookData, countryData] = await Promise.all([
       getFacebookPerformanceData(clientId, preset, startDate, endDate, comparisonType),
-      getFacebookPerformanceByCountry(clientId, preset, startDate, endDate, comparisonType)
+      hasGeographicData
+        ? getFacebookPerformanceByCountry(clientId, preset, startDate, endDate, comparisonType)
+        : Promise.resolve([])
     ]);
 
     return NextResponse.json({

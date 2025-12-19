@@ -2760,7 +2760,6 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
 
     const periodOptions = [
       { value: '7d', label: '7D' },
-      { value: '14d', label: '14D' },
       { value: '30d', label: '30D' },
       { value: '180d', label: '180D' },
     ];

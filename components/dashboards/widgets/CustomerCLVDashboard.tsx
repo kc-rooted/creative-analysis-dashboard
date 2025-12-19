@@ -40,7 +40,7 @@ export default function CustomerCLVDashboard({ data }: CustomerCLVDashboardProps
   const getTierColor = (tier: string) => {
     switch (tier) {
       case 'VIP': return '#8b5cf6'; // Purple
-      case 'High Value': return '#3b82f6'; // Blue
+      case 'High Value': return '#89cdee'; // Light blue (accent-primary)
       case 'Medium Value': return '#10b981'; // Green
       case 'Low Value': return '#6b7280'; // Gray
       default: return '#6b7280';

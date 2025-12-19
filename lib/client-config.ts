@@ -390,7 +390,7 @@ export const CLIENT_CONFIGS: Record<string, ClientConfig> = {
     features: {
       googleAds: false,       // No Google Ads
       metaAds: true,          // Has Meta Ads
-      email: false,           // No Email
+      email: true,            // Email enabled
       googleAnalytics: false, // No Google Analytics
       searchConsole: false,   // No Search Console
     },
