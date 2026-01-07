@@ -4514,3 +4514,325 @@ export function formatContextForPrompt(context: RelevantContext): string {
 
   return '## Business Context\n\n' + sections.join('\n');
 }
+
+// Get executive summary for arbitrary date range with YoY comparison
+// Uses same source tables and calculations as ai_executive_summary view
+export async function getExecutiveSummaryByDateRange(
+  clientId: string,
+  startDate: string,
+  endDate: string
+): Promise<any> {
+  const datasetName = getDatasetName(clientId);
+
+  // Determine if client has Klaviyo
+  const hasKlaviyo = clientId !== 'hb' && clientId !== 'benhogan';
+
+  const klaviyoCurrentCTE = hasKlaviyo ? `
+    klaviyo_current AS (
+      SELECT
+        SUM(CASE WHEN attributed_email_type = 'Campaign' THEN order_value ELSE 0 END) as klaviyo_campaign_revenue,
+        SUM(CASE WHEN attributed_email_type = 'Flow' THEN order_value ELSE 0 END) as klaviyo_flow_revenue,
+        SUM(order_value) as klaviyo_total_revenue
+      FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${datasetName}.klaviyo_unified_email_attribution\`
+      WHERE purchase_date >= @startDate AND purchase_date <= @endDate
+    ),
+    klaviyo_yoy AS (
+      SELECT
+        SUM(order_value) as klaviyo_total_revenue_yoy
+      FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${datasetName}.klaviyo_unified_email_attribution\`
+      WHERE purchase_date >= DATE_SUB(CAST(@startDate AS DATE), INTERVAL 1 YEAR)
+        AND purchase_date <= DATE_SUB(CAST(@endDate AS DATE), INTERVAL 1 YEAR)
+    ),` : `
+    klaviyo_current AS (
+      SELECT 0 as klaviyo_campaign_revenue, 0 as klaviyo_flow_revenue, 0 as klaviyo_total_revenue
+    ),
+    klaviyo_yoy AS (
+      SELECT 0 as klaviyo_total_revenue_yoy
+    ),`;
+
+  const query = `
+    WITH shopify_current AS (
+      SELECT
+        SUM(orders) as orders,
+        SUM(total_sales) as revenue,
+        AVG(total_sales / NULLIF(orders, 0)) as aov
+      FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${datasetName}.daily_business_metrics\`
+      WHERE date >= @startDate AND date <= @endDate
+    ),
+    shopify_yoy AS (
+      SELECT
+        SUM(orders) as orders_yoy,
+        SUM(total_sales) as revenue_yoy,
+        AVG(total_sales / NULLIF(orders, 0)) as aov_yoy
+      FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${datasetName}.daily_business_metrics\`
+      WHERE date >= DATE_SUB(CAST(@startDate AS DATE), INTERVAL 1 YEAR)
+        AND date <= DATE_SUB(CAST(@endDate AS DATE), INTERVAL 1 YEAR)
+    ),
+    facebook_current AS (
+      SELECT
+        CAST(SUM(spend) AS NUMERIC) as facebook_spend,
+        CAST(SUM(revenue) AS NUMERIC) as facebook_revenue,
+        CAST(SAFE_DIVIDE(SUM(revenue), SUM(spend)) AS FLOAT64) as facebook_roas
+      FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${datasetName}.paid_media_performance\`
+      WHERE date >= @startDate AND date <= @endDate
+        AND platform = 'Facebook'
+    ),
+    facebook_yoy AS (
+      SELECT
+        CAST(SUM(spend) AS NUMERIC) as facebook_spend_yoy,
+        CAST(SUM(revenue) AS NUMERIC) as facebook_revenue_yoy,
+        CAST(SAFE_DIVIDE(SUM(revenue), SUM(spend)) AS FLOAT64) as facebook_roas_yoy
+      FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${datasetName}.paid_media_performance\`
+      WHERE date >= DATE_SUB(CAST(@startDate AS DATE), INTERVAL 1 YEAR)
+        AND date <= DATE_SUB(CAST(@endDate AS DATE), INTERVAL 1 YEAR)
+        AND platform = 'Facebook'
+    ),
+    google_current AS (
+      SELECT
+        CAST(SUM(spend) AS NUMERIC) as google_spend,
+        CAST(SUM(revenue) AS NUMERIC) as google_revenue,
+        CAST(SAFE_DIVIDE(SUM(revenue), SUM(spend)) AS FLOAT64) as google_roas
+      FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${datasetName}.paid_media_performance\`
+      WHERE date >= @startDate AND date <= @endDate
+        AND platform = 'Google Ads'
+    ),
+    google_yoy AS (
+      SELECT
+        CAST(SUM(spend) AS NUMERIC) as google_spend_yoy,
+        CAST(SUM(revenue) AS NUMERIC) as google_revenue_yoy,
+        CAST(SAFE_DIVIDE(SUM(revenue), SUM(spend)) AS FLOAT64) as google_roas_yoy
+      FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${datasetName}.paid_media_performance\`
+      WHERE date >= DATE_SUB(CAST(@startDate AS DATE), INTERVAL 1 YEAR)
+        AND date <= DATE_SUB(CAST(@endDate AS DATE), INTERVAL 1 YEAR)
+        AND platform = 'Google Ads'
+    ),
+    ${klaviyoCurrentCTE}
+    days_count AS (
+      SELECT COUNT(DISTINCT date) as days_in_period
+      FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${datasetName}.daily_business_metrics\`
+      WHERE date >= @startDate AND date <= @endDate
+    )
+    SELECT
+      -- Current period Shopify
+      sc.orders,
+      sc.revenue,
+      sc.aov,
+      -- Current period Facebook
+      COALESCE(fc.facebook_spend, 0) as facebook_spend,
+      COALESCE(fc.facebook_revenue, 0) as facebook_revenue,
+      COALESCE(fc.facebook_roas, 0) as facebook_roas,
+      -- Current period Google
+      COALESCE(gc.google_spend, 0) as google_spend,
+      COALESCE(gc.google_revenue, 0) as google_revenue,
+      COALESCE(gc.google_roas, 0) as google_roas,
+      -- Current period Blended (same calc as ai_executive_summary)
+      (COALESCE(fc.facebook_spend, 0) + COALESCE(gc.google_spend, 0)) as blended_spend,
+      CAST((COALESCE(fc.facebook_revenue, 0) + COALESCE(gc.google_revenue, 0)) /
+           NULLIF((COALESCE(fc.facebook_spend, 0) + COALESCE(gc.google_spend, 0)), 0) AS FLOAT64) as blended_roas,
+      -- Current period Klaviyo
+      COALESCE(kc.klaviyo_campaign_revenue, 0) as klaviyo_campaign_revenue,
+      COALESCE(kc.klaviyo_flow_revenue, 0) as klaviyo_flow_revenue,
+      COALESCE(kc.klaviyo_total_revenue, 0) as klaviyo_total_revenue,
+      -- Days count
+      dc.days_in_period,
+      -- YoY Shopify
+      sy.orders_yoy,
+      sy.revenue_yoy,
+      sy.aov_yoy,
+      -- YoY Facebook
+      COALESCE(fy.facebook_spend_yoy, 0) as facebook_spend_yoy,
+      COALESCE(fy.facebook_revenue_yoy, 0) as facebook_revenue_yoy,
+      COALESCE(fy.facebook_roas_yoy, 0) as facebook_roas_yoy,
+      -- YoY Google
+      COALESCE(gy.google_spend_yoy, 0) as google_spend_yoy,
+      COALESCE(gy.google_revenue_yoy, 0) as google_revenue_yoy,
+      COALESCE(gy.google_roas_yoy, 0) as google_roas_yoy,
+      -- YoY Blended
+      (COALESCE(fy.facebook_spend_yoy, 0) + COALESCE(gy.google_spend_yoy, 0)) as blended_spend_yoy,
+      CAST((COALESCE(fy.facebook_revenue_yoy, 0) + COALESCE(gy.google_revenue_yoy, 0)) /
+           NULLIF((COALESCE(fy.facebook_spend_yoy, 0) + COALESCE(gy.google_spend_yoy, 0)), 0) AS FLOAT64) as blended_roas_yoy,
+      -- YoY Klaviyo
+      COALESCE(ky.klaviyo_total_revenue_yoy, 0) as klaviyo_total_revenue_yoy,
+      -- Growth percentages
+      CAST((sc.revenue - sy.revenue_yoy) * 100.0 / NULLIF(sy.revenue_yoy, 0) AS FLOAT64) as revenue_yoy_growth_pct,
+      CAST((sc.orders - sy.orders_yoy) * 100.0 / NULLIF(sy.orders_yoy, 0) AS FLOAT64) as orders_yoy_growth_pct,
+      -- Blended ROAS growth (same calc as ai_executive_summary)
+      CAST(
+        ((COALESCE(fc.facebook_revenue, 0) + COALESCE(gc.google_revenue, 0)) / NULLIF((COALESCE(fc.facebook_spend, 0) + COALESCE(gc.google_spend, 0)), 0) -
+         (COALESCE(fy.facebook_revenue_yoy, 0) + COALESCE(gy.google_revenue_yoy, 0)) / NULLIF((COALESCE(fy.facebook_spend_yoy, 0) + COALESCE(gy.google_spend_yoy, 0)), 0))
+        * 100.0 / NULLIF((COALESCE(fy.facebook_revenue_yoy, 0) + COALESCE(gy.google_revenue_yoy, 0)) / NULLIF((COALESCE(fy.facebook_spend_yoy, 0) + COALESCE(gy.google_spend_yoy, 0)), 0), 0)
+      AS FLOAT64) as blended_roas_yoy_growth_pct,
+      CAST((COALESCE(fc.facebook_roas, 0) - COALESCE(fy.facebook_roas_yoy, 0)) * 100.0 / NULLIF(fy.facebook_roas_yoy, 0) AS FLOAT64) as facebook_roas_yoy_growth_pct,
+      CAST((COALESCE(gc.google_roas, 0) - COALESCE(gy.google_roas_yoy, 0)) * 100.0 / NULLIF(gy.google_roas_yoy, 0) AS FLOAT64) as google_roas_yoy_growth_pct,
+      CAST((COALESCE(kc.klaviyo_total_revenue, 0) - COALESCE(ky.klaviyo_total_revenue_yoy, 0)) * 100.0 / NULLIF(ky.klaviyo_total_revenue_yoy, 0) AS FLOAT64) as klaviyo_total_revenue_yoy_growth_pct,
+      CAST(((COALESCE(fc.facebook_spend, 0) + COALESCE(gc.google_spend, 0)) - (COALESCE(fy.facebook_spend_yoy, 0) + COALESCE(gy.google_spend_yoy, 0))) * 100.0 / NULLIF((COALESCE(fy.facebook_spend_yoy, 0) + COALESCE(gy.google_spend_yoy, 0)), 0) AS FLOAT64) as blended_spend_yoy_growth_pct,
+      CAST((COALESCE(fc.facebook_spend, 0) - COALESCE(fy.facebook_spend_yoy, 0)) * 100.0 / NULLIF(fy.facebook_spend_yoy, 0) AS FLOAT64) as facebook_spend_yoy_growth_pct,
+      CAST((COALESCE(gc.google_spend, 0) - COALESCE(gy.google_spend_yoy, 0)) * 100.0 / NULLIF(gy.google_spend_yoy, 0) AS FLOAT64) as google_spend_yoy_growth_pct,
+      CAST((COALESCE(fc.facebook_revenue, 0) - COALESCE(fy.facebook_revenue_yoy, 0)) * 100.0 / NULLIF(fy.facebook_revenue_yoy, 0) AS FLOAT64) as facebook_revenue_yoy_growth_pct,
+      CAST((COALESCE(gc.google_revenue, 0) - COALESCE(gy.google_revenue_yoy, 0)) * 100.0 / NULLIF(gy.google_revenue_yoy, 0) AS FLOAT64) as google_revenue_yoy_growth_pct
+    FROM shopify_current sc
+    CROSS JOIN shopify_yoy sy
+    CROSS JOIN facebook_current fc
+    CROSS JOIN facebook_yoy fy
+    CROSS JOIN google_current gc
+    CROSS JOIN google_yoy gy
+    CROSS JOIN klaviyo_current kc
+    CROSS JOIN klaviyo_yoy ky
+    CROSS JOIN days_count dc
+  `;
+
+  console.log('[getExecutiveSummaryByDateRange] Querying:', datasetName, startDate, 'to', endDate);
+
+  try {
+    const [rows] = await bigquery.query({
+      query,
+      params: { startDate, endDate },
+      timeoutMs: 30000,
+    });
+
+    if (rows.length === 0) return null;
+
+    const row = rows[0];
+    return {
+      // Current period
+      revenue: parseFloat(row.revenue || 0),
+      orders: parseInt(row.orders || 0),
+      aov: parseFloat(row.aov || 0),
+      facebookSpend: parseFloat(row.facebook_spend || 0),
+      facebookRevenue: parseFloat(row.facebook_revenue || 0),
+      facebookRoas: parseFloat(row.facebook_roas || 0),
+      googleSpend: parseFloat(row.google_spend || 0),
+      googleRevenue: parseFloat(row.google_revenue || 0),
+      googleRoas: parseFloat(row.google_roas || 0),
+      blendedSpend: parseFloat(row.blended_spend || 0),
+      blendedRoas: parseFloat(row.blended_roas || 0),
+      klaviyoCampaignRevenue: parseFloat(row.klaviyo_campaign_revenue || 0),
+      klaviyoFlowRevenue: parseFloat(row.klaviyo_flow_revenue || 0),
+      klaviyoTotalRevenue: parseFloat(row.klaviyo_total_revenue || 0),
+      daysInPeriod: parseInt(row.days_in_period || 0),
+      // YoY values
+      revenueYoy: parseFloat(row.revenue_yoy || 0),
+      ordersYoy: parseInt(row.orders_yoy || 0),
+      blendedRoasYoy: parseFloat(row.blended_roas_yoy || 0),
+      blendedSpendYoy: parseFloat(row.blended_spend_yoy || 0),
+      facebookRoasYoy: parseFloat(row.facebook_roas_yoy || 0),
+      googleRoasYoy: parseFloat(row.google_roas_yoy || 0),
+      klaviyoTotalRevenueYoy: parseFloat(row.klaviyo_total_revenue_yoy || 0),
+      // Growth percentages
+      revenueYoyGrowthPct: parseFloat(row.revenue_yoy_growth_pct || 0),
+      ordersYoyGrowthPct: parseFloat(row.orders_yoy_growth_pct || 0),
+      blendedRoasYoyGrowthPct: parseFloat(row.blended_roas_yoy_growth_pct || 0),
+      blendedSpendYoyGrowthPct: parseFloat(row.blended_spend_yoy_growth_pct || 0),
+      facebookRoasYoyGrowthPct: parseFloat(row.facebook_roas_yoy_growth_pct || 0),
+      googleRoasYoyGrowthPct: parseFloat(row.google_roas_yoy_growth_pct || 0),
+      klaviyoTotalRevenueYoyGrowthPct: parseFloat(row.klaviyo_total_revenue_yoy_growth_pct || 0),
+      facebookSpendYoyGrowthPct: parseFloat(row.facebook_spend_yoy_growth_pct || 0),
+      googleSpendYoyGrowthPct: parseFloat(row.google_spend_yoy_growth_pct || 0),
+      facebookRevenueYoyGrowthPct: parseFloat(row.facebook_revenue_yoy_growth_pct || 0),
+      googleRevenueYoyGrowthPct: parseFloat(row.google_revenue_yoy_growth_pct || 0),
+    };
+  } catch (error) {
+    console.error('[getExecutiveSummaryByDateRange] Error:', error);
+    throw error;
+  }
+}
+
+/**
+ * Get paid media trend data for a custom date range
+ */
+export async function getPaidMediaTrendByDateRange(
+  clientId: string,
+  startDate: string,
+  endDate: string
+): Promise<any[]> {
+  const datasetName = getDatasetName(clientId);
+  const query = `
+    SELECT
+      date,
+      SUM(revenue) as revenue,
+      SUM(spend) as spend,
+      SUM(purchases) as orders,
+      ROUND(SAFE_DIVIDE(SUM(revenue), SUM(spend)), 2) as roas
+    FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${datasetName}.paid_media_performance\`
+    WHERE date >= @startDate AND date <= @endDate
+    GROUP BY date
+    ORDER BY date ASC
+  `;
+
+  try {
+    const [rows] = await bigquery.query({
+      query,
+      params: { startDate, endDate },
+      timeoutMs: 30000,
+    });
+
+    return rows.map(row => ({
+      date: row.date.value,
+      revenue: Math.round(row.revenue || 0),
+      spend: Math.round(row.spend || 0),
+      orders: row.orders || 0,
+      roas: (row.roas || 0).toFixed(2)
+    }));
+  } catch (error) {
+    console.error('[getPaidMediaTrendByDateRange] Error:', error);
+    return [];
+  }
+}
+
+/**
+ * Get Shopify revenue YoY data for a custom date range
+ */
+export async function getShopifyRevenueYoYByDateRange(
+  clientId: string,
+  startDate: string,
+  endDate: string
+): Promise<any[]> {
+  const datasetName = getDatasetName(clientId);
+  const query = `
+    WITH current_period AS (
+      SELECT
+        date,
+        total_sales as revenue,
+        orders
+      FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${datasetName}.daily_business_metrics\`
+      WHERE date >= @startDate AND date <= @endDate
+    ),
+    previous_year AS (
+      SELECT
+        DATE_ADD(date, INTERVAL 1 YEAR) as date,
+        total_sales as revenue_ly,
+        orders as orders_ly
+      FROM \`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${datasetName}.daily_business_metrics\`
+      WHERE date >= DATE_SUB(CAST(@startDate AS DATE), INTERVAL 1 YEAR)
+        AND date <= DATE_SUB(CAST(@endDate AS DATE), INTERVAL 1 YEAR)
+    )
+    SELECT
+      cp.date,
+      cp.revenue as revenue_cy,
+      cp.orders as orders_cy,
+      py.revenue_ly,
+      py.orders_ly
+    FROM current_period cp
+    LEFT JOIN previous_year py ON cp.date = py.date
+    ORDER BY cp.date ASC
+  `;
+
+  try {
+    const [rows] = await bigquery.query({
+      query,
+      params: { startDate, endDate },
+      timeoutMs: 30000,
+    });
+
+    return rows.map(row => ({
+      date: row.date.value,
+      revenue_cy: Math.round(parseFloat(row.revenue_cy) || 0),
+      revenue_ly: Math.round(parseFloat(row.revenue_ly) || 0),
+      orders_cy: row.orders_cy || 0,
+      orders_ly: row.orders_ly || 0
+    }));
+  } catch (error) {
+    console.error('[getShopifyRevenueYoYByDateRange] Error:', error);
+    return [];
+  }
+}

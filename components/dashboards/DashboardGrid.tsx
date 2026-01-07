@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { DateRange } from '@/types/dashboard';
 import KPICard from './widgets/KPICard';
 import ChartCard from './widgets/ChartCard';
@@ -17,7 +17,7 @@ import CustomerOverviewKPIs from './widgets/CustomerOverviewKPIs';
 import LTVIntelligence from './widgets/LTVIntelligence';
 import CustomerJourneyAnalysis from './widgets/CustomerJourneyAnalysis';
 import MetaAdsOptimizationDashboard from './MetaAdsOptimizationDashboard';
-import { Loader2, FrownIcon } from 'lucide-react';
+import { Loader2, FrownIcon, Calendar } from 'lucide-react';
 import { formatCurrency as baseFomatCurrency, formatNumber } from '@/lib/format';
 import { LineChart, Line, CartesianGrid, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { useClient } from '@/components/client-provider';
@@ -90,7 +90,11 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
   const [operationalLoading, setOperationalLoading] = useState(true);
   const [operationalError, setOperationalError] = useState<string | null>(null);
   const [customPrices, setCustomPrices] = useState<{[key: string]: number}>({});
-  const [overviewPeriod, setOverviewPeriod] = useState<'7d' | 'mtd' | 'last-month' | '30d' | 'ytd'>('7d');
+  const [overviewPeriod, setOverviewPeriod] = useState<'7d' | 'mtd' | 'last-month' | '30d' | 'ytd' | 'custom'>('7d');
+  const [overviewCustomDates, setOverviewCustomDates] = useState<{ startDate?: string; endDate?: string }>({});
+  const [appliedCustomDates, setAppliedCustomDates] = useState<{ startDate?: string; endDate?: string }>({});
+  const [showOverviewDatePicker, setShowOverviewDatePicker] = useState(false);
+  const overviewDatePickerRef = useRef<HTMLDivElement>(null);
   const [forecastData, setForecastData] = useState<any>(null);
   const [forecastLoading, setForecastLoading] = useState(true);
   const [forecastError, setForecastError] = useState<string | null>(null);
@@ -112,6 +116,17 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
       },
     });
   }, [currentClient]);
+
+  // Close overview date picker when clicking outside
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (overviewDatePickerRef.current && !overviewDatePickerRef.current.contains(event.target as Node)) {
+        setShowOverviewDatePicker(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   // Fetch currency symbol when client changes
   useEffect(() => {
@@ -147,13 +162,25 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
   useEffect(() => {
     if (!currencyLoaded) return; // Wait for currency to load
 
+    // For custom period, wait until user clicks Apply (appliedCustomDates is set)
+    if (overviewPeriod === 'custom' && (!appliedCustomDates.startDate || !appliedCustomDates.endDate)) {
+      return;
+    }
+
     const fetchDashboardData = async () => {
       try {
         setLoading(true);
         setError(null);
         console.log(`[DashboardGrid] Fetching dashboard data for client ${currentClient}, period:`, overviewPeriod);
 
-        const response = await fetchWithClient(`/api/dashboard?period=${overviewPeriod}`);
+        let response: Response;
+        if (overviewPeriod === 'custom' && appliedCustomDates.startDate && appliedCustomDates.endDate) {
+          response = await fetchWithClient(
+            `/api/dashboard/custom-range?startDate=${appliedCustomDates.startDate}&endDate=${appliedCustomDates.endDate}`
+          );
+        } else {
+          response = await fetchWithClient(`/api/dashboard?period=${overviewPeriod}`);
+        }
 
         if (!response.ok) {
           const errorData = await response.json();
@@ -161,6 +188,8 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
         }
         const data = await response.json();
         console.log('Dashboard data received:', data);
+        console.log('Dashboard data kpis:', data?.kpis);
+        console.log('Dashboard paidMediaSpend:', data?.kpis?.paidMediaSpend);
 
         setDashboardData(data);
       } catch (err) {
@@ -172,7 +201,7 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
     };
 
     fetchDashboardData();
-  }, [overviewPeriod, currencyLoaded, currentClient, fetchWithClient]); // Refetch when client or period changes
+  }, [overviewPeriod, appliedCustomDates, currencyLoaded, currentClient, fetchWithClient]); // Refetch when client, period, or applied dates change
 
   // Fetch funnel data when on funnel section - fetch all goals
   useEffect(() => {
@@ -518,20 +547,47 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
 
     // Helper function to get the right period data
     const getPeriodData = (kpi: any) => {
-      switch (overviewPeriod) {
-        case '7d':
-          return kpi.periodData.sevenDay;
-        case 'mtd':
-          return kpi.periodData.monthToDate;
-        case 'last-month':
-          return kpi.periodData.lastMonth;
-        case '30d':
-          return kpi.periodData.thirtyDay;
-        case 'ytd':
-          return kpi.periodData.yearToDate;
-        default:
-          return kpi.periodData.sevenDay;
+      // For standard periods, use periodData structure
+      if (!kpi?.periodData) {
+        return { value: kpi?.value ?? 0, trend: kpi?.trend ?? 0 };
       }
+
+      switch (overviewPeriod) {
+        case 'custom':
+          return kpi.periodData.custom ?? { value: 0, trend: 0 };
+        case '7d':
+          return kpi.periodData.sevenDay ?? { value: 0, trend: 0 };
+        case 'mtd':
+          return kpi.periodData.monthToDate ?? { value: 0, trend: 0 };
+        case 'last-month':
+          return kpi.periodData.lastMonth ?? { value: 0, trend: 0 };
+        case '30d':
+          return kpi.periodData.thirtyDay ?? { value: 0, trend: 0 };
+        case 'ytd':
+          return kpi.periodData.yearToDate ?? { value: 0, trend: 0 };
+        default:
+          return kpi.periodData.sevenDay ?? { value: 0, trend: 0 };
+      }
+    };
+
+    // Helper function to safely get sparkline periodData for KPICard
+    // For custom periods, returns undefined to hide sparklines
+    const getSparklinePeriodData = (kpi: any, formatter?: (val: number) => string) => {
+      // For custom period, don't show sparkline data (return undefined)
+      if (overviewPeriod === 'custom' || !kpi?.periodData) {
+        return undefined;
+      }
+      const fmt = formatter || ((v: number) => String(v));
+      return {
+        sevenDay: {
+          value: fmt(kpi.periodData.sevenDay?.value ?? 0),
+          trend: kpi.periodData.sevenDay?.trend ?? 0
+        },
+        thirtyDay: {
+          value: fmt(kpi.periodData.thirtyDay?.value ?? 0),
+          trend: kpi.periodData.thirtyDay?.trend ?? 0
+        }
+      };
     };
 
     // Export PDF handler
@@ -660,6 +716,87 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
           >
             Year to Date
           </button>
+          <div className="relative">
+            <button
+              onClick={() => {
+                // Only show the date picker, don't change period until Apply is clicked
+                setShowOverviewDatePicker(true);
+              }}
+              className={`px-4 py-2 text-sm font-medium rounded-lg transition-all flex items-center gap-2 ${
+                overviewPeriod === 'custom' ? 'btn-primary' : 'bg-[var(--bg-elevated)] text-[var(--text-secondary)]'
+              }`}
+            >
+              <Calendar className="h-4 w-4" />
+              {overviewPeriod === 'custom' && appliedCustomDates.startDate && appliedCustomDates.endDate
+                ? `${appliedCustomDates.startDate} - ${appliedCustomDates.endDate}`
+                : 'Custom Range'}
+            </button>
+            {showOverviewDatePicker && (
+              <div
+                ref={overviewDatePickerRef}
+                className="absolute top-full right-0 mt-2 p-4 rounded-lg shadow-lg z-50"
+                style={{ background: 'var(--card-overlay)', border: '1px solid var(--border-muted)' }}
+              >
+                <div className="space-y-4">
+                  <div className="flex items-center gap-2 text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
+                    <Calendar className="h-4 w-4" />
+                    <span>Select Date Range</span>
+                  </div>
+                  <div className="space-y-3">
+                    <div>
+                      <label className="block text-xs mb-1" style={{ color: 'var(--text-muted)' }}>Start Date</label>
+                      <input
+                        type="date"
+                        value={overviewCustomDates.startDate || ''}
+                        max={new Date(Date.now() - 86400000).toISOString().split('T')[0]}
+                        onChange={(e) => setOverviewCustomDates(prev => ({ ...prev, startDate: e.target.value }))}
+                        className="w-full px-3 py-2 rounded-lg text-sm"
+                        style={{ background: 'var(--bg-primary)', border: '1px solid var(--border-muted)', color: 'var(--text-primary)' }}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs mb-1" style={{ color: 'var(--text-muted)' }}>End Date</label>
+                      <input
+                        type="date"
+                        value={overviewCustomDates.endDate || ''}
+                        max={new Date(Date.now() - 86400000).toISOString().split('T')[0]}
+                        min={overviewCustomDates.startDate}
+                        onChange={(e) => setOverviewCustomDates(prev => ({ ...prev, endDate: e.target.value }))}
+                        className="w-full px-3 py-2 rounded-lg text-sm"
+                        style={{ background: 'var(--bg-primary)', border: '1px solid var(--border-muted)', color: 'var(--text-primary)' }}
+                      />
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => {
+                        if (overviewCustomDates.startDate && overviewCustomDates.endDate) {
+                          // Set the period to custom and apply the dates to trigger fetch
+                          setOverviewPeriod('custom');
+                          setAppliedCustomDates({
+                            startDate: overviewCustomDates.startDate,
+                            endDate: overviewCustomDates.endDate
+                          });
+                          setShowOverviewDatePicker(false);
+                        }
+                      }}
+                      disabled={!overviewCustomDates.startDate || !overviewCustomDates.endDate}
+                      className="flex-1 px-4 py-2 rounded-lg text-sm font-medium bg-[var(--accent-primary)] text-white disabled:opacity-50 disabled:cursor-not-allowed hover:opacity-90 transition-opacity"
+                    >
+                      Apply
+                    </button>
+                    <button
+                      onClick={() => setShowOverviewDatePicker(false)}
+                      className="px-4 py-2 rounded-lg text-sm font-medium"
+                      style={{ background: 'var(--border-muted)', color: 'var(--text-secondary)' }}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
           </div>
         </div>
 
@@ -672,16 +809,7 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
             previousValue={undefined}
             trend={getPeriodData(dashboardData.kpis.totalRevenue).trend || 0}
             subtitle={undefined}
-            periodData={{
-              sevenDay: {
-                value: `$${((dashboardData.kpis.totalRevenue.periodData?.sevenDay?.value || 82000) / 1000).toFixed(1)}K`,
-                trend: dashboardData.kpis.totalRevenue.periodData?.sevenDay?.trend || 0
-              },
-              thirtyDay: {
-                value: `$${((dashboardData.kpis.totalRevenue.periodData?.thirtyDay?.value || 295000) / 1000).toFixed(1)}K`,
-                trend: dashboardData.kpis.totalRevenue.periodData?.thirtyDay?.trend || 0
-              }
-            }}
+            periodData={getSparklinePeriodData(dashboardData.kpis.totalRevenue, (v) => `$${(v / 1000).toFixed(1)}K`)}
             gaugeValue={dashboardData.kpis.totalRevenue.gaugeValue}
             gaugeMax={dashboardData.kpis.totalRevenue.gaugeMax}
             gaugeTarget={dashboardData.kpis.totalRevenue.gaugeTarget}
@@ -697,16 +825,7 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
             previousValue={undefined}
             trend={getPeriodData(dashboardData.kpis.blendedROAS).trend || 0}
             subtitle={undefined}
-            periodData={{
-              sevenDay: {
-                value: `${(dashboardData.kpis.blendedROAS.periodData?.sevenDay?.value || 5.59).toFixed(2)}x`,
-                trend: dashboardData.kpis.blendedROAS.periodData?.sevenDay?.trend || 0
-              },
-              thirtyDay: {
-                value: `${(dashboardData.kpis.blendedROAS.periodData?.thirtyDay?.value || 6.50).toFixed(2)}x`,
-                trend: dashboardData.kpis.blendedROAS.periodData?.thirtyDay?.trend || 0
-              }
-            }}
+            periodData={getSparklinePeriodData(dashboardData.kpis.blendedROAS, (v) => `${v.toFixed(2)}x`)}
             gaugeValue={dashboardData.kpis.blendedROAS.gaugeValue}
             gaugeMax={dashboardData.kpis.blendedROAS.gaugeMax}
             gaugeTarget={dashboardData.kpis.blendedROAS.gaugeTarget}
@@ -722,16 +841,7 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
             previousValue={undefined}
             trend={getPeriodData(dashboardData.kpis.paidMediaSpend).trend || 0}
             subtitle={undefined}
-            periodData={{
-              sevenDay: {
-                value: formatCurrency(dashboardData.kpis.paidMediaSpend.periodData?.sevenDay?.value || 0),
-                trend: dashboardData.kpis.paidMediaSpend.periodData?.sevenDay?.trend || 0
-              },
-              thirtyDay: {
-                value: formatCurrency(dashboardData.kpis.paidMediaSpend.periodData?.thirtyDay?.value || 0),
-                trend: dashboardData.kpis.paidMediaSpend.periodData?.thirtyDay?.trend || 0
-              }
-            }}
+            periodData={getSparklinePeriodData(dashboardData.kpis.paidMediaSpend, formatCurrency)}
             gaugeValue={dashboardData.kpis.paidMediaSpend.gaugeValue}
             gaugeMax={dashboardData.kpis.paidMediaSpend.gaugeMax}
             gaugeTarget={dashboardData.kpis.paidMediaSpend.gaugeTarget}
@@ -748,16 +858,7 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
               previousValue={undefined}
               trend={getPeriodData(dashboardData.kpis.emailPerformance).trend || 0}
               subtitle={undefined}
-              periodData={{
-                sevenDay: {
-                  value: formatCurrency(dashboardData.kpis.emailPerformance.periodData?.sevenDay?.value || 0),
-                  trend: dashboardData.kpis.emailPerformance.periodData?.sevenDay?.trend || 0
-                },
-                thirtyDay: {
-                  value: formatCurrency(dashboardData.kpis.emailPerformance.periodData?.thirtyDay?.value || 0),
-                  trend: dashboardData.kpis.emailPerformance.periodData?.thirtyDay?.trend || 0
-                }
-              }}
+              periodData={getSparklinePeriodData(dashboardData.kpis.emailPerformance, formatCurrency)}
               gaugeValue={dashboardData.kpis.emailPerformance.gaugeValue}
               gaugeMin={dashboardData.kpis.emailPerformance.gaugeMin}
               gaugeMax={dashboardData.kpis.emailPerformance.gaugeMax}
@@ -952,16 +1053,7 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
             previousValue={undefined}
             trend={getPeriodData(dashboardData.kpis.googleSpend).trend || 0}
             subtitle={undefined}
-            periodData={{
-              sevenDay: {
-                value: formatCurrency(dashboardData.kpis.googleSpend.periodData?.sevenDay?.value || 0),
-                trend: dashboardData.kpis.googleSpend.periodData?.sevenDay?.trend || 0
-              },
-              thirtyDay: {
-                value: formatCurrency(dashboardData.kpis.googleSpend.periodData?.thirtyDay?.value || 0),
-                trend: dashboardData.kpis.googleSpend.periodData?.thirtyDay?.trend || 0
-              }
-            }}
+            periodData={getSparklinePeriodData(dashboardData.kpis.googleSpend, formatCurrency)}
             gaugeValue={dashboardData.kpis.googleSpend.gaugeValue}
             gaugeMax={dashboardData.kpis.googleSpend.gaugeMax}
             gaugeTarget={dashboardData.kpis.googleSpend.gaugeTarget}
@@ -977,16 +1069,7 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
             previousValue={undefined}
             trend={getPeriodData(dashboardData.kpis.googleRevenue).trend || 0}
             subtitle={undefined}
-            periodData={{
-              sevenDay: {
-                value: formatCurrency(dashboardData.kpis.googleRevenue.periodData?.sevenDay?.value || 0),
-                trend: dashboardData.kpis.googleRevenue.periodData?.sevenDay?.trend || 0
-              },
-              thirtyDay: {
-                value: formatCurrency(dashboardData.kpis.googleRevenue.periodData?.thirtyDay?.value || 0),
-                trend: dashboardData.kpis.googleRevenue.periodData?.thirtyDay?.trend || 0
-              }
-            }}
+            periodData={getSparklinePeriodData(dashboardData.kpis.googleRevenue, formatCurrency)}
             gaugeValue={dashboardData.kpis.googleRevenue.gaugeValue}
             gaugeMax={dashboardData.kpis.googleRevenue.gaugeMax}
             gaugeTarget={dashboardData.kpis.googleRevenue.gaugeTarget}
@@ -1002,16 +1085,7 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
             previousValue={undefined}
             trend={getPeriodData(dashboardData.kpis.googleROAS).trend || 0}
             subtitle={undefined}
-            periodData={{
-              sevenDay: {
-                value: `${(dashboardData.kpis.googleROAS.periodData?.sevenDay?.value || 0).toFixed(2)}x`,
-                trend: dashboardData.kpis.googleROAS.periodData?.sevenDay?.trend || 0
-              },
-              thirtyDay: {
-                value: `${(dashboardData.kpis.googleROAS.periodData?.thirtyDay?.value || 0).toFixed(2)}x`,
-                trend: dashboardData.kpis.googleROAS.periodData?.thirtyDay?.trend || 0
-              }
-            }}
+            periodData={getSparklinePeriodData(dashboardData.kpis.googleROAS, (v) => `${v.toFixed(2)}x`)}
             gaugeValue={dashboardData.kpis.googleROAS.gaugeValue}
             gaugeMax={dashboardData.kpis.googleROAS.gaugeMax}
             gaugeTarget={dashboardData.kpis.googleROAS.gaugeTarget}
@@ -1027,16 +1101,7 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
             previousValue={undefined}
             trend={getPeriodData(dashboardData.kpis.metaSpend).trend || 0}
             subtitle={undefined}
-            periodData={{
-              sevenDay: {
-                value: formatCurrency(dashboardData.kpis.metaSpend.periodData?.sevenDay?.value || 0),
-                trend: dashboardData.kpis.metaSpend.periodData?.sevenDay?.trend || 0
-              },
-              thirtyDay: {
-                value: formatCurrency(dashboardData.kpis.metaSpend.periodData?.thirtyDay?.value || 0),
-                trend: dashboardData.kpis.metaSpend.periodData?.thirtyDay?.trend || 0
-              }
-            }}
+            periodData={getSparklinePeriodData(dashboardData.kpis.metaSpend, formatCurrency)}
             gaugeValue={dashboardData.kpis.metaSpend.gaugeValue}
             gaugeMax={dashboardData.kpis.metaSpend.gaugeMax}
             gaugeTarget={dashboardData.kpis.metaSpend.gaugeTarget}
@@ -1052,16 +1117,7 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
             previousValue={undefined}
             trend={getPeriodData(dashboardData.kpis.metaRevenue).trend || 0}
             subtitle={undefined}
-            periodData={{
-              sevenDay: {
-                value: formatCurrency(dashboardData.kpis.metaRevenue.periodData?.sevenDay?.value || 0),
-                trend: dashboardData.kpis.metaRevenue.periodData?.sevenDay?.trend || 0
-              },
-              thirtyDay: {
-                value: formatCurrency(dashboardData.kpis.metaRevenue.periodData?.thirtyDay?.value || 0),
-                trend: dashboardData.kpis.metaRevenue.periodData?.thirtyDay?.trend || 0
-              }
-            }}
+            periodData={getSparklinePeriodData(dashboardData.kpis.metaRevenue, formatCurrency)}
             gaugeValue={dashboardData.kpis.metaRevenue.gaugeValue}
             gaugeMax={dashboardData.kpis.metaRevenue.gaugeMax}
             gaugeTarget={dashboardData.kpis.metaRevenue.gaugeTarget}
@@ -1077,16 +1133,7 @@ export default function DashboardGrid({ section, dateRange }: DashboardGridProps
             previousValue={undefined}
             trend={getPeriodData(dashboardData.kpis.metaROAS).trend || 0}
             subtitle={undefined}
-            periodData={{
-              sevenDay: {
-                value: `${(dashboardData.kpis.metaROAS.periodData?.sevenDay?.value || 0).toFixed(2)}x`,
-                trend: dashboardData.kpis.metaROAS.periodData?.sevenDay?.trend || 0
-              },
-              thirtyDay: {
-                value: `${(dashboardData.kpis.metaROAS.periodData?.thirtyDay?.value || 0).toFixed(2)}x`,
-                trend: dashboardData.kpis.metaROAS.periodData?.thirtyDay?.trend || 0
-              }
-            }}
+            periodData={getSparklinePeriodData(dashboardData.kpis.metaROAS, (v) => `${v.toFixed(2)}x`)}
             gaugeValue={dashboardData.kpis.metaROAS.gaugeValue}
             gaugeMax={dashboardData.kpis.metaROAS.gaugeMax}
             gaugeTarget={dashboardData.kpis.metaROAS.gaugeTarget}
